@@ -45,9 +45,9 @@ Blueprints. It is designed for a single developer's machine; it has no authentic
   NodeToCode does, not the memory the engine uses for one request.
 - **Can be turned off.** **Enable MCP Server** (Editor Preferences, Plugins, Node to Code (User)) is a per-user
   setting. The server does not start in commandlets or unattended runs unless `-N2CMcp` is on the command line.
-- **Python execution off by default.** `run-python`, `save-python-script` and `delete-python-script` exist only when
-  the per-user **Allow MCP Python Execution** setting is on. With it on, any connected MCP client can run arbitrary
-  Python in the editor, including reading your API keys. Only your own value counts (in
+- **Python execution off by default.** `run-python` exists only when the per-user **Allow MCP Python Execution**
+  setting is on. With it on, any connected MCP client can run arbitrary Python in the editor, including reading your
+  API keys. Only your own value counts (in
   `Saved/Config/<Platform>Editor/EditorPerProjectUserSettings.ini`, or a `-ini:` override on your command line): a
   value in the project's `Config/DefaultEditorPerProjectUserSettings.ini` or any other shared config file is ignored
   with a warning in the log, so a committed file cannot switch it on for everyone who opens the project. The same

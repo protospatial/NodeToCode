@@ -35,7 +35,7 @@ Source/Private/MCP/Tools/         - This directory
     ├── ContentBrowser/           - Content Browser navigation and asset operations
     ├── Dependencies/             - The dependency index for agents (get-blueprint-dependencies)
     ├── Migration/                - Migration plans from the dependency index (create-migration-plan)
-    └── Python/                   - run-python and the script library tools
+    └── Python/                   - run-python
 ```
 
 `Blueprint/`, each of its subfolders, `Translation/`, `FileSystem/`, `ContentBrowser/`, `Dependencies/` and
@@ -138,15 +138,15 @@ changes it, every client sees the same list, and the server never sends `notific
 
 | Profile | Exposure | `tools/list` | count |
 |---|---|---|---|
-| Default toolsets (the shipped default) | List every tool | every tool, `get-focused-blueprint` and `translate-focused-blueprint` included | 67 |
+| Default toolsets (the shipped default) | List every tool | every tool, `get-focused-blueprint` and `translate-focused-blueprint` included | 63 |
 | Default toolsets | Tool search | `call_tool`, `describe_toolset`, `list_toolsets` | 3 |
-| Python scripting only | List every tool | `run-python`, `list-python-scripts`, `search-python-scripts`, `get-python-script`, `get-script-functions`, `save-python-script`, `delete-python-script` | 7 |
+| Python scripting only | List every tool | `run-python` | 1 |
 
-- **Python execution switch:** `FN2CMcpToolManager::RegisterTool` skips `run-python`, `save-python-script` and
-  `delete-python-script` (`UN2CUserSettings::IsPythonExecutionTool`) unless the per-user **Allow MCP Python
-  Execution** is on (`UN2CUserSettings::IsMcpPythonExecutionAllowed()`, default off; only the user's own Saved/Config
-  value counts, card 0423). With it off (the default) the counts are 64 and 4 instead of 67 and 7, `PythonTools`
-  still holds the four script library readers, and `call_tool` cannot reach the skipped tools either.
+- **Python execution switch:** `FN2CMcpToolManager::RegisterTool` skips `run-python`
+  (`UN2CUserSettings::IsPythonExecutionTool`) unless the per-user **Allow MCP Python Execution** is on
+  (`UN2CUserSettings::IsMcpPythonExecutionAllowed()`, default off; only the user's own Saved/Config value counts, card
+  0423). With it off (the default) the counts are 62 and 0 instead of 63 and 1, and `call_tool` cannot reach it
+  either. (The six script-library tools PythonTools also held were retired with decision 0010, card 0305.)
 - **Restart required:** the settings are read only when the server starts (editor start, or the server restart a
   Server Port change causes); Project Settings shows a restart notice when one changes.
 - **Settings saved before card 0165:** `UN2CSettings::MigrateLegacyMcpToolModes` (run from `MigrateSavedSettings` on
@@ -190,10 +190,10 @@ like Epic's toolset classes on UE 5.8 (`BlueprintTools`, `MaterialTools`); a 5.8
 | `BlueprintComponentTools` | `list-components-in-actor`, `add-component-class-to-actor`, `delete-component-in-actor` | `Blueprint/Components/` |
 | `ContentBrowserTools` | `open-content-browser-path`, `read-content-browser-path`, `search-content-browser`, `open-blueprint-asset`, `create-folder`, `move-folder`, `rename-folder`, `move-asset`, `copy-asset`, `rename-asset` | `ContentBrowser/` |
 | `FileSystemTools` | `read-path`, `read-file` | `FileSystem/` |
-| `PythonTools` | `run-python`, `list-python-scripts`, `search-python-scripts`, `get-python-script`, `get-script-functions`, `save-python-script`, `delete-python-script` | `Python/` |
+| `PythonTools` | `run-python` | `Python/` |
 | `TranslationTools` | `translate-focused-blueprint`, `translate-batch`, `get-available-llm-providers`, `get-available-translation-targets`, `get-translation-output-directory`, `place-cpp-translation`, `create-migration-plan` | `Translation/`, `Migration/` |
 
-That is 70 tools in 12 toolsets. A new toolset is a new `inline constexpr FN2CMcpToolset` in `N2CMcpToolsets.h`, added
+That is 64 tools in 12 toolsets. A new toolset is a new `inline constexpr FN2CMcpToolset` in `N2CMcpToolsets.h`, added
 to `N2CMcpToolsets::All`; write its description for a model that sees nothing else of it (the domain and the kinds of
 operation, 1-3 sentences, no tool names). The Material graph cards (epic 0442) add `MaterialTools` there with their
 first tool.
@@ -579,7 +579,7 @@ that is not read-only (`Annotations.IsReadOnly()`; an unset `readOnlyHint` count
 `PIE_ACTIVE: ...` instead of running, through the catalog's `Invoke` (for quick tools and, through
 `FN2CToolAsyncTaskManager`, long-running ones); registration adds the rule to such a tool's description. So a tool that only reads sets
 `SetAnnotations(Definition, FMcpToolAnnotations::ReadOnly())`, and a tool that writes but never changes a Blueprint,
-an asset or a level (editor navigation, translation output files, the script library, run-python) sets
+an asset or a level (editor navigation, translation output files, run-python) sets
 `Definition.bAllowedDuringPlaySession = true`. Everything else is refused during PIE, which is what a new editing tool
 wants. `NodeToCode.MCP.PlaySession` checks the rule for every registered tool.
 
@@ -809,11 +809,11 @@ curl -X DELETE http://127.0.0.1:27000/mcp -H "Mcp-Session-Id: $SID"
 ## Troubleshooting
 
 ### Tool Not Appearing in tools/list
-- Check the tool profile and exposure: Python scripting only lists 7 tools (4 without Allow MCP Python Execution),
+- Check the tool profile and exposure: Python scripting only lists `run-python` alone (nothing without Allow MCP Python Execution),
   a Custom profile serves only its toolsets, and Tool search lists only `list_toolsets`, `describe_toolset` and
   `call_tool` (the tool is in `describe_toolset` of its toolset)
 - Check the tool passes a toolset to `FMcpToolDefinition` (the log warns "names no toolset, so it is never served")
-- `run-python`, `save-python-script` and `delete-python-script` need the per-user Allow MCP Python Execution
+- `run-python` needs the per-user Allow MCP Python Execution
 - Ensure the `REGISTER_MCP_TOOL` macro is in the .cpp file
 - Check that the .cpp file is included in the build
 - Look for registration errors in the log

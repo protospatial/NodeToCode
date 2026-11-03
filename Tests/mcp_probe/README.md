@@ -138,9 +138,7 @@ and exits non-zero on any failure. The MCP run ends by checking that the editor 
 | p0-7 `search-blueprint-nodes` leaves the graph unchanged | MCP `search_blueprint_nodes_read_only` (node set, node count and package clean after four searches); test `NodeToCode.Robustness.SearchIsReadOnly` | 0050 |
 | p0-7 `connect-pins` fan-in keeps both links | MCP `connect_pins_fan_in_keeps_both_links`, `connect_pins_refuses_silent_replace` (a link that would replace one fails with `WOULD_BREAK_EXISTING_LINK`), `bridge_connect_pins_fan_in_keeps_both_links` (the Python bridge's `ConnectPins`); `connect_pins_refuses_conversion_replace` and `bridge_connect_pins_refuses_conversion_replace` (a Float into a linked In String needs a conversion node: refused without `breakExistingLinks`, graph unchanged; replaced with it) | 0046, 0415 |
 | p0-7 `add-function-return-pin` dirties the package | MCP `add_return_pin_marks_package_dirty`; test `NodeToCode.Robustness.MarkModifiedDirties` | 0064 |
-| p0-7 DataTable append keeps rows | `e05_datatable_check.py` | 0065 |
 | p0-7 secrets survive a truncated file | test `NodeToCode.Secrets.Store` ("sets a truncated file aside and never writes over it", "finishes a save that stopped before the temporary file replaced the file") | 0062, 0067 |
-| p0-7 script registry survives a truncated file | `e05_registry_check.py` | 0067 |
 | p0-7 graph-state file survives a truncated file | test `NodeToCode.Robustness.GraphStatePersistence` | 0066 |
 
 The default test filter also runs the other `NodeToCode.Robustness` tests (async task cleanup and cancel, LLM
@@ -258,7 +256,7 @@ its environment when no key is saved, so a live check never types or saves a key
   `bAllowMcpPythonExecution` in the user's Saved/Config layer, `EditorSession(allow_python=None)`, and the host's
   `Config/DefaultEditorPerProjectUserSettings.ini` setting `bAllowMcpPythonExecution=True` and
   `bEnableMcpServer=False`: the server starts, no Python tool is listed, one warning each), `user` (Saved/Config
-  True: run-python, save-python-script and delete-python-script are listed) and `both` (project True, user False:
+  True: run-python is listed; before card 0305 also save-python-script and delete-python-script) and `both` (project True, user False:
   none). The host files are put back byte for byte. Report: `logs/live_user_settings_0423.json`.
 - `live_bearer_token_0183.py --engine ... --project ... [--claude]` (no provider key; hold the `user-secrets` lock,
   since it reads and may create the real `<UserSettingsDir>/NodeToCode/mcp-token`, which it puts back afterwards)

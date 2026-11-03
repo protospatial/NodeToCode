@@ -215,8 +215,8 @@ public:
 	bool bEnableMcpServer = bDefaultEnableMcpServer;
 
 	/**
-	 * Expose run-python, save-python-script and delete-python-script over MCP. Any connected MCP client can then
-	 * run arbitrary Python in the editor and write script files. Requires an editor restart. Read through
+	 * Expose run-python over MCP. Any connected MCP client can then run arbitrary Python in the editor. Requires an
+	 * editor restart. Read through
 	 * IsMcpPythonExecutionAllowed(), never directly: this property also holds values from project-shared layers.
 	 */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "MCP Server",
@@ -262,7 +262,7 @@ public:
 	static bool IsMcpServerEnabled();
 
 	/**
-	 * Whether run-python, save-python-script and delete-python-script may be registered: the user's own Allow MCP
+	 * Whether run-python may be registered: the user's own Allow MCP
 	 * Python Execution value, or off when the user never set it. A committed project file cannot turn it on.
 	 */
 	static bool IsMcpPythonExecutionAllowed();
@@ -290,6 +290,6 @@ public:
 	/** Tools that only exist when bAllowMcpPythonExecution is on. */
 	static bool IsPythonExecutionTool(const FString& ToolName)
 	{
-		return ToolName == TEXT("run-python") || ToolName == TEXT("save-python-script") || ToolName == TEXT("delete-python-script");
+		return ToolName == TEXT("run-python");
 	}
 };

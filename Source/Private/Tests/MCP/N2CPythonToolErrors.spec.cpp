@@ -9,10 +9,9 @@
 #include "IPythonScriptPlugin.h"
 
 /**
- * run-python and the script-library tools report a failed script or script function as a tool execution failure
- * (CallToolResult isError: true, MCP 2025-11-25) and keep the JSON body; a success has no isError. The script tools
- * return the nodetocode function's own {success, data, error} instead of wrapping it as the data of a success.
- * Calls the tools' Execute directly on the game thread (the per-user Allow MCP Python Execution setting gates only
+ * run-python reports a failed script as a tool execution failure (CallToolResult isError: true, MCP 2025-11-25) and
+ * keeps the JSON body; a success has no isError. (The script-library tools this spec also covered were retired with
+ * decision 0010, card 0305.) Calls the tool's Execute directly on the game thread (the per-user Allow MCP Python Execution setting gates only
  * registration over MCP). Review ids: qw-20, mcp-tools-python-translation-resources-10, -11 (card 0119).
  */
 BEGIN_DEFINE_SPEC(FN2CPythonToolErrorsSpec, "NodeToCode.MCP.PythonToolErrors", N2C_TEST_FLAGS)
@@ -79,50 +78,6 @@ void FN2CPythonToolErrorsSpec::Define()
 			if (TestTrue(TEXT("data is an object"), Body->TryGetObjectField(TEXT("data"), Data)))
 			{
 				TestEqual(TEXT("data.a"), (*Data)->GetIntegerField(TEXT("a")), 1);
-			}
-		});
-	});
-
-	Describe(TEXT("the script-library tools"), [this]()
-	{
-		It(TEXT("report a missing script with isError and a top-level success false"), [this]()
-		{
-			if (!TestTrue(TEXT("Python is available"), PythonAvailable())) { return; }
-			FMcpToolCallResult Result;
-			TSharedPtr<FJsonObject> Body;
-			if (!CallJson(TEXT("get-python-script"), { { TEXT("name"), TEXT("n2c_test_missing_script_0119") } }, Result, Body)) { return; }
-			TestTrue(TEXT("isError"), Result.bIsError);
-			TestFalse(TEXT("success"), Body->GetBoolField(TEXT("success")));
-			TestTrue(TEXT("error says not found"), Body->GetStringField(TEXT("error")).Contains(TEXT("not found")));
-		});
-
-		It(TEXT("report a refused save with isError and write nothing"), [this]()
-		{
-			if (!TestTrue(TEXT("Python is available"), PythonAvailable())) { return; }
-			FMcpToolCallResult Result;
-			TSharedPtr<FJsonObject> Body;
-			// A blank description is refused by save_script before anything is written
-			if (!CallJson(TEXT("save-python-script"), {
-				{ TEXT("name"), TEXT("n2c_test_refused_0119") }, { TEXT("code"), TEXT("x = 1") }, { TEXT("description"), TEXT("   ") } },
-				Result, Body)) { return; }
-			TestTrue(TEXT("isError"), Result.bIsError);
-			TestFalse(TEXT("success"), Body->GetBoolField(TEXT("success")));
-			TestTrue(TEXT("error names the description"), Body->GetStringField(TEXT("error")).Contains(TEXT("description")));
-		});
-
-		It(TEXT("return a list without isError and without nesting a second success in data"), [this]()
-		{
-			if (!TestTrue(TEXT("Python is available"), PythonAvailable())) { return; }
-			FMcpToolCallResult Result;
-			TSharedPtr<FJsonObject> Body;
-			if (!CallJson(TEXT("list-python-scripts"), {}, Result, Body)) { return; }
-			TestFalse(TEXT("isError"), Result.bIsError);
-			TestTrue(TEXT("success"), Body->GetBoolField(TEXT("success")));
-			const TSharedPtr<FJsonObject>* Data = nullptr;
-			if (TestTrue(TEXT("data is an object"), Body->TryGetObjectField(TEXT("data"), Data)))
-			{
-				TestFalse(TEXT("data has no nested success"), (*Data)->HasField(TEXT("success")));
-				TestTrue(TEXT("data.scripts is present"), (*Data)->HasTypedField<EJson::Array>(TEXT("scripts")));
 			}
 		});
 	});

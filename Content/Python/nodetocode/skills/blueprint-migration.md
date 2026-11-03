@@ -6,8 +6,8 @@ the Blueprint working until the C++ that replaces it compiles and the user has a
 
 ## Rules that hold throughout
 
-- **One Blueprint per pass.** For a list, agree the order (leaf classes and helpers first, parents before children)
-  and finish each, through gate 3, before starting the next.
+- **One Blueprint per pass.** For a list or a folder, agree the order (step 0) and finish each Blueprint, through
+  gate 3, before starting the next.
 - **Never delete, reparent, rename or move the source Blueprint, or delete its graphs or nodes, before the C++
   compiles and the user approves.** Approval is the user's own words in this conversation, given for that step.
 - **Nothing irreversible without a way back.** Before gate 3 ask the user to commit to source control or to let you
@@ -18,6 +18,16 @@ the Blueprint working until the C++ that replaces it compiles and the user has a
 - On UE 5.8 with Unreal MCP and Epic's EditorToolset, NodeToCode leaves the tools that duplicate Epic's to them (they
   are not listed; a call answers `Unknown tool` with the Epic tool). Each such tool below is followed by its Epic
   counterpart: use that one then. Epic's tools take the Blueprint's path, so they need no focused editor.
+
+## Step 0: Plan the order (several Blueprints or a folder)
+
+For more than one Blueprint, call `create-migration-plan` first with the asset paths or content folders and the
+C++ module (`{"paths": ["/Game/Blueprints"], "targetModule": "MyGame"}`). It changes nothing and writes `plan.json`
+and `plan.md` under `Saved/NodeToCode/Migration/<planId>`: the steps in dependency order (enums, structs, interfaces
+and macro libraries before the Blueprints that use them; a cycle group is one step), a proposed native type and file
+paths per asset, and risk flags (latent, timeline, macro, cycle, ...). Show the user `plan.md`. They approve it by
+setting `status` to `approved` in `plan.json` and can add paths to its `exclude` list; follow its order, one
+Blueprint per pass, with the gates below for each. For a single Blueprint, start at step 1.
 
 ## Step 1: Inventory (read-only)
 

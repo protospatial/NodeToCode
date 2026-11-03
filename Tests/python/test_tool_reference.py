@@ -20,7 +20,7 @@ from conftest import REPO_ROOT
 
 REFERENCE_DIR = os.path.join(REPO_ROOT, 'Context', 'mcp-server')
 SOURCE_DIR = os.path.join(REPO_ROOT, 'Source')
-PYTHON_EXECUTION_TOOLS = {'run-python', 'save-python-script', 'delete-python-script'}
+PYTHON_EXECUTION_TOOLS = {'run-python'}
 
 
 @pytest.fixture(scope='module')

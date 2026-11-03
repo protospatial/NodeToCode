@@ -274,7 +274,7 @@ FMcpPromptResult FN2CMcpRefactorPrompt::GetPrompt(const FMcpPromptArguments& Arg
 }
 
 // ============================================================================
-// Python Scripting Prompt - Enforces Context7 and Script Management
+// Python Scripting Prompt - Context7 lookup, the nodetocode module, run-python
 // ============================================================================
 
 FMcpPromptDefinition FN2CMcpPythonScriptingPrompt::GetDefinition() const
@@ -282,15 +282,11 @@ FMcpPromptDefinition FN2CMcpPythonScriptingPrompt::GetDefinition() const
 	FMcpPromptDefinition Definition;
 	Definition.Name = TEXT("python-scripting");
 	Definition.Title = TEXT("Write a UE Python Script");
-	Definition.Description = TEXT("Write Unreal Engine Python scripts with Context7 documentation lookup and script management. "
-		"REQUIRES: Context7 MCP server for API documentation lookup via the radial-hks/unreal-python-stubhub library. "
-		"Running and saving scripts needs Allow MCP Python Execution.");
+	Definition.Description = TEXT("Write Unreal Engine Python scripts with Context7 documentation lookup, the nodetocode module "
+		"and run-python. REQUIRES: Context7 MCP server for API documentation lookup via the radial-hks/unreal-python-stubhub "
+		"library. Running scripts needs Allow MCP Python Execution.");
 	Definition.Arguments.Add(MakeArgument(TEXT("task"), TEXT("Task"),
-		TEXT("Description of what the Python script should accomplish (e.g., 'create health variables', 'add debug nodes')"), true));
-	Definition.Arguments.Add(MakeArgument(TEXT("save_script"), TEXT("Save script"),
-		TEXT("Whether to save the script for future reuse (yes, no, ask). Default: ask")));
-	Definition.Arguments.Add(MakeArgument(TEXT("category"), TEXT("Category"),
-		TEXT("Category for saved scripts (gameplay, ui, utilities, animation, etc.). Default: general")));
+		TEXT("Description of what the Python script should accomplish (e.g., 'list every Blueprint without a description', 'rename the selected actors')"), true));
 	return Definition;
 }
 
@@ -306,72 +302,41 @@ FMcpPromptResult FN2CMcpPythonScriptingPrompt::GetPrompt(const FMcpPromptArgumen
 		return Result;
 	}
 
-	FString SaveScript = Arguments.FindRef(TEXT("save_script"));
-	if (SaveScript.IsEmpty())
-	{
-		SaveScript = TEXT("ask");
-	}
-
-	FString Category = Arguments.FindRef(TEXT("category"));
-	if (Category.IsEmpty())
-	{
-		Category = TEXT("general");
-	}
-
-	// run-python, save-python-script and delete-python-script exist only with the per-user Allow MCP Python Execution
-	// on (card 0423); without them the workflow below cannot run or save anything, so the prompt says so (card 0124)
+	// run-python exists only with the per-user Allow MCP Python Execution on (card 0423); without it the workflow
+	// below cannot run anything, so the prompt says so (card 0124)
 	const bool bPythonExecution = FN2CMcpToolManager::Get().IsToolRegistered(TEXT("run-python"));
 
-	Result.Description = FString::Printf(
-		TEXT("Write Python script for: %s (Category: %s, Save: %s)%s"),
-		*Task, *Category, *SaveScript, bPythonExecution ? TEXT("") : TEXT(" - run-python is disabled"));
+	Result.Description = FString::Printf(TEXT("Write Python script for: %s%s"),
+		*Task, bPythonExecution ? TEXT("") : TEXT(" - run-python is disabled"));
 
 	const FString DisabledSection = bPythonExecution ? FString() : FString(TEXT(
 		"## run-python is disabled on this server\n\n"
-		"`run-python`, `save-python-script` and `delete-python-script` are not available: the per-user setting "
-		"**Allow MCP Python Execution** is off (the default). To enable them, the user turns it on in Editor Preferences > "
-		"Plugins > Node to Code (User) > MCP Server and restarts the editor. It lets any connected MCP client run "
-		"arbitrary Python in the editor, so leave that decision to the user.\n\n"
-		"Until then you can still search, list and read saved scripts, research the API and write the script. Give "
-		"the finished script to the user to run (for example in the editor's Python console), and say that it has "
-		"not been run or tested. Do not claim it ran.\n\n"
+		"`run-python` is not available: the per-user setting **Allow MCP Python Execution** is off (the default). To "
+		"enable it, the user turns it on in Editor Preferences > Plugins > Node to Code (User) > MCP Server and restarts "
+		"the editor. It lets any connected MCP client run arbitrary Python in the editor, so leave that decision to the "
+		"user.\n\n"
+		"Until then you can still research the API and write the script. Give the finished script to the user to run "
+		"(for example in the editor's Python console), and say that it has not been run or tested. Do not claim it "
+		"ran.\n\n"
 		"---\n\n"));
-	const TCHAR* const ExactMatchAction = bPythonExecution
-		? TEXT("Execute it with `run-python`")
-		: TEXT("Give it to the user to run (`run-python` is disabled)");
 	const TCHAR* const ExecuteStep = bPythonExecution
-		? TEXT("Use the `run-python` tool to execute your script and verify it works.\n\n")
+		? TEXT("Use the `run-python` tool to execute your script and verify it works. Set `result` to return structured data.\n\n")
 		: TEXT("`run-python` is disabled: give the script to the user to run, and say it has not been run or tested.\n\n");
-	const FString SaveStep = bPythonExecution
-		? FString::Printf(TEXT(
-			"If the script is useful and reusable:\n"
-			"1. Use `save-python-script` with:\n"
-			"   - A descriptive name (snake_case)\n"
-			"   - Clear description of what it does\n"
-			"   - Relevant tags for searchability\n"
-			"   - Category: '%s'\n\n"), *Category)
-		: FString::Printf(TEXT(
-			"`save-python-script` is disabled with `run-python`. If the script is reusable, suggest the user saves it as "
-			"`Content/Python/scripts/%s/<name>.py` once Allow MCP Python Execution is on.\n\n"), *Category);
-	const TCHAR* const WriteToolsState = bPythonExecution ? TEXT("") : TEXT(" (disabled: Allow MCP Python Execution is off)");
+	const TCHAR* const RunPythonState = bPythonExecution ? TEXT("") : TEXT(" (disabled: Allow MCP Python Execution is off)");
 
 	FString Text;
 	Text += FString::Printf(TEXT("# Unreal Engine Python Scripting Task\n\n**Task:** %s\n\n---\n\n"), *Task);
 	Text += DisabledSection;
-	Text += FString::Printf(TEXT(
-		"## MANDATORY WORKFLOW\n\n"
-		"You MUST follow this workflow when writing Unreal Engine Python scripts:\n\n"
-		"### Step 1: Check for Existing Scripts\n"
-		"Before writing ANY new code, use the NodeToCode script management tools:\n"
-		"1. Call `search-python-scripts` with relevant keywords from the task\n"
-		"2. Call `list-python-scripts` to see available scripts in the '%s' category\n"
-		"3. Analyze results for:\n"
-		"   - **Exact match**: A script that solves the entire task → %s\n"
-		"   - **Partial matches**: Scripts with useful functions → Import and reuse them (see Step 3)\n"
-		"   - **No matches**: Proceed to write a new script\n\n"), *Category, ExactMatchAction);
 	Text += TEXT(
-		"### Step 2: Research the UE Python API (REQUIRED for new/partial scripts)\n"
-		"If writing new code or extending existing scripts, you MUST use Context7 MCP to look up the correct API:\n\n"
+		"## WORKFLOW\n\n"
+		"### Step 1: Use what already exists\n"
+		"- If an Agent Skill you have loaded covers the task (NodeToCode ships Agent Skills with its Claude Code plugin), "
+		"follow it and run its script.\n"
+		"- A NodeToCode MCP tool may already do the job: call it directly, or from a script with "
+		"`n2c.invoke_tool('<tool-name>', {...})`.\n"
+		"- The `nodetocode` module wraps the common Blueprint operations (see below).\n\n"
+		"### Step 2: Research the UE Python API (REQUIRED for new code)\n"
+		"Use Context7 MCP to look up the correct API:\n\n"
 		"1. **Resolve the library ID first:**\n"
 		"   ```\n"
 		"   resolve-library-id:\n"
@@ -386,55 +351,32 @@ FMcpPromptResult FN2CMcpPythonScriptingPrompt::GetPrompt(const FMcpPromptArgumen
 		"     query: \"<specific API method or class you need>\"\n"
 		"   ```\n\n"
 		"**DO NOT guess or assume API signatures.** Always verify with Context7.\n\n"
-		"### Step 3: Write the Python Script (Modular & Compositional)\n"
-		"After researching the API, write your script following these guidelines:\n\n"
+		"### Step 3: Write the Python Script\n"
 		"**Standard Imports:**\n"
 		"- `import unreal` - Unreal Python API\n"
-		"- `import nodetocode as n2c` - NodeToCode utilities (Blueprint info, tagging, etc.)\n\n"
-		"**Reusing Existing Scripts (IMPORTANT):**\n"
-		"- Saved scripts are in `Content/Python/scripts/<category>/` and are importable as modules\n"
-		"- Import saved scripts: `from scripts.<category>.<script_name> import function_name`\n"
-		"- Example: `from scripts.core.asset_iterator import find_assets_by_type`\n"
-		"- ALWAYS reuse existing functions instead of rewriting them\n"
-		"- Build on top of existing scripts when they solve part of your task\n\n"
-		"**Structuring Your Script for Reuse:**\n"
-		"- Define functions with clear names and docstrings\n"
-		"- Keep functions focused on single responsibilities\n"
-		"- Use parameters for flexibility (don't hardcode values)\n"
-		"- Return structured data (dicts, lists, objects)\n"
-		"- Example structure:\n"
-		"  ```python\n"
-		"  def my_reusable_function(param1, param2):\n"
-		"      '''Clear docstring explaining what this does.'''\n"
-		"      # Implementation\n"
-		"      return result\n"
-		"  \n"
-		"  # Main execution block (for when script is run directly)\n"
-		"  if __name__ == '__main__':\n"
-		"      result = my_reusable_function('value1', 'value2')\n"
-		"  ```\n\n"
-		"**Other Guidelines:**\n"
+		"- `import nodetocode as n2c` - NodeToCode utilities (Blueprint editing, compile, save, tags, any tool by name)\n\n"
+		"**Guidelines:**\n"
+		"- Define functions with clear names and docstrings, one job each, parameters instead of hardcoded values\n"
+		"- Wrap edits in `with unreal.ScopedEditorTransaction('...'):` so one undo reverts them\n"
 		"- Set a `result` variable at the end to return structured data\n"
-		"- Handle errors gracefully with try/except blocks\n"
-		"- Include comments explaining complex logic\n\n"
+		"- Handle errors with `except Exception as e:` and report them; never a bare `except:`\n\n"
 		"### Step 4: Execute and Test\n");
 	Text += ExecuteStep;
-	Text += FString::Printf(TEXT("### Step 5: Save for Reuse (%s)\n"), *SaveScript);
-	Text += SaveStep;
+	Text += TEXT(
+		"### Step 5: Keep it if it is reusable\n"
+		"NodeToCode has no script library (2.0, decision 0010). If the script is worth keeping, suggest the user saves it "
+		"as an Agent Skill: a folder with a `SKILL.md` (name, description, when to use it) and the script under its "
+		"`scripts/`, which agents then run through `run-python`.\n\n");
 	Text += FString::Printf(TEXT(
 		"---\n\n"
 		"## Available NodeToCode Tools\n\n"
-		"**Script Management:**\n"
-		"- `list-python-scripts` - List scripts by category\n"
-		"- `search-python-scripts` - Search by name/description/tags\n"
-		"- `get-python-script` - Get full script code\n"
-		"- `save-python-script` - Save script to library%s\n"
-		"- `delete-python-script` - Remove a script%s\n\n"
 		"**Execution:**\n"
-		"- `run-python` - Execute Python code in UE%s\n\n"), WriteToolsState, WriteToolsState, WriteToolsState);
+		"- `run-python` - Execute Python code in UE%s\n\n"), RunPythonState);
 	Text += TEXT(
 		"**NodeToCode Module (in scripts):**\n"
+		"- `n2c.invoke_tool(name, arguments)` - Run any NodeToCode MCP tool by name\n"
 		"- `n2c.get_focused_blueprint()` - Get current Blueprint info\n"
+		"- `n2c.search_blueprint_nodes()`, `n2c.add_node_to_graph()`, `n2c.connect_pins()` - Edit a graph\n"
 		"- `n2c.compile_blueprint()` - Compile the Blueprint\n"
 		"- `n2c.save_blueprint()` - Save to disk\n"
 		"- `n2c.tag_graph()` - Tag the current graph\n"
@@ -453,18 +395,10 @@ FMcpPromptResult FN2CMcpPythonScriptingPrompt::GetPrompt(const FMcpPromptArgumen
 		"- Return types and expected values\n"
 		"- Related classes and utilities\n\n"
 		"---\n\n"
-		"## Key Principles\n\n"
-		"1. **DRY (Don't Repeat Yourself)**: Search and reuse existing scripts before writing new code\n"
-		"2. **Composition over Duplication**: Import and combine existing functions instead of copying code\n"
-		"3. **Modular Design**: Write functions that others (and future you) can import and reuse\n"
-		"4. **Verify APIs**: Always use Context7 to look up correct API signatures - never guess\n"
-		"5. **Build a Library**: Every script you save adds to a growing toolkit for future tasks\n\n"
 		"Now, proceed with the task. Remember:\n"
-		"1. Search existing scripts FIRST (exact match → execute; partial match → import & compose)\n"
+		"1. Use a loaded Agent Skill, a NodeToCode tool or the nodetocode module when one fits\n"
 		"2. Use Context7 to research APIs (MANDATORY - never assume)\n"
-		"3. Import and reuse existing functions whenever possible\n"
-		"4. Structure new scripts as reusable modules with clear functions\n"
-		"5. Save useful scripts to grow the shared library\n");
+		"3. Run and verify the script before reporting success\n");
 
 	Result.Messages.Add(MakeTextMessage(Text));
 	return Result;

@@ -370,8 +370,14 @@ void FN2CMcpToolsetsSpec::Define()
 			const FString Before = ListTools();
 
 			const TArray<FString> Toolsets = ListedToolsets();
-			ExpectNames(TEXT("list_toolsets lists every default toolset"), Toolsets,
-				FN2CMcpToolConfig::ToolsetsForProfile(EN2CMcpToolProfile::DefaultToolsets, {}));
+			TArray<FString> Expected = FN2CMcpToolConfig::ToolsetsForProfile(EN2CMcpToolProfile::DefaultToolsets, {});
+			// PythonTools holds run-python alone since card 0305: with Allow MCP Python Execution off it serves nothing
+			// and list_toolsets leaves it out
+			if (!UN2CUserSettings::IsMcpPythonExecutionAllowed())
+			{
+				Expected.Remove(N2CMcpToolsets::Python.Name);
+			}
+			ExpectNames(TEXT("list_toolsets lists every default toolset that serves a tool"), Toolsets, Expected);
 			TestEqual(TEXT("after list_toolsets"), ListTools(), Before);
 
 			TArray<FString> Described;

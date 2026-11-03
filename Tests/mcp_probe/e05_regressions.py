@@ -9,7 +9,7 @@ Stdlib only; run with `python -I`. Three ways to run it:
     python -I e05_regressions.py --engine <UE_5.8> --project <host>.uproject
 
     # Everything headless: the MCP cases on a headless editor, the headless Python checks (e05_struct_check.py,
-    # e05_datatable_check.py, e05_registry_check.py) and the automation tests, each through UnrealEditor-Cmd
+    # the script-library checks were removed by card 0305) and the automation tests, each through UnrealEditor-Cmd
     python -I e05_regressions.py --headless --engine <UE_5.8> --project <host>.uproject [--all-tests]
 
 Prints one PASS, FAIL or SKIP line per case and exits 0 only when nothing failed. The graph cases need run-python
@@ -36,9 +36,8 @@ PROBE_DIR = '/Game/E05Probe'
 DEFAULT_TESTS = 'NodeToCode.Robustness+NodeToCode.Secrets.Store'
 
 # Headless Python checks: (file, log tag). Each prints '<tag> PASS|FAIL <label> <detail>' lines and a final '<tag> PASS'
-HEADLESS_CHECKS = [('e05_struct_check.py', 'E05_STRUCT'),
-                   ('e05_datatable_check.py', 'E05_DATATABLE'),
-                   ('e05_registry_check.py', 'E05_REGISTRY')]
+# The DataTable and registry checks went with the script library (card 0305)
+HEADLESS_CHECKS = [('e05_struct_check.py', 'E05_STRUCT')]
 
 
 # ---------------------------------------------------------------------------------------------------------------------

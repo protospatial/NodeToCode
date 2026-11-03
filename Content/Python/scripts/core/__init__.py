@@ -1,10 +1,4 @@
 """
-Core foundational scripts for NodeToCode Python automation.
-
-These scripts provide fundamental operations that other scripts build upon:
-- asset_iterator: Find and iterate over assets
-- blueprint_factory: Create Blueprints from any parent class
-- variable_batch_creator: Add multiple variables to Blueprints
-- function_scaffolder: Add function graphs to Blueprints
-- component_adder: Add components to Actor Blueprints
+Core asset query script (asset_iterator). It becomes an Agent Skill with card 0306 (decision 0010); the
+Blueprint-authoring scripts that were here are gone (card 0305).
 """

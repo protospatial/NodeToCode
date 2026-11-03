@@ -16,7 +16,7 @@
  * is a JSON object that any JSON parser reads, with isError on a failure. Calls the tool's Execute on the game thread
  * (N2CTest::RunToolUnmarked), as NodeToCode.MCP.PythonToolErrors does. Card 0299 rebuilt run-python on
  * nodetocode._mcp_runner, which compiles the code unchanged in a fresh namespace and answers in strict JSON; the cases
- * that failed before it name their finding. NodeToCode.MCP.PythonToolErrors covers the script-library tools' isError.
+ * that failed before it name their finding. NodeToCode.MCP.PythonToolErrors covers isError on a failure.
  * Review ids: imp-mcp-tools-python-translation-resources-11, mcp-tools-python-translation-resources-6, -8, -9, -10,
  * -13, qw-20.
  */
@@ -254,20 +254,6 @@ void FN2CRunPythonSpec::Define()
 			TestTrue(TEXT("data is the code's result"), Data.IsValid() && Data->Type == EJson::String && Data->AsString() == TEXT("real"));
 			FString Output;
 			TestTrue(TEXT("the printed line is in output"), Body->TryGetStringField(TEXT("output"), Output) && Output.Contains(TEXT("spoofed")));
-		});
-
-		It(TEXT("still answers list-python-scripts with its data"), [this]()
-		{
-			if (!TestTrue(TEXT("Python is available"), PythonAvailable())) { return; }
-			const TSharedPtr<FJsonObject> Args = MakeShared<FJsonObject>();
-			Args->SetNumberField(TEXT("limit"), 5);
-			const FMcpToolCallResult Result = N2CTest::RunToolUnmarked(TEXT("list-python-scripts"), Args);
-			const FString Text = N2CTest::ResultText(Result);
-			const TSharedPtr<FJsonObject> Body = N2CTest::ParseJsonObject(Text);
-			bool bSuccess = false;
-			TestTrue(FString::Printf(TEXT("success with data (got: %s)"), *Text.Left(300)), !Result.bIsError && Body.IsValid()
-				&& Body->TryGetBoolField(TEXT("success"), bSuccess) && bSuccess && Body->HasField(TEXT("data")));
-			TestTrue(TEXT("no runner bookkeeping fields in a clean answer"), Body.IsValid() && !Body->HasField(TEXT("traceback")));
 		});
 	});
 
