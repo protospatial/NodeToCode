@@ -15,6 +15,7 @@
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 #include "HAL/FileManager.h"
+#include "Materials/MaterialExpressionScalarParameter.h"
 #include "Materials/MaterialInstanceConstant.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
@@ -150,7 +151,33 @@ void FN2CMaterialN2CJsonSpec::Define()
 		TestTrue(TEXT("the file is the document"), File.IsValid() && NodeCount(File) > 0 && File->HasField(TEXT("target")));
 	});
 
-	It(TEXT("refuses a Blueprint, a material instance, a missing path and a bad depth"), [this]()
+	It(TEXT("reads a material instance as its base material with the instance summary (card 0470)"), [this]()
+	{
+		N2CTest::FTestMaterial Base(TEXT("M_N2CTest_ToolInstanceBase"));
+		UMaterialExpressionScalarParameter* Rough = Base.Add<UMaterialExpressionScalarParameter>();
+		if (!TestNotNull(TEXT("a scalar parameter"), Rough))
+		{
+			return;
+		}
+		Rough->ParameterName = TEXT("Roughness");
+		Base.ConnectToProperty(Rough, 0, MP_Roughness);
+		Base.GetMaterial()->UpdateCachedExpressionData();
+		UMaterialInstanceConstant* Instance = NewObject<UMaterialInstanceConstant>(Base.GetPackage(), TEXT("MI_N2CTest_ToolInstance"));
+		Instance->SetParentEditorOnly(Base.GetMaterial(), /*RecacheShader*/ false);
+		Instance->SetScalarParameterValueEditorOnly(FMaterialParameterInfo(TEXT("Roughness")), 0.25f);
+		const TSharedPtr<FJsonObject> Document = ExpectRead(Instance->GetPathName(), TEXT("material"));
+		const TSharedPtr<FJsonObject>* Metadata = nullptr;
+		const TSharedPtr<FJsonObject>* Material = nullptr;
+		const TSharedPtr<FJsonObject>* Summary = nullptr;
+		if (TestTrue(TEXT("metadata.material.instance"), Document.IsValid() && Document->TryGetObjectField(TEXT("metadata"), Metadata)
+			&& (*Metadata)->TryGetObjectField(TEXT("material"), Material) && (*Material)->TryGetObjectField(TEXT("instance"), Summary)))
+		{
+			TestEqual(TEXT("the instance's name"), (*Metadata)->GetStringField(TEXT("name")), FString(TEXT("MI_N2CTest_ToolInstance")));
+			TestEqual(TEXT("Roughness"), (*Summary)->GetObjectField(TEXT("scalars"))->GetStringField(TEXT("Roughness")), FString(TEXT("0.250000")));
+		}
+	});
+
+	It(TEXT("refuses a Blueprint, a material instance without a parent, a missing path and a bad depth"), [this]()
 	{
 		ExpectError(TEXT("a Blueprint"), Args(N2CTest::DependencyFixtures::ObjectPath(N2CTest::DependencyFixtures::AName)),
 			TEXT("UNSUPPORTED_ASSET_TYPE"), TEXT("get-blueprint-n2cjson"));
@@ -158,8 +185,9 @@ void FN2CMaterialN2CJsonSpec::Define()
 		N2CTest::FTestMaterial Holder(TEXT("M_N2CTest_ToolRefused"));
 		if (TestNotNull(TEXT("a package"), Holder.GetPackage()))
 		{
+			// A material instance is summarized (card 0470); one with no parent material has nothing to summarize
 			UMaterialInstanceConstant* Instance = NewObject<UMaterialInstanceConstant>(Holder.GetPackage(), TEXT("MI_N2CTest_ToolRefused"));
-			ExpectError(TEXT("a material instance"), Args(Instance->GetPathName()), TEXT("UNSUPPORTED_ASSET_TYPE"), TEXT("MaterialInstanceConstant"));
+			ExpectError(TEXT("a material instance with no parent"), Args(Instance->GetPathName()), TEXT("UNSUPPORTED_ASSET_TYPE"), TEXT("no parent material"));
 		}
 		ExpectError(TEXT("a missing path"), Args(TEXT("/Game/N2CNoSuchMaterial")), TEXT("ASSET_NOT_FOUND"));
 		ExpectError(TEXT("no path"), MakeShared<FJsonObject>(), TEXT("INVALID_ARGUMENT"));

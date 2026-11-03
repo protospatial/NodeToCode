@@ -73,9 +73,56 @@ enum class EN2CAssetKind : uint8
     Unknown UMETA(DisplayName = "Unknown"),
 };
 
+/** One parameter a material instance sets: its name and its value as text (card 0470) */
+USTRUCT(BlueprintType)
+struct FN2CMaterialParameterOverride
+{
+    GENERATED_BODY()
+
+    /** The parameter's name; a layer or blend parameter's ends with " [layer N]" or " [blend N]" */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString Name;
+
+    /** "0.300000"; "(R=...,G=...,B=...,A=...)"; a texture's object path or "None"; "true" or "false" */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString Value;
+};
+
+/**
+ * @struct FN2CMaterialInstanceSummary
+ * @brief A material instance's read-only summary (card 0470, decision 0009 item 1, N2C JSON "metadata"."material"."instance")
+ */
+USTRUCT(BlueprintType)
+struct FN2CMaterialInstanceSummary
+{
+    GENERATED_BODY()
+
+    /** True when the document has "instance" (the capture of a UMaterialInstanceConstant) */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    bool bSet = false;
+
+    /** The parent chain, the instance's own parent first, ending with the material whose graph the document holds */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    TArray<FString> Parents;
+
+    /** Parameters an instance of the chain sets, by kind, in name order, each with the value the instance renders with */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    TArray<FN2CMaterialParameterOverride> Scalars;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    TArray<FN2CMaterialParameterOverride> Vectors;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    TArray<FN2CMaterialParameterOverride> Textures;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    TArray<FN2CMaterialParameterOverride> StaticSwitches;
+};
+
 /**
  * @struct FN2CMaterialMetadata
- * @brief A material's settings (card 0449, N2C JSON "metadata"."material"): written for a captured UMaterial only
+ * @brief A material's settings (card 0449, N2C JSON "metadata"."material"): written for a captured UMaterial, and for
+ * a material instance with the base material's settings and the instance summary (card 0470)
  */
 USTRUCT(BlueprintType)
 struct FN2CMaterialMetadata
@@ -104,6 +151,10 @@ struct FN2CMaterialMetadata
     /** The project renders materials with Substrate (r.Substrate; card 0451). Written as "substrate", only when true */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     bool bSubstrate = false;
+
+    /** A material instance's summary (card 0470); bSet only when the captured asset is a material instance */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FN2CMaterialInstanceSummary Instance;
 };
 
 /**

@@ -10,6 +10,7 @@ class UEdGraph;
 class UK2Node;
 class UMaterial;
 class UMaterialFunction;
+class UMaterialInstanceConstant;
 class UObject;
 
 /** What one capture includes */
@@ -136,6 +137,15 @@ namespace N2C
 	 * function instance, material layer or blend among them, is an error starting "UNSUPPORTED_ASSET_TYPE: " naming its
 	 * class (decision 0009 item 1).
 	 */
+	/**
+	 * A material instance (UMaterialInstanceConstant, exact class) as a read-only summary (card 0470, decision 0009
+	 * item 1): the capture of its base material, with the instance's name and class in the metadata and
+	 * metadata.material.instance {parents, the scalar, vector, texture and static switch parameters the chain sets}.
+	 * UNSUPPORTED_ASSET_TYPE when the chain does not end at a UMaterial.
+	 */
+	NODETOCODE_API TValueOrError<FN2CCapture, FString> CaptureMaterialInstance(UMaterialInstanceConstant& Instance,
+		const FN2CCaptureOptions& Options = FN2CCaptureOptions());
+
 	NODETOCODE_API TValueOrError<FN2CCapture, FString> CaptureMaterialAsset(UObject& Asset,
 		const FN2CCaptureOptions& Options = FN2CCaptureOptions());
 

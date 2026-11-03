@@ -224,6 +224,21 @@ namespace N2CJsonContract
 	inline constexpr const TCHAR* MaterialSubstrateField = TEXT("substrate");
 
 	/**
+	 * Material instances (card 0470, decision 0009 item 1: a read-only summary; additive under 2.0.0). The capture of a
+	 * UMaterialInstanceConstant is the capture of its base material (its graph and settings) with "metadata"."name" and
+	 * "asset_class" the instance's, and "metadata"."material"."instance": {"parents": the parent chain, own parent
+	 * first, ending with the base material; then "scalars", "vectors", "textures" and "static_switches", each an object
+	 * of the parameters an instance of the chain sets, by name, with the value the instance renders with (each left out
+	 * when empty)}. A layer or blend parameter's name ends with " [layer N]" or " [blend N]".
+	 */
+	inline constexpr const TCHAR* MaterialInstanceField = TEXT("instance");
+	inline constexpr const TCHAR* MaterialInstanceParentsField = TEXT("parents");
+	inline constexpr const TCHAR* MaterialInstanceScalarsField = TEXT("scalars");
+	inline constexpr const TCHAR* MaterialInstanceVectorsField = TEXT("vectors");
+	inline constexpr const TCHAR* MaterialInstanceTexturesField = TEXT("textures");
+	inline constexpr const TCHAR* MaterialInstanceStaticSwitchesField = TEXT("static_switches");
+
+	/**
 	 * The agent document (card 0505): get-focused-blueprint, get-blueprint-n2cjson and Python get_blueprint_n2c_json
 	 * write each node's and pin's "id" as "ids": {"short": the ID, "guid": the node's NodeGuid or the pin's PinId}
 	 * (a pin's also has its "name"), plus the top-level "guids" table. FromJson reads "ids.short" as the ID when there

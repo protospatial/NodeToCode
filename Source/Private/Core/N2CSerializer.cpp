@@ -597,6 +597,36 @@ TSharedPtr<FJsonObject> FN2CSerializer::BlueprintToJsonObject(const FN2CBlueprin
         {
             MaterialObject->SetBoolField(N2CJsonContract::MaterialSubstrateField, true);
         }
+        // A material instance's summary (card 0470)
+        if (Material.Instance.bSet)
+        {
+            const FN2CMaterialInstanceSummary& Instance = Material.Instance;
+            const TSharedPtr<FJsonObject> InstanceObject = MakeShared<FJsonObject>();
+            TArray<TSharedPtr<FJsonValue>> Parents;
+            for (const FString& Parent : Instance.Parents)
+            {
+                Parents.Add(MakeShared<FJsonValueString>(Parent));
+            }
+            InstanceObject->SetArrayField(N2CJsonContract::MaterialInstanceParentsField, Parents);
+            const auto WriteOverrides = [&InstanceObject](const TCHAR* Field, const TArray<FN2CMaterialParameterOverride>& Overrides)
+            {
+                if (Overrides.Num() == 0)
+                {
+                    return;
+                }
+                const TSharedPtr<FJsonObject> Object = MakeShared<FJsonObject>();
+                for (const FN2CMaterialParameterOverride& Override : Overrides)
+                {
+                    Object->SetStringField(Override.Name, Override.Value);
+                }
+                InstanceObject->SetObjectField(Field, Object);
+            };
+            WriteOverrides(N2CJsonContract::MaterialInstanceScalarsField, Instance.Scalars);
+            WriteOverrides(N2CJsonContract::MaterialInstanceVectorsField, Instance.Vectors);
+            WriteOverrides(N2CJsonContract::MaterialInstanceTexturesField, Instance.Textures);
+            WriteOverrides(N2CJsonContract::MaterialInstanceStaticSwitchesField, Instance.StaticSwitches);
+            MaterialObject->SetObjectField(N2CJsonContract::MaterialInstanceField, InstanceObject);
+        }
         MetadataObject->SetObjectField(N2CJsonContract::MaterialMetadataField, MaterialObject);
     }
     WriteUnknownFields(MetadataObject, Blueprint.Metadata.UnknownFields);
@@ -1170,6 +1200,33 @@ bool FN2CSerializer::ParseBlueprintFromJson(const TSharedPtr<FJsonObject>& JsonO
         (*MaterialObject)->TryGetStringArrayField(N2CJsonContract::MaterialShadingModelsField, Material.ShadingModels);
         (*MaterialObject)->TryGetBoolField(N2CJsonContract::MaterialTwoSidedField, Material.bTwoSided);
         (*MaterialObject)->TryGetBoolField(N2CJsonContract::MaterialSubstrateField, Material.bSubstrate);
+        const TSharedPtr<FJsonObject>* InstanceObject = nullptr;
+        if ((*MaterialObject)->TryGetObjectField(N2CJsonContract::MaterialInstanceField, InstanceObject))
+        {
+            FN2CMaterialInstanceSummary& Instance = Material.Instance;
+            Instance.bSet = true;
+            (*InstanceObject)->TryGetStringArrayField(N2CJsonContract::MaterialInstanceParentsField, Instance.Parents);
+            const auto ReadOverrides = [&InstanceObject](const TCHAR* Field, TArray<FN2CMaterialParameterOverride>& Out)
+            {
+                const TSharedPtr<FJsonObject>* Object = nullptr;
+                if ((*InstanceObject)->TryGetObjectField(Field, Object))
+                {
+                    for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : (*Object)->Values)
+                    {
+                        FN2CMaterialParameterOverride& Override = Out.AddDefaulted_GetRef();
+                        Override.Name = Pair.Key;
+                        if (Pair.Value.IsValid())
+                        {
+                            Pair.Value->TryGetString(Override.Value);
+                        }
+                    }
+                }
+            };
+            ReadOverrides(N2CJsonContract::MaterialInstanceScalarsField, Instance.Scalars);
+            ReadOverrides(N2CJsonContract::MaterialInstanceVectorsField, Instance.Vectors);
+            ReadOverrides(N2CJsonContract::MaterialInstanceTexturesField, Instance.Textures);
+            ReadOverrides(N2CJsonContract::MaterialInstanceStaticSwitchesField, Instance.StaticSwitches);
+        }
     }
     KeepUnknownFields(*MetadataObject, MetadataFields, OutBlueprint.Metadata.UnknownFields, MetadataPath, Warnings);
 

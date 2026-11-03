@@ -122,6 +122,11 @@ Option 1, provisionally. The sub-choices of card 0117:
   properties whose value differs from the component's archetype, as exported text, at most 16
   (`properties_truncated` when more differ). A reader that predates them keeps both as unknown fields; this reader
   skips a component that is not an object or has no `name` with a `SKIPPED_COMPONENT` warning.
+- Card 0470 (additive, under 2.0.0; decision 0009 item 1): a material instance (`MaterialInstanceConstant`) is captured
+  as its base material's document with the instance's `name` and `asset_class`, and `metadata.material` gains the
+  optional `instance` object (`N2CJsonContract::MaterialInstanceField`): `parents` (own parent first, ending with the
+  base material), then `scalars`, `vectors`, `textures` and `static_switches`, objects of the parameters the instance
+  chain sets, by name, with the value the instance renders with, each left out when empty.
 - Card 0240 (agent document only; the contract and its version are unchanged): the validator reports findings as
   diagnostics, and a capture fails only on an error (a structural problem: a dangling flow, a duplicate ID, a missing
   name). The agent document of get-focused-blueprint, get-blueprint-n2cjson and find-nodes-in-graph lists the capture's

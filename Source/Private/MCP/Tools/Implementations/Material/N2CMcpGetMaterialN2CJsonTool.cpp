@@ -123,8 +123,10 @@ FMcpToolDefinition FN2CMcpGetMaterialN2CJsonTool::GetDefinition() const
 		TEXT("saved asset, so unsaved edits in an open Material Editor are not included (target.workingCopy is false). The ")
 		TEXT("result also has target {assetPath, kind: material | material-function, resolvedBy: path, workingCopy}. Over ")
 		TEXT("about 20000 tokens, or with toFile, the document is written under Saved/NodeToCode/Exports and the result is ")
-		TEXT("{path, bytes, estimatedTokens, reason, nodeCount, target}. Material instances, material layers and layer blends ")
-		TEXT("are refused with UNSUPPORTED_ASSET_TYPE; read a Blueprint with get-blueprint-n2cjson."),
+		TEXT("{path, bytes, estimatedTokens, reason, nodeCount, target}. A Material Instance is read as its base material's ")
+		TEXT("graph with metadata.material.instance {parents, scalars, vectors, textures, static_switches}: the parameters its ")
+		TEXT("chain sets. Function instances, material layers and layer blends are refused with UNSUPPORTED_ASSET_TYPE; read a ")
+		TEXT("Blueprint with get-blueprint-n2cjson."),
 		N2CMcpToolsets::Material
 	);
 
@@ -199,7 +201,7 @@ FMcpToolCallResult FN2CMcpGetMaterialN2CJsonTool::Execute(const TSharedPtr<FJson
 		if (Capture.HasError())
 		{
 			const FString Message = Capture.GetError();
-			// UNSUPPORTED_ASSET_TYPE (an instance, a layer or blend) keeps its code; anything else is a failed capture
+			// UNSUPPORTED_ASSET_TYPE (a function instance, a layer or blend) keeps its code; anything else is a failed capture
 			return FMcpToolCallResult::CreateErrorResult(Message.StartsWith(TEXT("UNSUPPORTED_ASSET_TYPE"))
 				? Message : TEXT("CAPTURE_FAILED: ") + Message);
 		}
