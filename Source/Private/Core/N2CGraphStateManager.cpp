@@ -1378,6 +1378,10 @@ bool UN2CGraphStateManager::SaveState()
 		return false;
 	}
 
+	// Another editor (or a headless one next to this) may have written the file since this one read or wrote it: take
+	// its changes in instead of writing over them (card 0436)
+	const bool bMergedTheirs = MergeChangesOnDisk(FilePath);
+
 	StateFile.LastSaved = FDateTime::UtcNow();
 	FString JsonString = StateFile.ToJsonString(true);
 
@@ -1387,13 +1391,222 @@ bool UN2CGraphStateManager::SaveState()
 		return false;
 	}
 
+	RememberFile(JsonString, StateFile);
 	bIsDirty = false;
 	++SaveCount;
+	if (bMergedTheirs)
+	{
+		// Graphs and tags another writer added or removed are in memory now: listeners re-read everything
+		OnGraphStatesReloaded.Broadcast();
+	}
 	FN2CLogger::Get().Log(FString::Printf(TEXT("Saved %d graph states to %s"),
 		StateFile.Graphs.Num(), *FilePath),
 		EN2CLogSeverity::Info);
 
 	return true;
+}
+
+void UN2CGraphStateManager::RememberFile(const FString& Text, const FN2CGraphStateFile& State)
+{
+	BaseState = State;
+	BaseFileHash = FCrc::StrCrc32(*Text);
+	BaseFileLength = Text.Len();
+}
+
+bool UN2CGraphStateManager::MergeChangesOnDisk(const FString& FilePath)
+{
+	if (!FPaths::FileExists(FilePath))
+	{
+		// Nothing there (or deleted since): this manager's state is the file
+		return false;
+	}
+	FString Text;
+	if (!FFileHelper::LoadFileToString(Text, *FilePath))
+	{
+		return false;
+	}
+	if (Text.Len() == BaseFileLength && FCrc::StrCrc32(*Text) == BaseFileHash)
+	{
+		// The file is the one this manager last read or wrote
+		return false;
+	}
+
+	FN2CGraphStateFile Theirs;
+	FString ParseError;
+	if (!FN2CGraphStateFile::FromJsonString(Text, Theirs, &ParseError) || Theirs.GetMajorVersion() != FN2CGraphStateFile::CurrentMajorVersion)
+	{
+		// Not a file this version can merge (the write keeps it as .bak)
+		FN2CLogger::Get().LogWarning(FString::Printf(
+			TEXT("%s changed since it was read but cannot be merged (%s); it is replaced, and kept as %s"), *FilePath,
+			ParseError.IsEmpty() ? *FString::Printf(TEXT("version %s"), *Theirs.Version) : *ParseError, *FN2CFileUtils::BackupPathFor(FilePath)));
+		return false;
+	}
+
+	FN2CGraphStateFile Merged = MergeStates(BaseState, StateFile, Theirs);
+	Merged.Version = StateFile.Version;
+	Merged.LastSaved = StateFile.LastSaved;
+	const bool bChanged = Merged.ToJsonString(false) != StateFile.ToJsonString(false);
+	StateFile = MoveTemp(Merged);
+	++MergeCount;
+	FN2CLogger::Get().Log(FString::Printf(
+		TEXT("%s was changed by another editor since this one read it: its changes were merged with this editor's (%d graph states)"),
+		*FilePath, StateFile.Graphs.Num()), EN2CLogSeverity::Info);
+	return bChanged;
+}
+
+namespace N2CGraphStateMergePrivate
+{
+	template <typename T>
+	bool Same(const T& A, const T& B)
+	{
+		return T::StaticStruct()->CompareScriptStruct(&A, &B, PPF_None);
+	}
+
+	bool SameTag(const FN2CTagEntry& A, const FN2CTagEntry& B)
+	{
+		return A.MatchesTagExactly(B.Tag, B.Category);
+	}
+
+	bool HasTag(const TArray<FN2CTagEntry>& Tags, const FN2CTagEntry& Tag)
+	{
+		return Tags.ContainsByPredicate([&Tag](const FN2CTagEntry& Other) { return SameTag(Other, Tag); });
+	}
+
+	FN2CGraphState Empty(const FN2CGraphKey& Key)
+	{
+		FN2CGraphState State;
+		State.GraphGuid = Key.GraphGuid;
+		State.OwningBlueprint = Key.Blueprint;
+		return State;
+	}
+
+	/** Theirs with the changes Ours made since Base */
+	FN2CGraphState MergeEntry(const FN2CGraphState& Base, const FN2CGraphState& Ours, const FN2CGraphState& Theirs)
+	{
+		FN2CGraphState Result = Theirs;
+		if (Ours.GraphName != Base.GraphName)
+		{
+			Result.GraphName = Ours.GraphName;
+		}
+		if (Ours.bMissing != Base.bMissing)
+		{
+			Result.bMissing = Ours.bMissing;
+		}
+		if (!Same(Ours.Translation, Base.Translation))
+		{
+			Result.Translation = Ours.Translation;
+		}
+		if (!Same(Ours.JsonExport, Base.JsonExport))
+		{
+			Result.JsonExport = Ours.JsonExport;
+		}
+		for (const FN2CTagEntry& Tag : Base.Tags)
+		{
+			if (!HasTag(Ours.Tags, Tag))
+			{
+				Result.Tags.RemoveAll([&Tag](const FN2CTagEntry& Other) { return SameTag(Other, Tag); });
+			}
+		}
+		for (const FN2CTagEntry& Tag : Ours.Tags)
+		{
+			if (!HasTag(Base.Tags, Tag) && !HasTag(Result.Tags, Tag))
+			{
+				Result.Tags.Add(Tag);
+			}
+		}
+		return Result;
+	}
+
+	bool IsEmptyEntry(const FN2CGraphState& State)
+	{
+		return State.Tags.Num() == 0 && !State.Translation.bExists && !State.JsonExport.bExists;
+	}
+}
+
+FN2CGraphStateFile UN2CGraphStateManager::MergeStates(const FN2CGraphStateFile& Base, const FN2CGraphStateFile& Ours,
+	const FN2CGraphStateFile& Theirs)
+{
+	using namespace N2CGraphStateMergePrivate;
+
+	TMap<FN2CGraphKey, const FN2CGraphState*> BaseByKey;
+	TMap<FN2CGraphKey, const FN2CGraphState*> OursByKey;
+	for (const FN2CGraphState& State : Base.Graphs)
+	{
+		BaseByKey.Add(State.GetKey(), &State);
+	}
+	for (const FN2CGraphState& State : Ours.Graphs)
+	{
+		OursByKey.Add(State.GetKey(), &State);
+	}
+
+	FN2CGraphStateFile Result = Theirs;
+	Result.Graphs.Reset();
+	TSet<FN2CGraphKey> Done;
+
+	// Every graph the other writer has, with this manager's changes applied
+	for (const FN2CGraphState& TheirState : Theirs.Graphs)
+	{
+		const FN2CGraphKey Key = TheirState.GetKey();
+		if (Done.Contains(Key))
+		{
+			continue;
+		}
+		Done.Add(Key);
+		const FN2CGraphState* const* BaseState = BaseByKey.Find(Key);
+		const FN2CGraphState* const* OurState = OursByKey.Find(Key);
+		if (!BaseState && !OurState)
+		{
+			Result.Graphs.Add(TheirState); // theirs alone
+			continue;
+		}
+		if (BaseState && !OurState)
+		{
+			// Removed here: gone, unless the other writer changed it meanwhile; then only what was removed here goes
+			if (Same(**BaseState, TheirState))
+			{
+				continue;
+			}
+			FN2CGraphState Merged = MergeEntry(**BaseState, Empty(Key), TheirState);
+			if (!IsEmptyEntry(Merged))
+			{
+				Result.Graphs.Add(MoveTemp(Merged));
+			}
+			continue;
+		}
+		const FN2CGraphState Merged = MergeEntry(BaseState ? **BaseState : Empty(Key), **OurState, TheirState);
+		if (!IsEmptyEntry(Merged))
+		{
+			Result.Graphs.Add(Merged);
+		}
+	}
+
+	// Graphs this manager has that the other writer does not
+	for (const FN2CGraphState& OurState : Ours.Graphs)
+	{
+		const FN2CGraphKey Key = OurState.GetKey();
+		if (Done.Contains(Key))
+		{
+			continue;
+		}
+		Done.Add(Key);
+		const FN2CGraphState* const* BaseState = BaseByKey.Find(Key);
+		if (!BaseState)
+		{
+			Result.Graphs.Add(OurState); // added here
+			continue;
+		}
+		// The other writer removed it: kept only with what was changed here since
+		if (Same(**BaseState, OurState))
+		{
+			continue;
+		}
+		FN2CGraphState Merged = MergeEntry(**BaseState, OurState, Empty(Key));
+		if (!IsEmptyEntry(Merged))
+		{
+			Result.Graphs.Add(MoveTemp(Merged));
+		}
+	}
+	return Result;
 }
 
 bool UN2CGraphStateManager::LoadState()
@@ -1444,6 +1657,9 @@ UN2CGraphStateManager::ELoadResult UN2CGraphStateManager::LoadStateInternal()
 	if (!FPaths::FileExists(FilePath))
 	{
 		FN2CLogger::Get().Log(TEXT("No graph state file found"), EN2CLogSeverity::Info);
+		BaseState = FN2CGraphStateFile();
+		BaseFileHash = 0;
+		BaseFileLength = -1;
 		return ELoadResult::Missing;
 	}
 
@@ -1489,6 +1705,8 @@ UN2CGraphStateManager::ELoadResult UN2CGraphStateManager::LoadStateInternal()
 
 	const bool bMigrated = MigrateStateFile(Loaded);
 
+	// What another editor's later write is compared with (card 0436)
+	RememberFile(JsonString, Loaded);
 	StateFile = MoveTemp(Loaded);
 	bIsDirty = false;
 	FN2CLogger::Get().Log(FString::Printf(TEXT("Loaded %d graph states from %s"),

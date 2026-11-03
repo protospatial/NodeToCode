@@ -333,6 +333,12 @@ card 0305).
   and nothing for valid Python or another language; `FN2CCaptureCoverageVerifier` names a call, variable or event of
   the capture that the generated code leaves out, compares whole identifiers (snake_case, the `K2_`/`Receive`/Boolean
   `b` prefixes; words in pseudocode), and expects nothing of disabled nodes or of a graph the capture does not have.
+- `NodeToCode.Translation.CppCompile` (card 0315) checks `FN2CCppCompileDriver` and `FN2CCppScratchModuleVerifier`:
+  the MSVC, clang, linker and Live Coding message parser, the `n2c.Verify.CppCompile` switch, Live Coding refused in the
+  headless editor, and on the UnrealBuildTool `-SingleFile` backend a known error with its file, line and code and a valid
+  UCLASS that compiles, then the verifier on a valid and a broken translation. It runs UnrealBuildTool on a scratch
+  project in the host's `Intermediate/NodeToCode/CompileScratchSpec`, kept between runs (the first run on a host takes
+  about a minute and a half to make it; later runs seconds per compile). See `Context/translation-pipeline/compile-gate.md`.
 - `NodeToCode.MCP.UntrustedContent` (card 0124) checks that Blueprint text reaches an MCP client marked as untrusted
   data on each channel: the `untrusted_content` mark and `</` escaping (`FN2CMcpUntrustedContent`), `ExecuteTool`
   marking the result of a tool that sets `bReturnsUntrustedContent` (and the exact list of tools that set it), the
