@@ -15,7 +15,8 @@ import pytest
 
 from conftest import REPO_ROOT
 
-SKILL_NAMES = {'blueprint-comprehension', 'blueprint-to-cpp', 'blueprint-migration'}
+SKILL_NAMES = {'blueprint-comprehension', 'blueprint-to-cpp', 'blueprint-migration', 'asset-iterator', 'asset-validator',
+               'project-folder-scaffold'}
 
 
 @pytest.fixture(scope='module')
@@ -110,7 +111,10 @@ def test_broken_link_fails(sync_skills, skills_copy):
 
 REGISTRY_CLASSES = {'blueprint-comprehension': 'NodeToCodeBlueprintComprehensionSkill',
                     'blueprint-to-cpp': 'NodeToCodeBlueprintToCppSkill',
-                    'blueprint-migration': 'NodeToCodeBlueprintMigrationSkill'}
+                    'blueprint-migration': 'NodeToCodeBlueprintMigrationSkill',
+                    'asset-iterator': 'NodeToCodeAssetIteratorSkill',
+                    'asset-validator': 'NodeToCodeAssetValidatorSkill',
+                    'project-folder-scaffold': 'NodeToCodeProjectFolderScaffoldSkill'}
 
 
 @pytest.fixture

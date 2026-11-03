@@ -308,11 +308,15 @@ def expected_generated():
 
 
 def tree(directory):
-    """{relative path: bytes} of every file under directory"""
+    """{relative path: bytes} of every file under directory, leaving out Python caches (a skill's scripts/ run in the
+    editor, card 0306)"""
     out = {}
     if os.path.isdir(directory):
-        for root, _dirs, files in os.walk(directory):
+        for root, dirs, files in os.walk(directory):
+            dirs[:] = [d for d in dirs if d != '__pycache__']
             for name in files:
+                if name.endswith(('.pyc', '.pyo')):
+                    continue
                 path = os.path.join(root, name)
                 with open(path, 'rb') as f:
                     out[os.path.relpath(path, directory).replace(os.sep, '/')] = f.read()

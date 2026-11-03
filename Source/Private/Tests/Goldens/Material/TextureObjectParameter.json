@@ -1,0 +1,143 @@
+{
+	"case": "TextureObjectParameter",
+	"description": "A texture object parameter sampled by a Texture Sample into BaseColor: the parameter's texture as a soft object path",
+	"depth": 0,
+	"warnings": [],
+	"capture":
+	{
+		"version": "2.0.0",
+		"metadata":
+		{
+			"name": "M_N2CGolden_TextureObjectParameter",
+			"asset_class": "Material",
+			"asset_kind": "Material",
+			"material":
+			{
+				"domain": "Surface",
+				"blend_mode": "Opaque",
+				"shading_models": [
+					"DefaultLit"
+				]
+			}
+		},
+		"graphs": [
+			{
+				"name": "M_N2CGolden_TextureObjectParameter",
+				"graph_type": "Material",
+				"nodes": [
+					{
+						"id": "N1",
+						"type": "MaterialExpression",
+						"class": "MaterialExpressionTextureObjectParameter",
+						"member_name": "Mask",
+						"input_pins": [
+							{
+								"id": "P1",
+								"name": "Coordinates",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P2",
+								"name": "AutomaticViewMipBiasValue",
+								"type": "Wildcard"
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P3",
+								"name": "Output",
+								"type": "Wildcard",
+								"connected": true
+							}
+						],
+						"properties":
+						{
+							"Group": "Masks"
+						}
+					},
+					{
+						"id": "N2",
+						"type": "MaterialExpression",
+						"class": "MaterialExpressionTextureSample",
+						"input_pins": [
+							{
+								"id": "P4",
+								"name": "Coordinates",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P5",
+								"name": "TextureObject",
+								"type": "Wildcard",
+								"connected": true
+							},
+							{
+								"id": "P6",
+								"name": "AutomaticViewMipBiasValue",
+								"type": "Wildcard"
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P7",
+								"name": "RGB",
+								"type": "Wildcard",
+								"connected": true
+							},
+							{
+								"id": "P8",
+								"name": "R",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P9",
+								"name": "G",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P10",
+								"name": "B",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P11",
+								"name": "A",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P12",
+								"name": "RGBA",
+								"type": "Wildcard"
+							}
+						]
+					},
+					{
+						"id": "N3",
+						"type": "MaterialOutput",
+						"class": "Material",
+						"input_pins": [
+							{
+								"id": "P13",
+								"name": "BaseColor",
+								"type": "Wildcard",
+								"connected": true
+							}
+						],
+						"output_pins": []
+					}
+				],
+				"flows":
+				{
+					"execution": [],
+					"data":
+					{
+						"N1.P3": "N2.P5",
+						"N2.P7": "N3.P13"
+					}
+				}
+			}
+		],
+		"structs": [],
+		"enums": []
+	}
+}

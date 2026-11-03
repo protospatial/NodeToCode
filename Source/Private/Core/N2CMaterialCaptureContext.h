@@ -36,6 +36,15 @@ struct FExpressionInput;
  *   asset) is within Options.Depth, as Blueprint function calls are, so /Engine/Functions are described by name at
  *   depth 0 and expanded beyond it (decision 0009 item 4); each called function is captured once.
  *
+ * - Text (card 0451): a Custom node's Code, defines and include paths, descriptions, parameter groups and comment text
+ *   are captured as they are, as data: the whole document is untrusted (an agent tool marks it, card 0124), and an
+ *   include file is never opened. A Custom node's inputs are named by the names its code uses.
+ * - Fallbacks (card 0451): an input the class supplies outside its properties is named Input<i> with an UNMAPPED_PIN
+ *   warning; a deprecated or material-layer expression is kept as a node, its settings unread (so nothing it references
+ *   is followed), with an UNSUPPORTED_EXPRESSION warning. An unknown class never fails a capture.
+ * - Object references (textures, collections, virtual textures) in properties are soft object paths.
+ * - metadata.material.substrate is the project's r.Substrate.
+ *
  * Engine guards (Context/translation-pipeline/material-classes.md): nothing here calls GetMaterialResource, the
  * Material Editor's graph or editing library, or reads EMaterialValueType bits, so no ENGINE_MINOR_VERSION guard is
  * needed on UE 5.6-5.8.

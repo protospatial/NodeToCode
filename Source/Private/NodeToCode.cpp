@@ -159,7 +159,7 @@ void FNodeToCodeModule::StartupModule()
     }
     if (McpSkipReason.IsEmpty() && McpSettings && McpSettings->McpToolProfile == EN2CMcpToolProfile::PythonScripting && !UN2CUserSettings::IsMcpPythonExecutionAllowed())
     {
-        FN2CLogger::Get().LogWarning(TEXT("Tool Profile is Python Scripting Only but Allow MCP Python Execution is off: only the list, search and get script tools are available"));
+        FN2CLogger::Get().LogWarning(TEXT("Tool Profile is Python Scripting Only but Allow MCP Python Execution is off: the MCP server serves no tools (run-python, the only Python tool, needs that setting)"));
     }
 
     if (!McpSkipReason.IsEmpty())
