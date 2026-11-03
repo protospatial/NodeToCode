@@ -71,7 +71,7 @@ holds and which provider will be billed.
 
 | Step | NodeToCode's server | NodeToCodeTools (UE 5.8) |
 |---|---|---|
-| Tag a graph | `tag-blueprint-graph` (`tag`, `category`, `description`; the focused graph) | `NodeToCodeTools.tag_graph` (by `blueprint_path` and `graph_name`) |
+| Tag a graph | `tag-blueprint-graph` (`tag`, `category`, `description`; by `blueprintPath` and `graphName` or `graphGuid`, else the focused graph) | `NodeToCodeTools.tag_graph` (by `blueprint_path` and `graph_name`) |
 | See the set | `list-blueprint-tags` (`tag`, `category`) | `NodeToCodeTools.list_tags` |
 | Untag | `remove-tag-from-graph` (`graphGuid`, `tag`) | `NodeToCodeTools.remove_tag` |
 | Export N2C JSON | `export-n2cjson-batch` with `tag` and/or `category` (one file per graph) | `NodeToCodeTools.export_n2c_json_by_tag` |

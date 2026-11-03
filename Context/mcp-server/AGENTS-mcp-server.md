@@ -133,8 +133,8 @@ The MCP server speaks MCP Streamable HTTP (2025-11-25) and JSON-RPC 2.0 on one e
 *   **Protocol**: JSON-RPC 2.0; batches only in sessions negotiated at 2025-03-26 (see Sessions and versions)
 *   **Lifecycle**: starts with the editor when Enable MCP Server is on (not in commandlets or `-unattended` runs
     unless the command line has `-N2CMcp`), graceful shutdown on exit
-*   **Tools**: which tools `tools/list` returns depends on Tool Profile and Tool Exposure (default: every tool, 65,
-    or 64 without Allow MCP Python Execution), and it never changes while the server runs; see Tool Profiles and
+*   **Tools**: which tools `tools/list` returns depends on Tool Profile and Tool Exposure (default: every tool, 66,
+    or 65 without Allow MCP Python Execution), and it never changes while the server runs; see Tool Profiles and
     Toolsets
 *   **Session Management**: one session per client (`Mcp-Session-Id`), each with its own negotiated protocol version
 
@@ -610,6 +610,13 @@ Resources expose Blueprint data in a structured, queryable format:
     editor's Python API stub, `<Project>/Intermediate/PythonStub/unreal.py` (written at startup by the Python Editor
     Script Plugin when its Developer Mode is on), read from disk on each request; without it the text says how to
     generate it. Several MB: an agent should search it, not read it whole
+*   `N2CMcpAppResources.h/.cpp` (`Source/Private/MCP/Resources/Implementations/`, card 0213, MCP Apps extension
+    2026-01-26): `ui://nodetocode/translation-viewer` and `ui://nodetocode/graph-preview`, MIME type
+    `text/html;profile=mcp-app`, audience `user`; each read returns `Content/MCPApps/<name>.html` from the plugin
+    (self-contained: no remote script, style or font). `translate-focused-blueprint` and `get-focused-blueprint`
+    name their app in `tools/list` as `_meta.ui.resourceUri` (`FN2CMcpAppResources::ToolMeta`); their results are
+    unchanged, so a client without MCP Apps shows the text and `structuredContent` as before. Read without the game
+    thread (`RegisterMcpResources`)
 *   URI templates (`FN2CMcpUriTemplate`, `N2CMcpUriTemplate.h`): the manager matches a URI against a template as a
     full match. `{var}` is exactly one non-empty segment, `{+var}` the rest of the path (one or more non-empty
     segments); neither spans `?` or `#`; captured values are percent-decoded (UTF-8), and a malformed escape or an
@@ -731,10 +738,10 @@ Server):
     shapes, for clients with a tool limit such as VS Code's 128 and Windsurf's 100).
 
 `tools/list` is then fixed until the server starts again: no call changes it, every client sees the same list. With
-Allow MCP Python Execution (see Server switches, below; off by default) the counts are: default 65, tool search 3,
-Python scripting only 1; without it `run-python` is not served (63 and 0; Python scripting only logs a warning at
+Allow MCP Python Execution (see Server switches, below; off by default) the counts are: default 66, tool search 3,
+Python scripting only 1; without it `run-python` is not served (65 and 0; Python scripting only logs a warning at
 start). The settings need an editor restart. `build.ps1 -Smoke` checks each mode with Python execution allowed against
-`Tests/smoke/expected.json` (`default` 65, `tool_search` 3, `python_only` 1).
+`Tests/smoke/expected.json` (`default` 66, `tool_search` 3, `python_only` 1).
 
 Toolsets are declared once in `Source/Public/MCP/Tools/N2CMcpToolsets.h`, and every tool names its toolset by identity
 (`FMcpToolDefinition(Name, Description, N2CMcpToolsets::BlueprintGraph)`, sent as `_meta["nodetocode/toolset"]`):
