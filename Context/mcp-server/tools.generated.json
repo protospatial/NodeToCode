@@ -4089,6 +4089,10 @@
 			},
 			"_meta":
 			{
+				"ui":
+				{
+					"resourceUri": "ui://nodetocode/graph-preview"
+				},
 				"nodetocode/toolset": "BlueprintDiscoveryTools",
 				"anthropic/maxResultSizeChars": 200000,
 				"anthropic/alwaysLoad": true
@@ -7475,6 +7479,10 @@
 			},
 			"_meta":
 			{
+				"ui":
+				{
+					"resourceUri": "ui://nodetocode/translation-viewer"
+				},
 				"nodetocode/toolset": "TranslationTools",
 				"anthropic/maxResultSizeChars": 200000
 			},
