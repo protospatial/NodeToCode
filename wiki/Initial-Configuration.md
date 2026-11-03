@@ -109,7 +109,8 @@ machine only (they do not roam to other PCs). There is one entry per provider:
 - The **API Key Status** line under it says where the key in use comes from: `Stored in Windows Credential Manager
   (ends ...abcd)` (the last four characters, for keys of 16 characters or more), `From environment variable
   ANTHROPIC_API_KEY`, or `Not set`
-- To remove a key, click **Remove Saved <Provider> Key** under the provider, or delete the entry yourself:
+- To remove a key, click **Remove Saved <Provider> Key** on the provider's **Saved Key** row (it is greyed out when no key
+  is saved, for example when the key comes from an environment variable), or delete the entry yourself:
   `cmdkey /delete:NodeToCode/OpenAI` in a command prompt, or Control Panel → Credential Manager → Windows
   Credentials → Generic Credentials. `cmdkey /list:NodeToCode*` lists the entries
 - An entry made with `cmdkey /generic:NodeToCode/OpenAI /user:NodeToCode /pass:<key>` is read too
