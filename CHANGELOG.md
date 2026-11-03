@@ -43,8 +43,9 @@ editor UI, tagging and batch translation. This is a beta. The stable release is 
   connect and delete nodes; create and delete functions, function pins and variables; tag graphs; compile and save;
   search and create Blueprint classes; add, list and remove components; search, move, copy and rename assets and
   folders in the Content Browser; read project files and folders; translate with Node to Code's own LLM settings
-  (commits from 241e31d to abb98cc, 2025-06-12 to 2025-07-06). With the default tool profile and Python execution
-  off, `tools/list` returns 67 tools ([#68], [#148], [#202]).
+  (commits from 241e31d to abb98cc, 2025-06-12 to 2025-07-06). NodeToCode registers 64 tools; with the default tool
+  profile and Python execution off, `tools/list` returns 63 of them ([#68], [#148], [#202], [#257], [#290], [#293],
+  [#294]).
 - `get-blueprint-n2cjson` and `list-blueprint-graphs` read any Blueprint by asset path with no Blueprint editor
   open; a document over about 20,000 tokens is written to `Saved/NodeToCode/Exports` and the call returns its path
   ([#130]). `export-n2cjson-batch` exports many graphs (by asset path, whole Blueprints or tag) as N2C JSON files,
@@ -91,8 +92,43 @@ editor UI, tagging and batch translation. This is a beta. The stable release is 
   `instructions` naming the tools to start with ([#82]). A request with `"id": null` or a `method` that is not a
   string is -32600 ([#80]).
 - **Enable MCP Server** (on by default) and **Allow MCP Python Execution** (off by default), both per user under
-  **Project Settings > Plugins > Node to Code (User)**. The server does not start in commandlets or unattended
-  runs unless `-N2CMcp` is passed (01aa7d3, [#26]). <!-- PROVISIONAL 0019 -->
+  **Editor Preferences > Plugins > Node to Code (User)** ([#243]). The server does not start in commandlets or
+  unattended runs unless `-N2CMcp` is passed (01aa7d3, [#26]). <!-- PROVISIONAL 0019 -->
+- The server also speaks the stateless 2026-07-28 MCP revision on the same `/mcp` URL: `server/discover`,
+  per-request `_meta` with header validation, `resultType`/`ttlMs`/`cacheScope` on results, and on UE 5.8
+  `subscriptions/listen` and cancelling a call by closing its stream. Clients that use `initialize` and sessions
+  behave as before; current Claude Code connects without a session ([#227]).
+- `completion/complete` offers prompt argument values and Blueprint asset paths for `nodetocode://blueprint/{+path}`;
+  `serverInfo` has a title, description, website and the plugin icon; resources carry `audience` and `priority`
+  annotations; `nodetocode://python/unreal-stub` serves the editor's Python API stub. On UE 5.8 a 2026-07-28
+  `subscriptions/listen` can subscribe to Blueprint resources and gets `notifications/resources/updated` after a
+  compile, a save or a focus change ([#299]).
+- `N2C.Mcp.WriteClientConfig` writes or merges NodeToCode's server into `.mcp.json`, `.cursor/mcp.json`,
+  `.vscode/mcp.json`, `.gemini/settings.json` and `.codex/config.toml` with the server's current port, keeping other
+  servers, and prints a Claude Desktop snippet; with **Require MCP Bearer Token** on, the files read the token from
+  `NODETOCODE_MCP_TOKEN` and never hold it ([#222]). **Write MCP Client Config** in **Project Settings > Node to Code >
+  MCP Server** does the same for the clients you pick, or copies the Claude Desktop snippet ([#262]).
+- `place-cpp-translation` turns a saved C++ translation into a class in one of the project's C++ modules: a UCLASS
+  header with the graph declarations, a `.cpp` with the implementations and the includes the Blueprint's calls need,
+  and the modules added to the module's `Build.cs`. It is a dry run by default, writes only inside the chosen
+  module's `Source` folder, and backs up every file it replaces ([#257]).
+- `get-blueprint-dependencies` returns the dependency index of Blueprints, interfaces, macro libraries, structs and
+  enums under asset paths or folders (typed edges, dependencies-first order, cycle groups), with a JSON export under
+  `Saved/NodeToCode/Dependencies` ([#290]). `create-migration-plan` writes a reviewable Blueprint-to-C++ migration
+  plan as a draft to `Saved/NodeToCode/Migration/<planId>/plan.json` and `plan.md`: steps in dependency order with
+  each cycle group as one step, proposed native types and files in a target module, graphs with token estimates
+  and risk flags; nothing else changes ([#293]).
+- The Variables tools (create-variable, create-local-variable, the four variable node tools,
+  get-blueprint-member-variables, get-blueprint-function-local-variables and both default-value tools) and
+  tag-blueprint-graph take optional `blueprintPath`, plus `graphName` or `graphGuid` where a graph applies, and work
+  with no Blueprint editor open ([#234]).
+- get-focused-blueprint, get-blueprint-n2cjson (and Python `get_blueprint_n2c_json`) and find-nodes-in-graph return
+  a `warnings` array (`code`, `path`, `message`) of what the capture found, for example a graph left out at Max
+  Translation Depth (`DEPTH_LIMIT`) ([#232]).
+- `list-blueprint-graphs` reports Animation Blueprint and Control Rig graph kinds (`animgraph`, `state-machine`,
+  `state`, `transition`, `conduit`, `rig`) and a `translatable` flag per graph ([#260]).
+- `translate-batch` reports cache read, cache write and reasoning token counts in its batch and per-item `usage`
+  ([#277]).
 
 **UE 5.8 integration**
 
@@ -114,16 +150,22 @@ editor UI, tagging and batch translation. This is a beta. The stable release is 
   Unreal MCP, and translate by asset path ([#155]).
 - A Claude Code plugin, `Agents/claude-code`: `claude plugin marketplace add <Plugins/NodeToCode>/Agents/claude-code`
   and `claude plugin install nodetocode@nodetocode` give the MCP server config, the skills, `/nodetocode:translate`
-  and a session-start line that says whether the editor answers ([#143]).
+  and a session-start line that says whether the editor answers ([#143]). The plugin has a listing icon
+  (`.claude-plugin/icon.png`) and lists its privacy policy, the Data Flow and Privacy page ([#286], [#287]).
+- Three more Agent Skills with scripts that run in the editor through `run-python`: `asset-iterator` (find and walk
+  assets), `asset-validator` (naming by asset class, compile errors, Blueprints with no logic) and
+  `project-folder-scaffold` (folder templates). The Claude Code plugin installs them with the other three, and UE
+  5.8's skill registry lists them ([#298]).
+- `Content/Python/mcp_bridge/manifest.json` and `server.json` describe the stdio bridge as an MCP Bundle (one-click
+  install in Claude Desktop, optional project and URL settings) and as an MCP Registry entry; build and publishing
+  steps are in that folder's README ([#235]).
 
 **Python**
 
 - The `nodetocode` module in `Content/Python/nodetocode`: Blueprint, graph-editing and editor-navigation helpers
   for the editor's Python (c2c76d7, 4fb31b9, a5d19da).
-- A script library that agents can list, search, read, save and rerun, with ten starter scripts, kept in the
-  project's `Content/Python/scripts` (7ae749d, e318fc1, 2fa7816).
-- `run-python`, `save-python-script` and `delete-python-script` over MCP, listed only when **Allow MCP Python
-  Execution** is on (7ae749d, 01aa7d3). <!-- PROVISIONAL 0019 -->
+- `run-python` over MCP, listed only when **Allow MCP Python Execution** is on (7ae749d, 01aa7d3, [#294]).
+  <!-- PROVISIONAL 0019 -->
 - A stdio bridge, `Content/Python/mcp_bridge` (`launch_bridge.bat` / `launch_bridge.sh`), for MCP clients that
   only start stdio servers. It finds UE 5.6 to 5.8's Python and passes UTF-8 and streamed responses through
   (8d94a08, e775d97, [#60]). It runs calls side by side and forwards the client's cancel while a call runs, finds
@@ -132,6 +174,38 @@ editor UI, tagging and batch translation. This is a beta. The stable release is 
   restart it opens a new session by itself, and it ends its session when the client closes stdin ([#81]).
 - `nodetocode.get_translation_targets()` ([#147]); `nodetocode.list_tags(blueprint_path=...)` lists one
   Blueprint's tags, and `tag_graph` and `remove_tag` results include `blueprint_path` ([#198]).
+- `nodetocode.invoke_tool(name, arguments)` and `UN2CPythonBridge::InvokeTool` run any NodeToCode MCP tool from
+  editor Python, including tools the MCP server's tool profile does not serve ([#291]).
+- The Python bridge's graph-edit, function-pin, tag, compile and save calls, and their `nodetocode` wrappers, take
+  optional `blueprint_path` and `graph` (GUID or name) ([#234]). `nodetocode.get_blueprint_dependencies(paths, ...)`
+  returns the dependency index ([#290]), and `nodetocode.skill_script(skill)` loads an Agent Skill's script ([#298]).
+
+**N2C JSON and capture**
+
+- N2C JSON can carry a Blueprint's member variables (`variables`) and each function's local variables
+  (`local_variables`): name, type in pin spellings, default value, and for member variables the category,
+  description and flags (instance editable, read-only, expose on spawn, private, replicated, RepNotify). A
+  whole-Blueprint capture (get-blueprint-n2cjson and `get_blueprint_n2c_json` without a graph) includes them;
+  translating a graph does not. Based on PR #8 by flashpoint493 ([#228]).
+- Optional node fields `timeline` (length, loop, autoplay, track names and kinds), `bound_to` (the component or actor
+  of a bound event) and `net`/`reliable` (a replicated custom event's RPC kind) ([#237]).
+- `metadata` names the Blueprint's parent class (`parent_class`) and the kind of Blueprint asset (`asset_class`), so
+  translations of Widget, Animation and Editor Utility Blueprints extend the right base class ([#278]); it may carry
+  `asset_kind` ("Blueprint" or "Material"; absent means Blueprint) ([#284]).
+- Materials and material functions (`asset_kind` "Material"), captured headless from the saved asset with
+  `N2C::CaptureMaterial` / `CaptureMaterialFunction`: expressions, material outputs, reroutes traced, comments,
+  unused expressions, parameters and settings, and material function calls within the capture depth ([#292]).
+  Collapsed composites are followed and material-attribute pins are named by attribute; material layers, layer blends
+  and function instances are refused one by one with `UNSUPPORTED_ASSET_TYPE` ([#295]). A Custom node's inputs are
+  named as its code names them and its HLSL, defines and include paths are kept as data; inputs it cannot name warn
+  `UNMAPPED_PIN`, layer and deprecated expressions warn `UNSUPPORTED_EXPRESSION`, asset references are object paths
+  and `metadata.material.substrate` records whether the project uses Substrate ([#297]). Material capture gives the
+  same JSON in Japanese and German, on a second capture and for a copy, and its unused flags match the engine's own
+  reference walk ([#312]).
+- All of these are additive; the format stays at version 2.0.0.
+- Internal: `FN2CDependencyIndex`, the computed dependency index behind `get-blueprint-dependencies` and
+  `create-migration-plan` ([#268]); `IN2CCodeVerifier`, a code verifier seam with a Python syntax verifier and a
+  capture-coverage verifier, groundwork for a compile-repair loop that nothing calls yet ([#252]).
 
 **Editor**
 
@@ -148,6 +222,9 @@ editor UI, tagging and batch translation. This is a beta. The stable release is 
   asks for confirmation with the number of tags and graphs, and its notification has an Undo button ([#208]).
 - The translation window's JSON tab shows the Blueprint's N2C JSON after a translate and when a saved translation is
   reopened, highlighted as JSON ([#193], [#203]).
+- A Get Started card in the Node to Code window walks a new user through provider, API key (saved in the system
+  keychain), a connection test, target language and tagging a first graph; it hides after the first saved
+  translation or when closed. The tag tree and the translation viewer say what to do when they are empty ([#271]).
 
 **Providers and models**
 
@@ -176,6 +253,9 @@ editor UI, tagging and batch translation. This is a beta. The stable release is 
 - Saved translations and `BatchSummary.json` record cache read and write tokens and reasoning tokens ([#181]).
 - `n2c.LogLLMPayloads` (default 0, never saved): payloads, prompts, N2C JSON, model answers and HTTP error bodies are
   logged only when it is 1; otherwise their size is ([#137]).
+- **Max Request Retries** (**Project Settings > LLM Provider**, default 3): a request answered with 429, 529 or
+  another server error is sent again, after the wait the provider asks for (`Retry-After`) or a short capped backoff,
+  before it fails. The retry and transport design was informed by the ideas in PR #21 by akashskypatel ([#311]).
 
 **Project**
 
@@ -220,6 +300,20 @@ editor UI, tagging and batch translation. This is a beta. The stable release is 
 - Evidence for later decisions: a graph-type coverage matrix and K2 node inventory for UE 5.6 to 5.8 ([#174]), and a
   material expression and asset class inventory ([#175]).
 - Shell scripts (`*.sh`) keep LF line ends in checkouts and release packages ([#143]).
+- User guide: a Data Flow and Privacy page lists what each LLM provider receives, keeps and trains on (sourced, with
+  dates), what stays on your machine and how to delete it, and that Node to Code sends nothing to Protospatial
+  ([#269]). The window, translation viewer, N2C bar and colour settings pages describe the 2.0 UI ([#273]). The
+  tool-mode page names the 33 tools that answer `PIE_ACTIVE`, including the tag tools and C++ placement ([#293]).
+- A capture harness for the wiki's screenshots, `Tests/DocsShots/capture.py --group <group>` (automation tests
+  `N2CDocs.Shots.*` drawing the plugin's widgets from fixture data at 2x on the 5.8 host), with a shots manifest for
+  `tools/docs_check.py --stale` ([#240]).
+- Unreal Insights CPU timers for capture, serialization, validation, token estimates and MCP tool calls
+  (`N2C_Capture_CollectNodes`, `N2C_Serialize_ToJson`, `N2C_Validate`, `N2C_TokenEstimate`, `N2C_Mcp_Execute` with a
+  per-tool child, ...); run with `-trace=cpu`, and see the Profiling section of the development-workflow guide
+  ([#276]).
+- Non-shipping builds accept `-N2CSecretPrefix=NodeToCodeTest/<guid>/`, which keeps API keys in test Credential
+  Manager entries, so a hand check of Save Key or the API Key fields never touches your own `NodeToCode/*` entries
+  ([#305]).
 
 ### Changed
 
@@ -284,6 +378,68 @@ editor UI, tagging and batch translation. This is a beta. The stable release is 
   that says why ([#182]). The tag tree's graph list names what it shows, lists a graph with several tags once, and
   search also matches tag and category names ([#197]).
 - Python docstrings are coloured as strings, and lines over 2,000 characters are shown without highlighting ([#193]).
+- **Per-user settings:** your provider, LM Studio endpoint, MCP server port, window colours, translation output
+  folder and reference files outside the project are your own settings (**Editor Preferences > Plugins > Node to
+  Code (User)**), saved outside the project instead of in `Config/DefaultNodeToCode.ini`; the project's Reference
+  Source Files are stored relative to the project folder. The first start copies each developer's values from the
+  project config to their own settings once (settings version 5) and lists the old keys, which stay in
+  `DefaultNodeToCode.ini` for teammates and can be deleted once everyone has upgraded. A saved Text Muted of the old
+  107 grey moves to the new 148 default ([#285]).
+- **Translation archive:** translations are saved one folder per run,
+  `<Blueprint>_<yyyyMMdd-HHmmss-fff>_<run id>/` (a batch: `BatchTranslation_..._<run id>/<graph>/`). Each run has a
+  `manifest.json` (kind, provider, model, language, token usage, and every graph, struct and enum with its role and
+  files) and one folder per entry of the reply; folders saved by earlier versions still load ([#226]). Translation
+  records keep the run, its manifest, the exact files and the token usage ([#307]). A relative Custom Translation
+  Output Directory is under the project folder, and get-translation-output-directory reports the default directory
+  as an absolute path ([#226]). `translate-focused-blueprint` results include `run_folder` and `files` ([#264]).
+- **Graph types:** NodeToCode refuses the graphs it cannot translate, keyed on the graph's schema
+  ([decision 0008](.agents/decisions/0008-graph-types-every-k2-graph.md)): AnimGraphs and other animation pose graphs, animation
+  states, state machines and Control Rig graphs. The capture and batch tools return `UNSUPPORTED_GRAPH_TYPE` naming
+  the type, instead of empty code or `EMPTY_GRAPH`, and the graph overlay shows them as not supported ([#260]).
+  Capturing a material or other non-Blueprint graph directly fails the same way instead of "No nodes to capture"
+  ([#288]).
+- A Blueprint capture fails only on a structural error (a dangling flow, a duplicate ID, a missing name); a
+  recoverable problem is a `warnings` entry and no longer fails get-focused-blueprint, find-nodes-in-graph,
+  get-blueprint-n2cjson or the Python bridge ([#232]).
+- The `depth` argument of get-blueprint-n2cjson and export-n2cjson-batch says that collapsed graphs always come with
+  their graph and that depth counts calls to your own functions and macros ([#279]).
+- connect-pins and `nodetocode.connect_pins` results give each entry's `index`, the schema's `response` and
+  `message`, and the `conversionNode` (GUID and title) when the link was made through one; the bridge's failed
+  entries also carry an `errorCode` ([#229]).
+- The `nodetocode` graph, function-pin, compile, save, `tag_graph` and `open_blueprint` functions run the matching MCP
+  tool, so they behave exactly as the tools do, and their `data` is the tool's result. The 1.x result keys stay for
+  one release and log a deprecation warning when read ([#291]).
+- The Python scripting only tool profile serves `run-python` alone, **Allow MCP Python Execution** governs only
+  `run-python`, and the `python-scripting` prompt takes only `task` ([#294]).
+- On UE 5.8 a long-running tool call that accepts `text/event-stream` streams even without a `progressToken`, with a
+  keep-alive comment every 2 s, so Epic's MCP Client Toolset (30 s HTTP activity timeout, no token) gets long
+  translations through, and closing any streamed call cancels it ([#296]). The stdio bridge sends 2026-07-28 requests
+  with their `MCP-Protocol-Version`, `Mcp-Method` and `Mcp-Name` headers and cancels them by closing their stream
+  ([#227]).
+- The translation prompts target Unreal Engine 5.6 to 5.8: C++ output uses `TObjectPtr` members, Enhanced Input and
+  log categories and lists the headers it needs; every language prompt includes a worked example ([#272]).
+- The Node to Code graph list's columns resize with their headers, sort by graph name, Blueprint or token estimate,
+  select with click, Shift or Ctrl click, arrows, Space or Ctrl+A (the selection is the checked graphs), and offer
+  Translate, View Translation, Export JSON, Open in Blueprint and Remove Tag on right-click ([#246]). Batch
+  Translate, Export JSON and Remove Selected are disabled, with a tooltip saying why, until a graph is checked
+  ([#271]).
+- Muted text in the Node to Code window is brighter (4.5:1 contrast) and no text is smaller than 8pt; status,
+  warning, close and Export JSON marks are editor icons instead of text glyphs; the toolbar and tab logo is an SVG
+  that stays sharp at high DPI; UI clicks no longer write log lines at default verbosity ([#254]).
+- Project Settings no longer offers to add or remove Code Editor Theme entries, as only one is drawn ([#230]).
+- `Scripts/detect-ue-path.bat` and `.sh` (moved from `Content/Scripts`, so no package contains them) write this
+  machine's Unreal Engine source path to the gitignored `AGENTS.local.md` instead of rewriting the tracked
+  `AGENTS.md` ([#231]).
+- Contributor docs: the root `AGENTS.md` is a short hub for coding agents; the build and test reference moved to
+  `Context/development-workflow`, and new `Context` pages cover tags and graph state, UI and design tokens, auth and
+  secrets, and the Agent Skills ([#239]). The MCP tools' agent docs link each tool's arguments to the generated tool
+  reference, and the docs lint checks those lists ([#259]).
+- Development: `build.ps1 -Test` starts the editor with `-RenderOffScreen`, so the Blueprint-editor and Material
+  Editor specs run headless on UE 5.6, 5.7 and 5.8 ([#258]); the stdio bridge's unit tests moved from
+  `Content/Python/tests` to `Tests/python`, so `build.ps1 -Test` runs them ([#300]).
+- C++ API: the `UN2CTagManager` facade is removed; use `UN2CGraphStateManager` (`GetAllTags`, `GetTaggedGraphs`,
+  `FindTaggedGraphs`, `FindTaggedGraphsInCategory`, `RemoveTagByName`). `OnGraphTagAdded` passes the added tag and
+  its graph (`FN2CTagEntry`, `FN2CGraphRef`), and `FN2CTagInfo` moved to `Core/N2CTagTypes.h` ([#242]).
 - Internal: capture runs through a per-call capture module instead of the `FN2CNodeTranslator` singleton ([#100]);
   MCP tools are described and called through one seam, `FN2CToolCatalog` ([#169]); UI colours live in
   `Core/Style/N2CUIColors.h` ([#168]); overlay injection is `FN2CGraphOverlayInjector` ([#205]).
@@ -326,6 +482,20 @@ editor UI, tagging and batch translation. This is a beta. The stable release is 
   properties ([#145]).
 - `FN2CEditorIntegration`'s unused graph-editor wrapper, toolbar command and dead translate, copy and theme entry
   points ([#205]).
+- The script library that earlier 2.0 development builds had: the MCP tools `list-python-scripts`,
+  `search-python-scripts`, `get-python-script`, `get-script-functions`, `save-python-script` and
+  `delete-python-script`, the `nodetocode` functions `list_scripts`, `search_scripts`, `get_script`,
+  `get_script_functions`, `run_script`, `save_script`, `delete_script` and `get_script_stats`, and
+  `script_registry.json` ([decision 0010](.agents/decisions/0010-script-library-cut-and-convert.md), [#294]). Scripts
+  you saved stay in your project's `Content/Python/scripts`; to keep using one, make it an Agent Skill (a folder with
+  a `SKILL.md` and the script under its `scripts/`) and run it through `run-python`.
+- The bundled scripts under `Content/Python/scripts`. The Blueprint-authoring ones (blueprint_factory,
+  variable_batch_creator, function_scaffolder, component_adder, ue5_compat, struct_creator, datatable_populator) are
+  covered by the MCP tools ([#294]); asset_duplicator, asset_editor_opener and utility_widget_launcher are gone, and
+  asset_iterator, asset_validator and project_folder_scaffold became Agent Skills, with their folder matching,
+  prefix checks, compile check, empty-Blueprint check and counts fixed ([#298]).
+- The unused `FN2CPinTypeCompatibility` and `FN2CPinDefinition::IsCompatibleWith`, whose rules disagreed with the K2
+  schema ([#225]).
 
 ### Fixed
 
@@ -445,6 +615,71 @@ editor UI, tagging and batch translation. This is a beta. The stable release is 
   and lists what it skipped ([#191], [#195]).
 - **Logs:** the Node to Code log file is UTF-8 through one open file ([#189]); keys and payloads stay out of logs
   ([#137]).
+- **Translation archive:** a struct, enum or second graph in a reply no longer overwrites the translated graph's
+  files; a batch item is saved once instead of twice; two translations of one Blueprint started in the same second
+  no longer share one folder; struct and enum definitions are saved for C#, Swift, JavaScript and Pseudocode, not
+  only C++; translations requested over MCP and from Python are saved to the translation output directory too
+  ([#226]). `/nodetocode:translate` in the Claude Code plugin no longer writes a second copy of each translation; it
+  reports the run folder the editor saved it in ([#264]). View Translation loads a translation whose folder holds
+  more than one file of its language ([#307]).
+- **N2C JSON:** custom events carry their name (they had `member_name` "None"); Switch nodes keep the engine's title
+  ("Switch on E_Weapon") with the switched type in `member_name`; Get on an array names its element type; Timeline
+  and async nodes (AI MoveTo, async actions) are `latent`, and async nodes name their factory class and function
+  ([#237]). User enums keep every value (values named like "Max" or "MaxHealth" were dropped) and carry each value's
+  number; user struct members of object, class, soft or interface types carry their `type_name`, a member of a user
+  enum type is `Enum` naming the enum instead of `Byte`, and set elements and map keys are typed; a graph that uses
+  one user struct or enum on several pins no longer logs ERROR "Missing name" ([#245]). A user struct with a member
+  whose type name could not be read is kept, with a warning, instead of dropped ([#232]). Transition and conduit
+  rules translate: their result node counts as the graph's result, so the nodes that compute the rule are no longer
+  marked unused ([#260]).
+- **Cost and context estimates:** they include the system prompt and reference files every request sends and price
+  the expected reply at the model's output price, and the batch panel shows the input and output parts; the context
+  bars count the prompt with the graph, so a graph that only fits without it no longer looks safe; the batch panel
+  reprices the selection when a price, model or provider changes ([#236]).
+- **MCP during long calls and dialogs:** on Windows, a translation started over MCP stops when the client that
+  started it goes away (Claude Code's Esc or Ctrl+C), on UE 5.6 and 5.7 and for clients that do not accept a streamed
+  response; before, the call ran to the end and its LLM request was billed ([#275]). While the editor shows a modal
+  dialog the server keeps answering (connecting, tool lists, the health check, `read-file`, `read-path`) and other
+  tool calls answer at once with `MODAL_DIALOG_OPEN` instead of waiting for the dialog to close ([#302]).
+- **MCP tools:** `list-blueprint-tags` applies `graphGuid`, `tag` and `category` together, and Tag Blueprint Graph
+  (Blueprint and Python `tag_blueprint_graph`) finds macro, delegate-signature and collapsed graphs by name ([#223]);
+  search-variable-types no longer needs an open Blueprint editor, and tag-blueprint-graph no longer ignores a
+  `blueprintPath` ([#234]); connect-pins and `nodetocode.connect_pins` list a malformed connection entry in `failed`
+  with its index and `INVALID_REQUEST` instead of dropping it, and `summary.totalRequested` counts every entry
+  ([#229]); the MCP type identifiers take `integer`, `integer64` and `real`, and
+  `N2CStructUtilsLibrary.add_struct_variable` takes the same type strings as the MCP tools plus `array<T>`, `set<T>`,
+  `map<K, V>` and `class<T>`/`softobject<T>`/`softclass<T>`/`interface<T>` ([#238]); the Blueprint graph, function and
+  variable tools' toasts show a success or error icon instead of the missing-brush checkerboard ([#225]).
+- **run-python:** code runs exactly as written in its own namespace: traceback line numbers are the code's,
+  multi-line strings and `from __future__` work, a `.py` in a comment no longer makes it run nothing, a call no longer
+  sees the previous call's `result`, and a modal dialog cannot block it. `result` is strict JSON (a UObject as its
+  path, sets as lists), and a value JSON cannot hold fails with `result not JSON-serializable` ([#253]). `timeout`
+  works: a script still running at the timeout is stopped and the call fails with `timed_out: true`, so
+  `while True: pass` no longer freezes the editor. Each call is one undo step, "MCP: run-python"; a call that changes
+  nothing adds none ([#301]).
+- **Python:** `nodetocode.compile_blueprint(path)` and `save_blueprint(path)` act on the Blueprint at that path
+  instead of the focused one, and their results include `blueprint_path` ([#244]).
+- **Window and overlay:** Translate on a graph's N2C bar opens the Node to Code window when it is closed and runs the
+  translation; before, the click did nothing ([#304]). A graph shown in two tabs has the overlay in both ([#261]). The
+  overlay's context ring keeps its size and place at 150% and 200% DPI and dims when disabled ([#254]). Export JSON
+  writes to the folder the window's Output field shows and says how many graphs it wrote, with an Open folder link,
+  or why it did not run; Browse... saves that folder as your translation output folder ([#308]). The batch progress
+  dialog shows each graph's own status when several graphs share a name, and names each graph's Blueprint ([#306]).
+  The Get Started card and the empty tag tree say the N2C bar is at the bottom left of a graph ([#303]).
+- **Code editor theme:** renaming the Code Editor Theme's "Unreal Engine" entry, or emptying the map, no longer turns
+  off syntax highlighting ([#230]); a theme colour changed in Project Settings shows at once in an open translation
+  view, syntax colours included ([#233]).
+- **Settings pages:** each cloud provider has a working Remove Saved <Provider> Key button on its Saved Key row,
+  greyed when no key is saved; the earlier buttons were never shown ([#310]). Editor Preferences and Project Settings
+  no longer show developer text (C++ names, card numbers) in tooltips and section descriptions ([#309]). Docs,
+  messages, the Agent Skill and the Claude Code plugin hook name **Editor Preferences** for the per-user MCP
+  switches; they said Project Settings, where that section does not exist ([#243]).
+- **Security:** the stdio bridge uses a discovery entry only when its URL is plain http to 127.0.0.1, localhost or
+  [::1], so a planted `Saved/NodeToCode/mcp-server.json` in a downloaded project cannot send the MCP client's traffic
+  to another host; `--url` still names any editor ([#283]).
+- **Development:** a freshly created host passes `build.ps1 -Smoke` on its first run ([#258]);
+  `Tests/mcp_probe/live_provider_matrix.py` records token usage again after [#181] changed the usage log line
+  ([#224]).
 - UE 5.8 compile errors and UE 5.7 deprecation warnings (8f16836); synchronous Blueprint compiles to avoid
   preview-actor crashes (d86db38).
 - A missing include in `N2CMcpAddFunctionEntryPinTool.cpp` (deca5c3), the fix first proposed in [#9].
@@ -506,6 +741,10 @@ change in the Output Log under **LogNodeToCode**; the second start logs none of 
 - `HttpConnectionTimeout=300` and `HttpActivityTimeout=3600` under `[HTTP]` in `Config/DefaultEngine.ini` are
   removed. Other values there stay.
 - **Use Less CPU when in Background** is left as it is, and a warning says so once.
+- Your provider, LM Studio endpoint, translation output folder and the other per-user values are copied from
+  `Config/DefaultNodeToCode.ini` to your own settings (**Editor Preferences > Plugins > Node to Code (User)**). The
+  old keys stay in the project file for teammates still on 1.2.x and are listed in the log; delete them once everyone
+  has upgraded ([#285]).
 
 If `Config/DefaultNodeToCode.ini` or `Config/DefaultEngine.ini` is read-only, the update runs again on the next
 start; check the files out first. Card 0079 ran this with settings written by 1.2.3 and by `main` on UE 5.6, 5.7
@@ -526,8 +765,15 @@ Only for people who ran a `dev-2.0` build before this beta.
 - Model selections and price overrides saved by enum name are converted to model IDs once, at the first start
   (settings version 4), and the old keys are removed; a saved model the catalog does not list is kept as the
   provider's **Custom Model ID** ([#108], [#109]).
-- `datatable_populator.populate_from_json` / `populate_from_csv` merge rows by name by default and save only
-  with `save=True`. Pass `clear_existing=True, save=True` for the old replace-and-save behaviour ([#47]).
+- Settings version 5: at the first start the per-user values (provider, LM Studio endpoint, MCP server port, window
+  colours, translation output folder, reference files outside the project) are copied once from the project config
+  to your own settings; the project config is not rewritten ([#285]).
+- The script library and its tools are removed, and with them the bundled scripts (including `datatable_populator`,
+  whose merge-by-name change was [#47]); see Removed ([#294], [#298]).
+- The `nodetocode` graph, function-pin, compile, save, `tag_graph` and `open_blueprint` functions return the MCP
+  tool's result as `data`; the 1.x keys still read for one release, with a deprecation warning ([#291]).
+- Translations are saved in one folder per run with a `manifest.json`; folders saved by earlier builds stay as they
+  are and still load ([#226]).
 - The stdio bridge reads streamed responses and no longer follows `sseUrl` ([#60]).
 - The second server on the MCP port + 1 (`/mcp/events`, `/mcp/notifications`) is gone, and so are
   `initialize`'s `_meta.notificationUrl` and the `nodetocode/taskStarted` notification. Only the MCP port is
@@ -583,7 +829,9 @@ Thanks to the people whose pull requests are in this release:
   handling from #20, in [#71].
 - [@YakovAU](https://github.com/YakovAU): the Copy Blueprint JSON command from #3 (c5177ab).
 - [@flashpoint493](https://github.com/flashpoint493): the missing-include fix in #9, which landed in deca5c3
-  without credit at the time.
+  without credit at the time, and the member and local variable capture from #8, ported in [#228].
+- [@akashskypatel](https://github.com/akashskypatel): the ideas in #21 that informed the HTTP transport seam and the
+  429/529/5xx retries in [#311].
 
 [2.0.0-beta.1]: https://github.com/protospatial/NodeToCode/tree/dev-2.0
 [#9]: https://github.com/protospatial/NodeToCode/pull/9
@@ -774,3 +1022,76 @@ Thanks to the people whose pull requests are in this release:
 [#218]: https://github.com/protospatial/NodeToCode/pull/218
 [#219]: https://github.com/protospatial/NodeToCode/pull/219
 [#220]: https://github.com/protospatial/NodeToCode/pull/220
+[#222]: https://github.com/protospatial/NodeToCode/pull/222
+[#223]: https://github.com/protospatial/NodeToCode/pull/223
+[#224]: https://github.com/protospatial/NodeToCode/pull/224
+[#225]: https://github.com/protospatial/NodeToCode/pull/225
+[#226]: https://github.com/protospatial/NodeToCode/pull/226
+[#227]: https://github.com/protospatial/NodeToCode/pull/227
+[#228]: https://github.com/protospatial/NodeToCode/pull/228
+[#229]: https://github.com/protospatial/NodeToCode/pull/229
+[#230]: https://github.com/protospatial/NodeToCode/pull/230
+[#231]: https://github.com/protospatial/NodeToCode/pull/231
+[#232]: https://github.com/protospatial/NodeToCode/pull/232
+[#233]: https://github.com/protospatial/NodeToCode/pull/233
+[#234]: https://github.com/protospatial/NodeToCode/pull/234
+[#235]: https://github.com/protospatial/NodeToCode/pull/235
+[#236]: https://github.com/protospatial/NodeToCode/pull/236
+[#237]: https://github.com/protospatial/NodeToCode/pull/237
+[#238]: https://github.com/protospatial/NodeToCode/pull/238
+[#239]: https://github.com/protospatial/NodeToCode/pull/239
+[#240]: https://github.com/protospatial/NodeToCode/pull/240
+[#242]: https://github.com/protospatial/NodeToCode/pull/242
+[#243]: https://github.com/protospatial/NodeToCode/pull/243
+[#244]: https://github.com/protospatial/NodeToCode/pull/244
+[#245]: https://github.com/protospatial/NodeToCode/pull/245
+[#246]: https://github.com/protospatial/NodeToCode/pull/246
+[#252]: https://github.com/protospatial/NodeToCode/pull/252
+[#253]: https://github.com/protospatial/NodeToCode/pull/253
+[#254]: https://github.com/protospatial/NodeToCode/pull/254
+[#257]: https://github.com/protospatial/NodeToCode/pull/257
+[#258]: https://github.com/protospatial/NodeToCode/pull/258
+[#259]: https://github.com/protospatial/NodeToCode/pull/259
+[#260]: https://github.com/protospatial/NodeToCode/pull/260
+[#261]: https://github.com/protospatial/NodeToCode/pull/261
+[#262]: https://github.com/protospatial/NodeToCode/pull/262
+[#264]: https://github.com/protospatial/NodeToCode/pull/264
+[#268]: https://github.com/protospatial/NodeToCode/pull/268
+[#269]: https://github.com/protospatial/NodeToCode/pull/269
+[#271]: https://github.com/protospatial/NodeToCode/pull/271
+[#272]: https://github.com/protospatial/NodeToCode/pull/272
+[#273]: https://github.com/protospatial/NodeToCode/pull/273
+[#275]: https://github.com/protospatial/NodeToCode/pull/275
+[#276]: https://github.com/protospatial/NodeToCode/pull/276
+[#277]: https://github.com/protospatial/NodeToCode/pull/277
+[#278]: https://github.com/protospatial/NodeToCode/pull/278
+[#279]: https://github.com/protospatial/NodeToCode/pull/279
+[#283]: https://github.com/protospatial/NodeToCode/pull/283
+[#284]: https://github.com/protospatial/NodeToCode/pull/284
+[#285]: https://github.com/protospatial/NodeToCode/pull/285
+[#286]: https://github.com/protospatial/NodeToCode/pull/286
+[#287]: https://github.com/protospatial/NodeToCode/pull/287
+[#288]: https://github.com/protospatial/NodeToCode/pull/288
+[#290]: https://github.com/protospatial/NodeToCode/pull/290
+[#291]: https://github.com/protospatial/NodeToCode/pull/291
+[#292]: https://github.com/protospatial/NodeToCode/pull/292
+[#293]: https://github.com/protospatial/NodeToCode/pull/293
+[#294]: https://github.com/protospatial/NodeToCode/pull/294
+[#295]: https://github.com/protospatial/NodeToCode/pull/295
+[#296]: https://github.com/protospatial/NodeToCode/pull/296
+[#297]: https://github.com/protospatial/NodeToCode/pull/297
+[#298]: https://github.com/protospatial/NodeToCode/pull/298
+[#299]: https://github.com/protospatial/NodeToCode/pull/299
+[#300]: https://github.com/protospatial/NodeToCode/pull/300
+[#301]: https://github.com/protospatial/NodeToCode/pull/301
+[#302]: https://github.com/protospatial/NodeToCode/pull/302
+[#303]: https://github.com/protospatial/NodeToCode/pull/303
+[#304]: https://github.com/protospatial/NodeToCode/pull/304
+[#305]: https://github.com/protospatial/NodeToCode/pull/305
+[#306]: https://github.com/protospatial/NodeToCode/pull/306
+[#307]: https://github.com/protospatial/NodeToCode/pull/307
+[#308]: https://github.com/protospatial/NodeToCode/pull/308
+[#309]: https://github.com/protospatial/NodeToCode/pull/309
+[#310]: https://github.com/protospatial/NodeToCode/pull/310
+[#311]: https://github.com/protospatial/NodeToCode/pull/311
+[#312]: https://github.com/protospatial/NodeToCode/pull/312
