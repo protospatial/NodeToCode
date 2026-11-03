@@ -142,6 +142,57 @@ def list_blueprint_graphs(blueprint_path: str) -> Dict[str, Any]:
         return make_error_result(str(e))
 
 
+def get_blueprint_dependencies(paths, include_call_graph: bool = True, include_referenced: bool = True,
+                               to_file: bool = False) -> Dict[str, Any]:
+    """
+    The dependency index of the project's Blueprints, Blueprint interfaces, macro libraries, user structs and user
+    enums under asset paths or content folders (as the MCP get-blueprint-dependencies tool returns it, always whole).
+
+    Args:
+        paths: An asset path or content folder, or a list of them, e.g. '/Game/Blueprints' or
+            ['/Game/Blueprints/BP_Door', '/Game/AI']
+        include_call_graph: Load the Blueprints for call, macro, cast and variable-type edges; False reads the
+            AssetRegistry alone (hard-package, parent and interface edges) and loads nothing
+        include_referenced: Also index the project's own assets the roots depend on outside paths (root False)
+        to_file: Also write the JSON export under Saved/NodeToCode/Dependencies ('savedTo', 'bytes')
+
+    Returns:
+        dict: {
+            'success': bool,
+            'data': {
+                'roots': [str], 'nodeCount': int, 'edgeCount': int,
+                'nodes': [{'path': str, 'name': str,
+                           'kind': str,          # enum, struct, interface, macro-library, blueprint
+                           'root': bool}],
+                'edges': [{'from': str, 'to': str,  # from depends on to (object paths)
+                           'kind': str,          # hard-package, parent, interface, calls, macro, cast, variable-type
+                           'graph': str, 'node': str}],  # node-level edges only
+                'order': [str],                  # every path once, dependencies first
+                'cycleGroups': [[str]],          # paths that depend on each other
+                'warnings': [str], 'inline': bool,
+                'savedTo': str, 'bytes': int,    # with to_file
+            } or None,
+            'error': str or None                 # starts with INVALID_ARGUMENT, NOT_FOUND or EXPORT_FAILED
+        }
+
+    Example:
+        index = get_blueprint_dependencies('/Game/Blueprints')['data']
+        for path in index['order']:
+            print(path)
+    """
+    try:
+        if isinstance(paths, str):
+            paths = [paths]
+        paths = [p for p in (paths or []) if isinstance(p, str) and p.strip()]
+        if not paths:
+            return make_error_result('INVALID_ARGUMENT: paths is required, an asset path or content folder such as /Game/Blueprints')
+        return _parse_bridge_result(unreal.N2CPythonBridge.get_blueprint_dependencies(
+            paths, bool(include_call_graph), bool(include_referenced), bool(to_file)))
+    except Exception as e:
+        log_error(f"get_blueprint_dependencies failed: {e}")
+        return make_error_result(str(e))
+
+
 def read_n2c_json(n2c_json: str) -> Dict[str, Any]:
     """
     Read N2C JSON text with NodeToCode's own reader, for example a saved N2C_BP_*.json translation file or the

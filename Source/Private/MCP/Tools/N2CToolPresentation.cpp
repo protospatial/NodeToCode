@@ -74,6 +74,7 @@ namespace N2CToolPresentationPrivate
 		TArray<FN2CToolPresentation> Table = {
 			// Blueprint discovery (Blueprint/Analysis)
 			Read(TEXT("export-n2cjson-batch"), TEXT("Export N2C JSON for many graphs")),
+			Read(TEXT("get-blueprint-dependencies"), TEXT("Read the dependency order of Blueprints")),
 			AlwaysLoad(Read(TEXT("get-blueprint-n2cjson"), TEXT("Read a Blueprint as N2C JSON"))),
 			Read(TEXT("get-editor-context"), TEXT("Read what the user is looking at")),
 			AlwaysLoad(Large(Read(TEXT("get-focused-blueprint"), TEXT("Read the focused Blueprint graph")))),
