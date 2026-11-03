@@ -1,7 +1,11 @@
+# Copyright (c) 2026 Nick McClure (Protospatial)
+# SPDX-License-Identifier: Apache-2.0
 """
-Unit tests for the stdio MCP bridge (Content/Python/mcp_bridge/nodetocode_bridge.py). No editor needed:
+Unit tests for the stdio MCP bridge (Content/Python/mcp_bridge/nodetocode_bridge.py). No editor needed. pytest collects
+the unittest classes, so build.ps1 -Test runs them with the rest of Tests/python (card 0524 moved them here from
+Content/Python/tests, which no test run collected). Alone:
 
-    python -I -m unittest discover -s Content/Python/tests -p "test_mcp_bridge*.py"
+    uv run --no-project --python 3.11 --with-requirements Tests/python/requirements.txt -- python -m pytest Tests/python/test_mcp_bridge_stdio.py
 
 The bridge runs as a child process, as an MCP client starts it, against a small stdlib HTTP server that plays the
 editor's /mcp endpoint. The child gets PYTHONUTF8=0 and no PYTHONIOENCODING, so on Windows its stdio would use the
@@ -20,7 +24,7 @@ import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-BRIDGE_DIR = os.path.normpath(os.path.join(HERE, '..', 'mcp_bridge'))
+BRIDGE_DIR = os.path.normpath(os.path.join(HERE, '..', '..', 'Content', 'Python', 'mcp_bridge'))
 BRIDGE = os.path.join(BRIDGE_DIR, 'nodetocode_bridge.py')
 sys.path.insert(0, BRIDGE_DIR)
 
