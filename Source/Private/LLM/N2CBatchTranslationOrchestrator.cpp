@@ -654,16 +654,21 @@ void UN2CBatchTranslationOrchestrator::SaveItemTranslation(const FN2CBatchTransl
 	}
 	Summary.bHasNotes = !Graph.Code.ImplementationNotes.IsEmpty();
 
-	// The shared language id and record path, which UN2CGraphStateManager::LoadTranslation reads back
-	UN2CGraphStateManager::Get().RecordSavedTranslation(
+	// The shared language id, the run and the root entry's files, which UN2CGraphStateManager::LoadTranslation reads
+	// back (card 0253)
+	UN2CGraphStateManager::Get().RecordArchivedTranslation(
 		GraphGuid,
 		Item.TagInfo.GraphName,
 		FSoftObjectPath(Item.TagInfo.BlueprintPath),
-		Root->Folder,
+		*Root,
+		BatchArchive->GetFolder(),
+		BatchArchive->GetRunId(),
 		GetSaveProvider(),
 		GetSaveModel(),
 		GetSaveLanguage(),
-		Summary
+		Summary,
+		Item.TranslationResponse.Usage.InputTokens,
+		Item.TranslationResponse.Usage.OutputTokens
 	);
 
 	FN2CLogger::Get().Log(

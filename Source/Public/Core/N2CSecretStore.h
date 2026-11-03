@@ -143,6 +143,18 @@ public:
     /** Target prefix of the plugin's own entries */
     static const TCHAR* const DefaultTargetPrefix;
 
+    /** The only prefix a test override may name (-N2CSecretPrefix=NodeToCodeTest/<guid>/, card 0523) */
+    static const TCHAR* const TestTargetRoot;
+
+    /**
+     * The target prefix the editor's store uses, from a command line: DefaultTargetPrefix, or in a non-shipping build
+     * the value of -N2CSecretPrefix= when it lies under TestTargetRoot (for a windowed check of Save Key or the API Key
+     * field that must not touch the user's NodeToCode/* entries). A trailing '/' is added when missing. A value outside
+     * TestTargetRoot, or one holding '*', is refused: the default is returned and OutWarning says why. Shipping builds
+     * always return the default and ignore the switch.
+     */
+    static FString ResolveTargetPrefix(const TCHAR* CommandLine, FString* OutWarning = nullptr);
+
     /** Largest key accepted (CRED_MAX_CREDENTIAL_BLOB_SIZE is 2560 bytes) */
     static constexpr int32 MaxKeyBytes = 2560;
 

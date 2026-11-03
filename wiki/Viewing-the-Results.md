@@ -30,8 +30,12 @@ the macOS Keychain, the same place as the API Key field in Project Settings; Oll
 translate it. The card hides after your first saved translation, or when you close it; **Show Get Started Card** in
 **Editor Preferences → Plugins → Node to Code (User)** brings it back.
 
+<img src="images/main-window/get-started.png" alt="The Get started card: provider, API key, Test Connection, target language and the N2C bar" width="880">
+
 With no tags yet, the tag tree says how to tag a first graph, and a search that matches no tag or category says so.
 The translation viewer with nothing loaded says how to get a translation there, instead of showing an empty editor.
+
+<img src="images/main-window/first-run.png" alt="The window before the first tag: the tag tree says how to tag a first graph" width="880">
 
 ## Tags and the graph list
 

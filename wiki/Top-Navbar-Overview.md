@@ -24,7 +24,8 @@ From top to bottom:
 
    Double-click a row to open its translation. Right-click a row for **Translate**, **View Translation**, **Export
    JSON**, **Open in Blueprint** and **Remove Tag**. Click, Shift-click and Ctrl-click check rows like a selection.
-5. **Actions.** **Selection** counts the checked graphs. **Batch Translate** sends one request per checked graph,
+5. **Actions.** **Selection** counts the checked graphs. **Batch Translate** sends one request per checked graph
+   (its progress dialog lists each graph with its Blueprint, for example `N2CFn (BP_A)`, with that graph's own status),
    **Export JSON** saves their Node to Code JSON to a new `BatchJson_...` folder in the **Output** folder (**Minify
    JSON** writes it on one line) and then says how many graphs it wrote, with an **Open folder** link, and
    **Remove Selected** takes the listed tags off them. These three are greyed out until you check a graph.
