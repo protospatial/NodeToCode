@@ -7,9 +7,11 @@
 #include "EditorSubsystem.h"
 #include "Code Editor/Models/N2CCodeLanguage.h"
 #include "Core/N2CTagTypes.h"
+#include "LLM/N2CBatchTranslationOrchestrator.h"
 #include "LLM/N2CLLMRequestHandle.h"
 #include "LLM/N2CLLMTypes.h"
 #include "LLM/N2CTranslationArchive.h"
+#include "Models/N2CBatchTranslationTypes.h"
 #include "Models/N2CBlueprint.h"
 #include "Models/N2CTranslation.h"
 #include "N2CTranslationSubsystem.generated.h"
@@ -81,9 +83,13 @@ struct NODETOCODE_API FN2CTranslationSessionInfo
 	UPROPERTY(BlueprintReadOnly, Category = "NodeToCode|Translation")
 	FString ErrorMessage;
 
-	/** The archive run the result was written to (empty until it succeeded) */
+	/** The archive run the result was written to (empty until it succeeded; a batch's run folder once it ended) */
 	UPROPERTY(BlueprintReadOnly, Category = "NodeToCode|Translation")
 	FString RunFolder;
+
+	/** The graphs of a batch session (Source Batch); 0 for a single translation */
+	UPROPERTY(BlueprintReadOnly, Category = "NodeToCode|Translation")
+	int32 ItemCount = 0;
 
 	bool IsFinished() const
 	{
@@ -135,6 +141,9 @@ struct NODETOCODE_API FN2CTranslationSession
 	/** The config snapshot and language the session was started with */
 	FN2CLLMConfig Config;
 
+	/** A batch session's summary once it ended (counts, tokens, run folder, bCancelled) */
+	FN2CBatchTranslationResult BatchResult;
+
 	/** The tagged graph, as the record names it */
 	FN2CTagInfo GetGraph() const;
 
@@ -157,8 +166,13 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnN2CTranslationSessionChangedDynam
  * (OnSessionChangedNative, OnSessionChanged). The Node to Code window only observes; while no window is open, a
  * notification shows the progress with Cancel and, on success, Open Result.
  *
+ * A batch is a session too (StartBatch, Source Batch): the subsystem starts the batch orchestrator, holds the busy
+ * state and ends the session on the orchestrator's completion, whether or not a window is open. Cancel stops a single
+ * session's request or the batch (its remaining items are Skipped). Batches started on the orchestrator directly
+ * (translate-batch, the Blueprint library) have no session but still count as busy.
+ *
  * IsBusy() is the editor's one "a translation is running" flag (a session in flight or a batch); the N2C bars grey
- * out their Translate on OnBusyChanged. Batch, MCP and Python still have their own paths.
+ * out their Translate on OnBusyChanged. MCP and Python single translations still have their own paths.
  * Game thread only.
  */
 UCLASS(BlueprintType)
@@ -180,8 +194,39 @@ public:
 	 */
 	FGuid StartTranslation(const FN2CTranslationRequest& Request, FString* OutError = nullptr);
 
-	/** Cancels a session that has not finished: the request is cancelled through its handle. False when it had. */
+	/**
+	 * Starts a batch session: one request per graph, in order, through UN2CBatchTranslationOrchestrator. Returns its id,
+	 * or an invalid id with OutError when it did not start: TRANSLATION_IN_PROGRESS (IsBusy()), or the orchestrator's
+	 * BATCH_IN_PROGRESS, LLM_BUSY, LLM_UNAVAILABLE, INVALID_ARGUMENT or NO_VALID_ITEMS (then GetBatchItems() says why
+	 * per item). The session is Sending while the batch runs and ends Succeeded (at least one item translated, or none
+	 * failed), Failed (every item that ran failed) or Cancelled; BatchResult holds the summary. A batch whose every item
+	 * fails before a request is sent has ended when this returns.
+	 */
+	FGuid StartBatch(const TArray<FN2CTagInfo>& Graphs, const FN2CBatchTranslationOptions& Options = FN2CBatchTranslationOptions(),
+		FString* OutError = nullptr);
+
+	/** The batch session that is running, or an invalid id */
+	FGuid GetActiveBatchSession() const { return ActiveBatchSession; }
+
+	/**
+	 * Cancels a session that has not finished. A single session's request is cancelled through its handle; a batch's
+	 * in-flight request is cancelled and its remaining items are Skipped (CancelBatch). The session is Cancelled when
+	 * this returns, except a batch whose in-flight result was already being handled: it ends Cancelled right after that
+	 * item. False when the session had finished (or its result is being delivered now).
+	 */
 	bool Cancel(const FGuid& SessionId);
+
+	/** StartBatch with the settings' provider, model and language, for Blueprints and Python: invalid id and OutError when it did not start */
+	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Translation", meta = (DisplayName = "Start Batch Translation"))
+	FGuid StartBatchTranslation(const TArray<FN2CTagInfo>& Graphs, FString& OutError);
+
+	/** Cancel, for Blueprints and Python */
+	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Translation", meta = (DisplayName = "Cancel Translation Session"))
+	bool CancelSession(const FGuid& SessionId) { return Cancel(SessionId); }
+
+	/** A batch session's summary (counts, tokens, run folder, cancelled); false when the id is not a known batch session */
+	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Translation")
+	bool GetBatchSessionResult(const FGuid& SessionId, FN2CBatchTranslationResult& OutResult) const;
 
 	/** True while a session is unfinished or a batch translation runs */
 	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "NodeToCode|Translation")
@@ -261,6 +306,12 @@ private:
 	/** Broadcasts OnBusyChanged when IsBusy() differs from the last broadcast; bBatchEnded: a batch just finished */
 	void UpdateBusy(bool bBatchEnded = false);
 
+	/** The orchestrator's completion of any batch: ends the batch session it belongs to */
+	void HandleBatchComplete(const FN2CBatchTranslationResult& Result);
+
+	/** Moves a batch session to its final state from the orchestrator's summary */
+	void FinishBatchSession(FN2CTranslationSession& Session, const FN2CBatchTranslationResult& Result);
+
 	/** Drops the oldest finished sessions beyond MaxFinishedSessions */
 	void PruneSessions();
 
@@ -279,4 +330,15 @@ private:
 
 	FDelegateHandle BatchProgressHandle;
 	FDelegateHandle BatchCompleteHandle;
+
+	/** The batch session running, and the orchestrator serial of its batch */
+	FGuid ActiveBatchSession;
+	int32 ActiveBatchSerial = INDEX_NONE;
+
+	/** Inside StartBatch's call to the orchestrator: a completion then is kept in StartedBatchResult */
+	bool bStartingBatch = false;
+	TOptional<FN2CBatchTranslationResult> StartedBatchResult;
+
+	/** Inside the orchestrator's completion broadcast, while it still reports the batch in progress */
+	bool bBatchEnding = false;
 };

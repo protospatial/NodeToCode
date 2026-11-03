@@ -402,12 +402,17 @@ Singleton orchestrator managing batch operations:
 | Method | Description |
 |--------|-------------|
 | `StartBatchTranslation()` | Begin batch translation from TagInfo array |
-| `CancelBatch()` | Cancel current batch (marks remaining as Skipped) |
+| `StartBatchTranslationWithOptions()` | With provider, model and language for every item and pre-resolved graphs; the reason when it cannot start |
+| `CancelBatch()` | Cancel current batch: the in-flight request at once, remaining items Skipped, `bCancelled` in the result |
 | `IsBatchInProgress()` | Check if batch is running |
 | `GetBatchProgress()` | Get progress percentage (0.0 - 1.0) |
 | `GetCurrentItemIndex()` / `GetTotalItemCount()` | Progress tracking |
 | `GetCurrentResult()` | Get current/partial result |
 | `BatchExportJson()` | Export to JSON without LLM translation |
+
+The editor's Batch Translate does not call it directly: it starts a batch session of `UN2CTranslationSubsystem`
+(`StartBatch`, card 0255), which holds the busy state and ends the session on `OnBatchCompleteNative` whether or not
+the window still exists; `Cancel(session)` cancels the batch. `SenderOverride` sends items to a fake service in specs.
 
 Key features:
 - Loads blueprints via `FSoftObjectPath::TryLoad()` without editor focus

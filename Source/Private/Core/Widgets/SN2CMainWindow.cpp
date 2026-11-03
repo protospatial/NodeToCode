@@ -110,20 +110,7 @@ void SN2CMainWindow::Construct(const FArguments& InArgs)
 				.VAlign(VAlign_Center)
 				[
 					SAssignNew(BatchProgressModal, SN2CBatchProgressModal)
-					.OnCancelRequested(FSimpleDelegate::CreateLambda([this]()
-					{
-						// The modal shows a batch or one translation session
-						if (UN2CBatchTranslationOrchestrator::Get().IsBatchInProgress())
-						{
-							UN2CBatchTranslationOrchestrator::Get().CancelBatch();
-						}
-						else if (UN2CTranslationSubsystem* Translations = UN2CTranslationSubsystem::Get())
-						{
-							Translations->Cancel(ObservedSession);
-						}
-						ObservedSession.Invalidate();
-						HideBatchProgress();
-					}))
+					.OnCancelRequested(FSimpleDelegate::CreateSP(this, &SN2CMainWindow::CancelOrCloseProgress))
 				]
 			]
 		]
@@ -359,20 +346,18 @@ void SN2CMainWindow::HandleViewTranslationRequested()
 
 void SN2CMainWindow::HandleBatchTranslateRequested()
 {
-	TArray<FN2CTagInfo> SelectedGraphs = GetSelectedGraphs();
-	if (SelectedGraphs.Num() == 0)
-	{
-		return;
-	}
+	StartBatchTranslation(GetSelectedGraphs());
+}
 
-	// Check if already translating (a session or a batch)
-	const UN2CTranslationSubsystem* Translations = UN2CTranslationSubsystem::Get();
-	if (Translations && Translations->IsBusy())
+void SN2CMainWindow::StartBatchTranslation(const TArray<FN2CTagInfo>& SelectedGraphs)
+{
+	UN2CTranslationSubsystem* Translations = UN2CTranslationSubsystem::Get();
+	if (SelectedGraphs.Num() == 0 || !Translations)
 	{
-		UE_LOG(LogNodeToCode, Warning, TEXT("[SN2CMainWindow] Translation already in progress"));
 		return;
 	}
 	ObservedSession.Invalidate();
+	ObservedBatch.Invalidate();
 
 	// Initialize and show the batch progress modal: one row per graph, in the orchestrator's item order
 	if (BatchProgressModal.IsValid())
@@ -381,13 +366,15 @@ void SN2CMainWindow::HandleBatchTranslateRequested()
 	}
 	ShowBatchProgress();
 
-	// Start the batch translation. It returns false without calling OnBatchComplete when the module is busy,
-	// fails to initialize or no item resolves, so roll the UI state back here.
+	// A batch session of the subsystem, which holds the busy state and ends the session whether or not this window
+	// still exists. When it does not start (a translation runs, the provider cannot be used, no graph resolves), the
+	// dialog goes and the reason is said.
 	UN2CBatchTranslationOrchestrator& Orchestrator = UN2CBatchTranslationOrchestrator::Get();
 	FString StartError;
-	if (!Orchestrator.StartBatchTranslationWithOptions(SelectedGraphs, FN2CBatchTranslationOptions(), StartError))
+	const FGuid BatchId = Translations->StartBatch(SelectedGraphs, FN2CBatchTranslationOptions(), &StartError);
+	if (!BatchId.IsValid())
 	{
-		UE_LOG(LogNodeToCode, Error, TEXT("[SN2CMainWindow] Batch translation did not start: %s"), *StartError);
+		UE_LOG(LogNodeToCode, Warning, TEXT("[SN2CMainWindow] Batch translation did not start: %s"), *StartError);
 		HideBatchProgress();
 		if (StartError.StartsWith(TEXT("NO_VALID_ITEMS")))
 		{
@@ -396,11 +383,18 @@ void SN2CMainWindow::HandleBatchTranslateRequested()
 		}
 		else
 		{
-			FNotificationInfo Info(NSLOCTEXT("NodeToCode", "BatchDidNotStart", "Batch translation did not start. Check the provider settings and the Output Log."));
-			Info.ExpireDuration = 6.0f;
+			FNotificationInfo Info(FText::Format(NSLOCTEXT("NodeToCode", "BatchDidNotStartReason", "Batch translation did not start: {0}"),
+				FText::FromString(StartError)));
+			Info.ExpireDuration = 8.0f;
 			FSlateNotificationManager::Get().AddNotification(Info);
 		}
 		return;
+	}
+	// The batch may have ended inside StartBatch (every graph failed before a request was sent)
+	const FN2CTranslationSession* Batch = Translations->FindSession(BatchId);
+	if (Batch && !Batch->Info.IsFinished())
+	{
+		ObservedBatch = BatchId;
 	}
 
 	// Graphs that did not resolve fail before any request: mark them in the modal and say why
@@ -680,12 +674,49 @@ void SN2CMainWindow::OnBatchProgress(int32 CurrentIndex, int32 TotalCount, const
 	}
 }
 
+void SN2CMainWindow::CancelOrCloseProgress()
+{
+	UN2CTranslationSubsystem* Translations = UN2CTranslationSubsystem::Get();
+	const FGuid Running = ObservedBatch.IsValid() ? ObservedBatch : ObservedSession;
+	if (!BatchProgressModal.IsValid() || BatchProgressModal->IsComplete() || !Translations || !Running.IsValid())
+	{
+		// Finished (the button reads Close), or nothing of this window's runs
+		ObservedSession.Invalidate();
+		ObservedBatch.Invalidate();
+		HideBatchProgress();
+		return;
+	}
+	if (BatchProgressModal->IsCancelling())
+	{
+		return;
+	}
+
+	// "Cancelling..." first: the cancelled completion usually arrives inside Cancel and replaces it (a batch's summary
+	// with its Skipped rows; a single session's dialog closes)
+	BatchProgressModal->SetCancelling();
+	Translations->Cancel(Running);
+
+	// A session that is gone or ended without telling this window leaves nothing to wait for
+	const FN2CTranslationSession* Session = Translations->FindSession(Running);
+	if ((!Session || Session->Info.IsFinished()) && bShowBatchProgress && !BatchProgressModal->IsComplete())
+	{
+		ObservedSession.Invalidate();
+		ObservedBatch.Invalidate();
+		HideBatchProgress();
+	}
+}
+
 // ==================== Translation Sessions ====================
 
 void SN2CMainWindow::HandleSessionChanged(const FN2CTranslationSession& Session)
 {
-	// The editor's own Translate buttons; batch, MCP and Python translations show elsewhere
+	// The editor's own Translate buttons; the batch this window started shows through the orchestrator's progress;
+	// MCP and Python translations show elsewhere
 	const FN2CTranslationSessionInfo& Info = Session.Info;
+	if (Info.SessionId == ObservedBatch && Info.IsFinished())
+	{
+		ObservedBatch.Invalidate();
+	}
 	if (Info.Source != EN2CTranslationSource::Overlay && Info.Source != EN2CTranslationSource::Row)
 	{
 		return;
@@ -785,13 +816,9 @@ FReply SN2CMainWindow::OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& I
 		}
 		if (bShowBatchProgress)
 		{
-			// Only allow closing the progress once nothing runs
-			const UN2CTranslationSubsystem* Translations = UN2CTranslationSubsystem::Get();
-			if (BatchProgressModal.IsValid() && !(Translations ? Translations->IsBusy() : UN2CBatchTranslationOrchestrator::Get().IsBatchInProgress()))
-			{
-				HideBatchProgress();
-				return FReply::Handled();
-			}
+			// As the dialog's button: cancels what runs (through the subsystem), or closes a finished dialog
+			CancelOrCloseProgress();
+			return FReply::Handled();
 		}
 	}
 

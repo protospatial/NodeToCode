@@ -123,6 +123,10 @@ struct NODETOCODE_API FN2CBatchTranslationResult
 	UPROPERTY(BlueprintReadOnly, Category = "NodeToCode|Batch")
 	int32 TotalReasoningTokens = 0;
 
+	/** The batch was cancelled (CancelBatch): the items not translated by then are Skipped */
+	UPROPERTY(BlueprintReadOnly, Category = "NodeToCode|Batch")
+	bool bCancelled = false;
+
 	FN2CBatchTranslationResult() = default;
 };
 

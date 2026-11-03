@@ -64,8 +64,8 @@ bool UN2CBatchTranslationOrchestrator::StartBatchTranslationWithOptions(const TA
 		return false;
 	}
 
-	// Check if LLM module is already processing
-	UN2CLLMModule* LLMModule = UN2CLLMModule::Get();
+	// Check if LLM module is already processing (a fake sender does not use it)
+	UN2CLLMModule* LLMModule = SenderOverride ? nullptr : UN2CLLMModule::Get();
 	if (LLMModule && LLMModule->GetSystemStatus() == EN2CSystemStatus::Processing)
 	{
 		OutError = TEXT("LLM_BUSY: another translation is in flight; start the batch when it has finished");
@@ -274,9 +274,9 @@ void UN2CBatchTranslationOrchestrator::ProcessNextItem()
 	// Cache the JSON payload for saving alongside the translation
 	Item.CachedJsonPayload = JsonPayload;
 
-	// Send to LLM module
+	// Send to LLM module (or the fake sender a spec set)
 	UN2CLLMModule* LLMModule = UN2CLLMModule::Get();
-	if (LLMModule)
+	if (LLMModule || SenderOverride)
 	{
 		// The request re-reads the provider, model and key from the settings, so a change made during the batch applies
 		// from this item on. Its result comes back through this item's own OnParsed, tagged with the batch and item it
@@ -294,7 +294,9 @@ void UN2CBatchTranslationOrchestrator::ProcessNextItem()
 			});
 		// A batch with its own provider, model and language (translate-batch) sends every item with them (and keeps
 		// the module from writing an MCP run: the batch saves the item); the editor's batch reads the settings per item
-		FN2CLLMRequestHandleRef Request = BatchOptions.bUseRequestConfig
+		FN2CLLMRequestHandleRef Request = SenderOverride
+			? SenderOverride(JsonPayload, OnParsed)
+			: BatchOptions.bUseRequestConfig
 			? LLMModule->ProcessN2CJsonWithOverrides(JsonPayload, BatchOptions.RequestConfig, BatchOptions.Language,
 				FOnLLMResponseReceived(), OnParsed, /*bArchiveRun*/ false)
 			: LLMModule->ProcessN2CJson(JsonPayload, FOnLLMResponseReceived(), OnParsed);
@@ -384,6 +386,7 @@ void UN2CBatchTranslationOrchestrator::FinalizeBatch()
 	// Calculate final timing
 	CurrentResult.TotalTimeSeconds = static_cast<float>(FPlatformTime::Seconds() - BatchStartTime);
 	CurrentResult.BatchOutputPath = BatchOutputPath;
+	CurrentResult.bCancelled = bCancellationRequested;
 
 	// Generate batch summary, and the run's manifest once more (it already lists every saved item)
 	GenerateBatchSummary();
