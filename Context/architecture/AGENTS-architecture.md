@@ -29,7 +29,7 @@ Source/
 
 ## Plugin Module & Core Setup
 
-*   **`NodeToCode.uplugin`**: Descriptor file (version, author, module definition: "NodeToCode" Editor module, PostEngineInit loading, Win64/Mac platforms). Declares plugin dependencies: `PythonScriptPlugin`, `EditorScriptingUtilities`.
+*   **`NodeToCode.uplugin`**: Descriptor file (version, author, module definition: "NodeToCode" Editor module, PostDefault loading (card 0536: the MCP server starts there on UE 5.8; the rest of the startup runs on OnPostEngineInit), Win64/Mac platforms). Declares plugin dependencies: `PythonScriptPlugin`, `EditorScriptingUtilities`.
 *   **`Source/NodeToCode.Build.cs`**: Build script defining dependencies:
     *   **Public**: Core, CoreUObject, Engine, InputCore, Json, UnrealEd, BlueprintGraph, Slate, SlateCore, Kismet, GraphEditor, HTTP, UMG, ToolMenus, ApplicationCore, Projects, HTTPServer
     *   **Private**: DeveloperSettings, Blutility, UMGEditor, KismetWidgets, EditorSubsystem, EditorWidgets, AssetRegistry, ContentBrowserData, DesktopPlatform, PythonScriptPlugin, EditorScriptingUtilities

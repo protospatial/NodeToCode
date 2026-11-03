@@ -35,6 +35,19 @@ public:
 
 private:
 
+    /**
+     * The startup that needs the editor (GEditor, styles, tool menus, the editor integration, the token service):
+     * run on FCoreDelegates::OnPostEngineInit, since the module loads in PostDefault (card 0536), or at once when the
+     * module loads later. On UE 5.6 and 5.7 it also starts the MCP server.
+     */
+    void CompleteStartup();
+
+    /** Starts the MCP HTTP server unless it is turned off or the run is a commandlet or unattended without -N2CMcp */
+    void StartMcpServer();
+
+    /** FCoreDelegates::OnPostEngineInit entry (CompleteStartup) while the module waits for the editor */
+    FDelegateHandle PostEngineInitHandle;
+
     /** Handle of the entry in GEditor->ShouldDisableCPUThrottlingDelegates (keeps the editor at full speed only
      *  while a translation runs, without changing the user's preference) */
     FDelegateHandle DisableThrottleHandle;
