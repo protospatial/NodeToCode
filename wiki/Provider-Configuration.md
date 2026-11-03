@@ -12,6 +12,8 @@ name, with the ID the list shows). **Custom Model ID**, when set, is sent instea
 your Node to Code version. Node to Code then has no context size or price for it; add one under
 [Model Price Overrides](#model-price-overrides) to see costs.
 
+<img src="images/settings/llm-provider.png" alt="Project Settings, LLM Provider: HTTP Activity Timeout and Max Request Retries, then the Anthropic section with Model, Custom Model ID, API Key, API Key Status and the Remove Saved Anthropic Key button" width="760">
+
 ### [Anthropic](LLM-Provider-Documentation-&-Resources#anthropic-claude)
 - **API Key**: Enter your Claude API key and press Enter; it is saved to Windows Credential Manager and the field empties. **API Key Status** shows where the key in use comes from
 - **Model**:
