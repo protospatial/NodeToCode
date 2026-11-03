@@ -1,0 +1,101 @@
+{
+	"case": "OwnComponents",
+	"description": "Components asked for (card 0243). An Actor Blueprint implementing BlendableInterface and the Blueprint interface BPI_N2CGolden_Use adds a root SceneComponent Root, under it a StaticMeshComponent Mesh with the engine Cube mesh at relative location (0, 0, 50), and a RotatingMovementComponent Spin with rotation rate (0, 90, 0); the DefaultSceneRoot is gone. Function Setup runs CollectGarbage. Captured from Setup.",
+	"include_variables": true,
+	"known_defects": [],
+	"capture":
+	{
+		"version": "2.0.0",
+		"metadata":
+		{
+			"name": "BP_N2CGolden_OwnComponents",
+			"blueprint_type": "Normal",
+			"blueprint_class": "BP_N2CGolden_OwnComponents",
+			"parent_class": "Actor",
+			"asset_class": "Blueprint",
+			"interfaces": [
+				"BlendableInterface",
+				"BPI_N2CGolden_Use"
+			]
+		},
+		"graphs": [
+			{
+				"name": "Setup",
+				"graph_type": "Function",
+				"nodes": [
+					{
+						"id": "N1",
+						"type": "FunctionEntry",
+						"class": "K2Node_FunctionEntry",
+						"title": "Setup",
+						"member_parent": "BP_N2CGolden_OwnComponents",
+						"member_name": "None",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P1",
+								"name": "then",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N2",
+						"type": "CallFunction",
+						"class": "K2Node_CallFunction",
+						"member_parent": "KismetSystemLibrary",
+						"member_name": "CollectGarbage",
+						"input_pins": [
+							{
+								"id": "P2",
+								"name": "execute",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P3",
+								"name": "then"
+							}
+						]
+					}
+				],
+				"flows":
+				{
+					"execution": [
+						"N1.P1->N2.P2"
+					],
+					"data":
+					{
+					}
+				}
+			}
+		],
+		"structs": [],
+		"enums": [],
+		"components": [
+			{
+				"name": "Root",
+				"class": "SceneComponent"
+			},
+			{
+				"name": "Mesh",
+				"class": "StaticMeshComponent",
+				"parent": "Root",
+				"properties":
+				{
+					"StaticMesh": "/Script/Engine.StaticMesh'/Engine/BasicShapes/Cube.Cube'",
+					"RelativeLocation": "(X=0.000000,Y=0.000000,Z=50.000000)"
+				}
+			},
+			{
+				"name": "Spin",
+				"class": "RotatingMovementComponent",
+				"properties":
+				{
+					"RotationRate": "(Pitch=0.000000,Yaw=90.000000,Roll=0.000000)"
+				}
+			}
+		]
+	}
+}

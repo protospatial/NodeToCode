@@ -112,6 +112,16 @@ Option 1, provisionally. The sub-choices of card 0117:
   without a graph) does by default, a translation or one graph's capture does not, so its output is unchanged. A reader
   that predates it keeps both as unknown fields; this reader skips an entry that is not an object or has no `name`
   with a `SKIPPED_VARIABLE` warning.
+- Card 0243 (additive, under 2.0.0; from PR #8 by flashpoint493): `metadata` may carry the optional `interfaces` array
+  after `asset_class` (the implemented interfaces, named as `parent_class` is; every capture writes it when there are
+  any), and a document may carry an Actor Blueprint's components as the optional top-level `components` array after
+  `variables` (`N2CJsonContract::InterfacesField`, `ComponentsField`), written by the same captures as `variables`.
+  Each component has `name` and `class`, then the optional `parent` (as the actor is built, from the SCS node tree:
+  its parent node, the parent it names, or the inherited root), `socket`, `inherited` (true for a native or parent
+  Blueprint component listed because this Blueprint changes its defaults) and `properties`, an object of the CPF_Edit
+  properties whose value differs from the component's archetype, as exported text, at most 16
+  (`properties_truncated` when more differ). A reader that predates them keeps both as unknown fields; this reader
+  skips a component that is not an object or has no `name` with a `SKIPPED_COMPONENT` warning.
 - Card 0240 (agent document only; the contract and its version are unchanged): the validator reports findings as
   diagnostics, and a capture fails only on an error (a structural problem: a dangling flow, a duplicate ID, a missing
   name). The agent document of get-focused-blueprint, get-blueprint-n2cjson and find-nodes-in-graph lists the capture's

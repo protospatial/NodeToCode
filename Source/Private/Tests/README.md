@@ -376,6 +376,13 @@ whole output to `<Project>/Saved/Automation/N2CCaptureGolden/<case>.actual.json`
   Reverse of an empty timeline).
 - **Exec pins (card 0136):** `BranchSameTarget` (True and False into one node), `Sequence` (then_0 and then_1) and
   `ForEachLoop` (the StandardMacros loop over an int array input: Loop Body and Completed).
+- **Components (card 0243):** `OwnComponents` (an Actor Blueprint implementing BlendableInterface and a Blueprint
+  interface adds Root, Mesh under it with the Cube mesh and a relative location, and a RotatingMovementComponent) and
+  `InheritedComponents` (a child of a Blueprint that adds Root and Mesh: a Box under the inherited root, a Trigger whose
+  node names the inherited Mesh, and an override of the inherited Mesh's mesh), both with `IncludeVariables`. The
+  `Components` tests check the attach parents, that only edited properties are listed, the interfaces in metadata, a
+  native component a Static Mesh Actor child changes, that a translation capture leaves components out, and the
+  reader and writer of every field.
 - **Map and set loops (card 0484):** `ForEachMapSet` (For Each (Map) over a Name-to-int map input, whose Completed runs
   For Each (Set) over a Name set input). The engine stores their key and value pin labels with `FText::FromString`, so
   `N2CStableNames::PinLabel` maps the engine's default names back to "Map Key", "Map Value" and "Set Value"; the
