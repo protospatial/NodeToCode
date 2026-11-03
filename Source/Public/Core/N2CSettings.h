@@ -98,6 +98,23 @@ struct NODETOCODE_API FN2CMcpClientConfigWriter
 };
 
 /**
+ * The Saved Key row under each cloud provider in Project Settings (card 0488): FN2CApiKeyRemoverCustomization draws a
+ * Remove Saved <Provider> Key button for it. The settings viewer does not show CallInEditor functions of a settings
+ * object, so the button is a property row, as the MCP Client Config row is. Holds only which provider it is for.
+ */
+USTRUCT()
+struct NODETOCODE_API FN2CApiKeyRemover
+{
+    GENERATED_BODY()
+
+    FN2CApiKeyRemover() = default;
+    explicit FN2CApiKeyRemover(EN2CLLMProvider InProvider) : Provider(InProvider) {}
+
+    UPROPERTY()
+    EN2CLLMProvider Provider = EN2CLLMProvider::Anthropic;
+};
+
+/**
  * The four enum-keyed price maps settings saved before version 4 (OpenAIModelPricing, AnthropicModelPricing,
  * GeminiModelPricing, DeepSeekModelPricing), read from the config by UN2CSettings::ReadLegacyPricingMaps with the
  * engine's own text import so the saved format is parsed exactly as LoadConfig parsed it. Not a setting.
@@ -279,6 +296,11 @@ public:
         meta = (DisplayName = "API Key Status"))
     FString Anthropic_API_Key_Source;
 
+    /** The Remove Saved Anthropic Key button (card 0488); transient, nothing is saved */
+    UPROPERTY(EditAnywhere, Transient, Category = "Node to Code | LLM Services | Anthropic",
+        meta = (DisplayName = "Saved Key", ToolTip = "Removes the Anthropic key saved with the API Key field from Windows Credential Manager (the per-user secrets file on other platforms). A key in the environment is not affected."))
+    FN2CApiKeyRemover AnthropicKeyRemover = FN2CApiKeyRemover(EN2CLLMProvider::Anthropic);
+
     /** Output token budget per request; 0 = Auto, from the model's registry entry (see the tooltip) */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | Anthropic",
         meta = (DisplayName = "Max Output Tokens", ClampMin = "0", UIMin = "0",
@@ -311,6 +333,11 @@ public:
         meta = (DisplayName = "API Key Status"))
     FString OpenAI_API_Key_Source;
 
+    /** The Remove Saved OpenAI Key button (card 0488); transient, nothing is saved */
+    UPROPERTY(EditAnywhere, Transient, Category = "Node to Code | LLM Services | OpenAI",
+        meta = (DisplayName = "Saved Key", ToolTip = "Removes the OpenAI key saved with the API Key field from Windows Credential Manager (the per-user secrets file on other platforms). A key in the environment is not affected."))
+    FN2CApiKeyRemover OpenAIKeyRemover = FN2CApiKeyRemover(EN2CLLMProvider::OpenAI);
+
     /** Output token budget per request; 0 = Auto, from the model's registry entry (see the tooltip) */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | OpenAI",
         meta = (DisplayName = "Max Output Tokens", ClampMin = "0", UIMin = "0",
@@ -342,6 +369,11 @@ public:
     UPROPERTY(VisibleAnywhere, Transient, Category = "Node to Code | LLM Services | Gemini",
         meta = (DisplayName = "API Key Status"))
     FString Gemini_API_Key_Source;
+
+    /** The Remove Saved Gemini Key button (card 0488); transient, nothing is saved */
+    UPROPERTY(EditAnywhere, Transient, Category = "Node to Code | LLM Services | Gemini",
+        meta = (DisplayName = "Saved Key", ToolTip = "Removes the Gemini key saved with the API Key field from Windows Credential Manager (the per-user secrets file on other platforms). A key in the environment is not affected."))
+    FN2CApiKeyRemover GeminiKeyRemover = FN2CApiKeyRemover(EN2CLLMProvider::Gemini);
 
     /** Output token budget per request; 0 = Auto, from the model's registry entry (see the tooltip) */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | Gemini",
@@ -380,6 +412,11 @@ public:
     UPROPERTY(VisibleAnywhere, Transient, Category = "Node to Code | LLM Services | DeepSeek",
         meta = (DisplayName = "API Key Status"))
     FString DeepSeek_API_Key_Source;
+
+    /** The Remove Saved DeepSeek Key button (card 0488); transient, nothing is saved */
+    UPROPERTY(EditAnywhere, Transient, Category = "Node to Code | LLM Services | DeepSeek",
+        meta = (DisplayName = "Saved Key", ToolTip = "Removes the DeepSeek key saved with the API Key field from Windows Credential Manager (the per-user secrets file on other platforms). A key in the environment is not affected."))
+    FN2CApiKeyRemover DeepSeekKeyRemover = FN2CApiKeyRemover(EN2CLLMProvider::DeepSeek);
 
     /** Output token budget per request; 0 = Auto, from the model's registry entry (see the tooltip) */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | DeepSeek",
@@ -544,14 +581,13 @@ public:
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Node to Code | LLM Services")
     static bool HasApiKey(EN2CLLMProvider InProvider);
 
-    /** Remove Saved Key buttons under each provider in Project Settings */
-    UFUNCTION(CallInEditor, Category = "Node to Code | LLM Services | Anthropic", meta = (DisplayName = "Remove Saved Anthropic Key"))
+    /**
+     * Removes Provider's saved key, as the Saved Key row's button does (card 0488: the CallInEditor buttons these
+     * replaced were never shown by the settings viewer).
+     */
     void RemoveSavedAnthropicKey();
-    UFUNCTION(CallInEditor, Category = "Node to Code | LLM Services | OpenAI", meta = (DisplayName = "Remove Saved OpenAI Key"))
     void RemoveSavedOpenAIKey();
-    UFUNCTION(CallInEditor, Category = "Node to Code | LLM Services | Gemini", meta = (DisplayName = "Remove Saved Gemini Key"))
     void RemoveSavedGeminiKey();
-    UFUNCTION(CallInEditor, Category = "Node to Code | LLM Services | DeepSeek", meta = (DisplayName = "Remove Saved DeepSeek Key"))
     void RemoveSavedDeepSeekKey();
 
     /**
