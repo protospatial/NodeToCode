@@ -8,6 +8,9 @@
 
 class UEdGraph;
 class UK2Node;
+class UMaterial;
+class UMaterialFunction;
+class UObject;
 
 /** What one capture includes */
 struct NODETOCODE_API FN2CCaptureOptions
@@ -116,6 +119,25 @@ namespace N2C
 	 * nested graphs outside the list (another Blueprint's functions and macros) follow within Options.Depth. Graphs
 	 * with no nodes are left out; an error when none has any, and UNSUPPORTED_GRAPH_TYPE when one is of a refused type.
 	 */
+	/**
+	 * Material capture (card 0449, decision 0009): the saved asset's expressions, never a Material Editor's working copy,
+	 * into a document whose asset_kind is Material (FN2CMaterialCaptureContext describes the shape). Options.Depth
+	 * limits how deep material function calls are followed (Options' other fields do not apply). The exact class is
+	 * required: a subclass (UPreviewMaterial, a material layer or blend) is UNSUPPORTED_ASSET_TYPE.
+	 */
+	NODETOCODE_API TValueOrError<FN2CCapture, FString> CaptureMaterial(UMaterial& Material,
+		const FN2CCaptureOptions& Options = FN2CCaptureOptions());
+	NODETOCODE_API TValueOrError<FN2CCapture, FString> CaptureMaterialFunction(UMaterialFunction& Function,
+		const FN2CCaptureOptions& Options = FN2CCaptureOptions());
+
+	/**
+	 * Captures a material asset: a UMaterial or a UMaterialFunction (exact classes). Anything else, a material instance,
+	 * function instance, material layer or blend among them, is an error starting "UNSUPPORTED_ASSET_TYPE: " naming its
+	 * class (decision 0009 item 1).
+	 */
+	NODETOCODE_API TValueOrError<FN2CCapture, FString> CaptureMaterialAsset(UObject& Asset,
+		const FN2CCaptureOptions& Options = FN2CCaptureOptions());
+
 	NODETOCODE_API TValueOrError<FN2CCapture, FString> CaptureGraphs(TConstArrayView<UEdGraph*> Graphs,
 		const FN2CCaptureOptions& Options = FN2CCaptureOptions());
 

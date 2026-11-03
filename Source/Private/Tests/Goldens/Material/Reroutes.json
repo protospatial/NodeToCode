@@ -1,0 +1,120 @@
+{
+	"case": "Reroutes",
+	"description": "A constant through a reroute and a named reroute (declaration and usage) into BaseColor; the reroutes are traced, not captured",
+	"depth": 0,
+	"warnings": [],
+	"capture":
+	{
+		"version": "2.0.0",
+		"metadata":
+		{
+			"name": "M_N2CGolden_Reroutes",
+			"asset_class": "Material",
+			"asset_kind": "Material",
+			"material":
+			{
+				"domain": "Surface",
+				"blend_mode": "Opaque",
+				"shading_models": [
+					"DefaultLit"
+				]
+			}
+		},
+		"graphs": [
+			{
+				"name": "M_N2CGolden_Reroutes",
+				"graph_type": "Material",
+				"nodes": [
+					{
+						"id": "N1",
+						"type": "MaterialExpression",
+						"class": "MaterialExpressionConstant3Vector",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P1",
+								"name": "RGB",
+								"type": "Wildcard",
+								"connected": true
+							},
+							{
+								"id": "P2",
+								"name": "R",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P3",
+								"name": "G",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P4",
+								"name": "B",
+								"type": "Wildcard"
+							}
+						],
+						"properties":
+						{
+							"Constant": "(R=0.100000,G=0.600000,B=0.300000,A=1.000000)"
+						}
+					},
+					{
+						"id": "N2",
+						"type": "MaterialExpression",
+						"class": "MaterialExpressionOneMinus",
+						"input_pins": [
+							{
+								"id": "P5",
+								"name": "Input",
+								"type": "Wildcard",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P6",
+								"name": "Output",
+								"type": "Wildcard",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N3",
+						"type": "MaterialOutput",
+						"class": "Material",
+						"input_pins": [
+							{
+								"id": "P7",
+								"name": "EmissiveColor",
+								"type": "Wildcard",
+								"connected": true
+							},
+							{
+								"id": "P8",
+								"name": "BaseColor",
+								"type": "Wildcard",
+								"connected": true
+							}
+						],
+						"output_pins": []
+					}
+				],
+				"flows":
+				{
+					"execution": [],
+					"data":
+					{
+						"N1.P1": [
+							"N2.P5",
+							"N3.P7"
+						],
+						"N2.P6": "N3.P8"
+					}
+				}
+			}
+		],
+		"structs": [],
+		"enums": []
+	}
+}

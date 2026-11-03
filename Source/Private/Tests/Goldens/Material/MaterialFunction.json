@@ -1,0 +1,104 @@
+{
+	"case": "MaterialFunction",
+	"description": "A material function captured as the asset: graph_type MaterialFunction, FunctionOutput is the boundary",
+	"depth": 0,
+	"warnings": [],
+	"capture":
+	{
+		"version": "2.0.0",
+		"metadata":
+		{
+			"name": "MF_N2CGolden_Half",
+			"asset_class": "MaterialFunction",
+			"asset_kind": "Material"
+		},
+		"graphs": [
+			{
+				"name": "MF_N2CGolden_Half",
+				"graph_type": "MaterialFunction",
+				"nodes": [
+					{
+						"id": "N1",
+						"type": "MaterialExpression",
+						"class": "MaterialExpressionFunctionInput",
+						"member_name": "In",
+						"input_pins": [
+							{
+								"id": "P1",
+								"name": "Preview",
+								"type": "Wildcard"
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P2",
+								"name": "Output",
+								"type": "Wildcard",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N2",
+						"type": "MaterialExpression",
+						"class": "MaterialExpressionMultiply",
+						"input_pins": [
+							{
+								"id": "P3",
+								"name": "A",
+								"type": "Wildcard",
+								"connected": true
+							},
+							{
+								"id": "P4",
+								"name": "B",
+								"type": "Wildcard",
+								"default_value": "0.500000"
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P5",
+								"name": "Output",
+								"type": "Wildcard",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N3",
+						"type": "MaterialExpression",
+						"class": "MaterialExpressionFunctionOutput",
+						"member_name": "Out",
+						"input_pins": [
+							{
+								"id": "P6",
+								"name": "A",
+								"type": "Wildcard",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P7",
+								"name": "Output",
+								"type": "Wildcard"
+							}
+						]
+					}
+				],
+				"flows":
+				{
+					"execution": [],
+					"data":
+					{
+						"N1.P2": "N2.P3",
+						"N2.P5": "N3.P6"
+					}
+				}
+			}
+		],
+		"structs": [],
+		"enums": []
+	}
+}

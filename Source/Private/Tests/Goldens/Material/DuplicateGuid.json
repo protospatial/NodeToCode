@@ -1,0 +1,123 @@
+{
+	"case": "DuplicateGuid",
+	"description": "Two constants share a MaterialExpressionGuid (a paste inside a composite keeps it): the capture derives a GUID for the second and warns DUPLICATE_EXPRESSION_GUID",
+	"depth": 0,
+	"warnings": [
+		"DUPLICATE_EXPRESSION_GUID graphs[0].nodes[1]"
+	],
+	"capture":
+	{
+		"version": "2.0.0",
+		"metadata":
+		{
+			"name": "M_N2CGolden_DuplicateGuid",
+			"asset_class": "Material",
+			"asset_kind": "Material",
+			"material":
+			{
+				"domain": "Surface",
+				"blend_mode": "Opaque",
+				"shading_models": [
+					"DefaultLit"
+				]
+			}
+		},
+		"graphs": [
+			{
+				"name": "M_N2CGolden_DuplicateGuid",
+				"graph_type": "Material",
+				"nodes": [
+					{
+						"id": "N1",
+						"type": "MaterialExpression",
+						"class": "MaterialExpressionConstant",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P1",
+								"name": "Output",
+								"type": "Wildcard",
+								"connected": true
+							}
+						],
+						"properties":
+						{
+							"R": "0.100000"
+						}
+					},
+					{
+						"id": "N2",
+						"type": "MaterialExpression",
+						"class": "MaterialExpressionConstant",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P2",
+								"name": "Output",
+								"type": "Wildcard",
+								"connected": true
+							}
+						],
+						"properties":
+						{
+							"R": "0.200000"
+						}
+					},
+					{
+						"id": "N3",
+						"type": "MaterialExpression",
+						"class": "MaterialExpressionAdd",
+						"input_pins": [
+							{
+								"id": "P3",
+								"name": "A",
+								"type": "Wildcard",
+								"connected": true
+							},
+							{
+								"id": "P4",
+								"name": "B",
+								"type": "Wildcard",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P5",
+								"name": "Output",
+								"type": "Wildcard",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N4",
+						"type": "MaterialOutput",
+						"class": "Material",
+						"input_pins": [
+							{
+								"id": "P6",
+								"name": "Roughness",
+								"type": "Wildcard",
+								"connected": true
+							}
+						],
+						"output_pins": []
+					}
+				],
+				"flows":
+				{
+					"execution": [],
+					"data":
+					{
+						"N1.P1": "N3.P3",
+						"N2.P2": "N3.P4",
+						"N3.P5": "N4.P6"
+					}
+				}
+			}
+		],
+		"structs": [],
+		"enums": []
+	}
+}
