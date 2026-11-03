@@ -31,6 +31,7 @@ namespace N2CTranslationSubsystemPrivate
 		case EN2CTranslationSessionState::Queued: return TEXT("Queued");
 		case EN2CTranslationSessionState::Capturing: return TEXT("Capturing");
 		case EN2CTranslationSessionState::Sending: return TEXT("Sending");
+		case EN2CTranslationSessionState::Refining: return TEXT("Refining");
 		case EN2CTranslationSessionState::Succeeded: return TEXT("Succeeded");
 		case EN2CTranslationSessionState::Failed: return TEXT("Failed");
 		case EN2CTranslationSessionState::Cancelled: return TEXT("Cancelled");
@@ -117,6 +118,11 @@ void UN2CTranslationSubsystem::Deinitialize()
 	// Nothing may call back into a subsystem that is gone: unfinished requests are cancelled
 	for (const TSharedRef<FN2CTranslationSession>& Session : Sessions)
 	{
+		if (Session->Loop.IsValid())
+		{
+			Session->Loop->Cancel();
+			Session->Loop.Reset();
+		}
 		if (Session->Handle.IsValid())
 		{
 			Session->Handle->Cancel();
@@ -382,59 +388,89 @@ void UN2CTranslationSubsystem::RunSession(const FGuid& SessionId, const FN2CTran
 	Session->Json = Json;
 	Session->Capture = Capture;
 
-	SetState(*Session, EN2CTranslationSessionState::Sending);
-
-	// The result arrives on the game thread (HTTP completions do); a sender that answers elsewhere is moved there
-	TWeakObjectPtr<UN2CTranslationSubsystem> WeakThis(this);
-	const FOnN2CTranslationParsed OnParsed = FOnN2CTranslationParsed::CreateLambda(
-		[WeakThis, SessionId](const FN2CTranslationResponse& Response, bool bSuccess)
-		{
-			auto Deliver = [WeakThis, SessionId, Response, bSuccess]()
-			{
-				if (UN2CTranslationSubsystem* This = WeakThis.Get())
-				{
-					This->HandleResult(SessionId, Response, bSuccess);
-				}
-			};
-			if (IsInGameThread())
-			{
-				Deliver();
-			}
-			else
-			{
-				AsyncTask(ENamedThreads::GameThread, MoveTemp(Deliver));
-			}
-		});
-
-	FN2CLLMRequestHandlePtr Handle;
-	if (SenderOverride)
+	UN2CLLMModule* LLMModule = nullptr;
+	if (!SenderOverride)
 	{
-		Handle = SenderOverride(Json, Session->Config, Session->Info.Language, OnParsed);
-	}
-	else
-	{
-		UN2CLLMModule* LLMModule = UN2CLLMModule::Get();
+		LLMModule = UN2CLLMModule::Get();
 		if (!LLMModule || (!LLMModule->IsInitialized() && !LLMModule->Initialize()))
 		{
 			SetState(*Session, EN2CTranslationSessionState::Failed,
 				TEXT("The LLM module could not be initialized. Check the provider settings and the Output Log."));
 			return;
 		}
+	}
+
+	SetState(*Session, EN2CTranslationSessionState::Sending);
+	if (LLMModule)
+	{
 		// Blueprint listeners of the module's broadcasts still hear about the editor's translations
 		LLMModule->OnTranslationRequestSent.Broadcast();
-		// The session writes its own archive run (with the tagged graph), so no MCP run
-		Handle = LLMModule->ProcessN2CJsonWithOverrides(Json, Session->Config, Session->Info.Language, FOnLLMResponseReceived(),
-			OnParsed, /*bArchiveRun=*/false);
 	}
 
-	// A request that failed before it was sent has already delivered its result
-	if (!Session->Info.IsFinished())
+	// Verify and Refine (card 0313): the loop sends the JSON, verifies the answer and sends refine turns with the
+	// findings while errors remain and turns are left. Off for the language, it is one request.
+	const EN2CCodeLanguage Language = Session->Info.Language;
+	const TSharedRef<FN2CVerifyRefineLoop> Loop = MakeShared<FN2CVerifyRefineLoop>(Capture, Language,
+		N2CVerifyRefine::IsEnabledFor(Language), N2CVerifyRefine::GetMaxRefineTurns());
+	Session->Loop = Loop;
+	TWeakObjectPtr<UN2CTranslationSubsystem> WeakThis(this);
+	const FN2CLLMConfig Config = Session->Config;
+	auto SendTurn = [WeakThis, Json, Config, Language](const FString& RefineTurn, const FOnN2CTranslationParsed& OnParsed)
 	{
-		Session->Handle = Handle;
-	}
+		// The result arrives on the game thread (HTTP completions do); a sender that answers elsewhere is moved there
+		const FOnN2CTranslationParsed OnGameThread = FOnN2CTranslationParsed::CreateLambda(
+			[OnParsed](const FN2CTranslationResponse& Response, bool bSuccess)
+			{
+				if (IsInGameThread())
+				{
+					OnParsed.ExecuteIfBound(Response, bSuccess);
+				}
+				else
+				{
+					AsyncTask(ENamedThreads::GameThread, [OnParsed, Response, bSuccess]() { OnParsed.ExecuteIfBound(Response, bSuccess); });
+				}
+			});
+		UN2CTranslationSubsystem* This = WeakThis.Get();
+		if (This && This->SenderOverride)
+		{
+			return This->SenderOverride(Json, Config, Language, RefineTurn, OnGameThread);
+		}
+		UN2CLLMModule* Module = UN2CLLMModule::Get();
+		if (!Module)
+		{
+			FN2CTranslationResponse Failed;
+			Failed.Error = FN2CTranslationError::Make(TEXT("The LLM module is not available."));
+			OnGameThread.ExecuteIfBound(Failed, false);
+			FN2CLLMRequestHandleRef Done = FN2CLLMRequestHandle::Create();
+			Done->Complete(FOnLLMResponseReceived(), FString());
+			return Done;
+		}
+		// The session writes its own archive run (with the tagged graph), so no MCP run
+		return Module->ProcessN2CJsonWithOverrides(Json, Config, Language, FOnLLMResponseReceived(), OnGameThread,
+			/*bArchiveRun=*/false, RefineTurn);
+	};
+	auto OnDone = [WeakThis, SessionId](const FN2CTranslationResponse& Response, bool bSuccess, const FN2CVerifyOutcome& Verify)
+	{
+		if (UN2CTranslationSubsystem* This = WeakThis.Get())
+		{
+			This->HandleResult(SessionId, Response, bSuccess, Verify);
+		}
+	};
+	auto OnRefine = [WeakThis, SessionId](int32 TurnNumber, const FN2CVerifyAttempt&)
+	{
+		UN2CTranslationSubsystem* This = WeakThis.Get();
+		FN2CTranslationSession* Refining = This ? This->FindMutable(SessionId) : nullptr;
+		if (Refining && !Refining->Info.IsFinished())
+		{
+			Refining->Info.RefineTurns = TurnNumber;
+			This->SetState(*Refining, EN2CTranslationSessionState::Refining);
+		}
+	};
+	Loop->Start(SendTurn, OnDone, OnRefine);
 }
 
-void UN2CTranslationSubsystem::HandleResult(const FGuid& SessionId, const FN2CTranslationResponse& Response, bool bSuccess)
+void UN2CTranslationSubsystem::HandleResult(const FGuid& SessionId, const FN2CTranslationResponse& Response, bool bSuccess,
+	const FN2CVerifyOutcome& Verify)
 {
 	FN2CTranslationSession* Session = FindMutable(SessionId);
 	if (!Session || Session->Info.IsFinished())
@@ -442,13 +478,17 @@ void UN2CTranslationSubsystem::HandleResult(const FGuid& SessionId, const FN2CTr
 		return;
 	}
 	Session->Handle.Reset();
+	Session->Loop.Reset();
 	Session->Response = Response;
+	Session->Verify = Verify;
+	Session->Info.VerifyStatus = Verify.Status;
+	Session->Info.RefineTurns = Verify.RefineTurns;
 
 	if (bSuccess && Session->Capture.IsValid())
 	{
 		// Written and recorded with the provider, model and language it was sent with, whatever changed meanwhile
 		const FN2CTranslationRunInfo RunInfo = MakeSingleRunInfo(*Session->Capture, Session->Config, Session->Info.Language);
-		SaveSingleTranslation(Session->GetGraph(), Response, *Session->Capture, &RunInfo, &Session->Saved);
+		SaveSingleTranslation(Session->GetGraph(), Response, *Session->Capture, &RunInfo, &Session->Saved, &Verify);
 		Session->Info.RunFolder = Session->Saved.Folder;
 		SetState(*Session, EN2CTranslationSessionState::Succeeded);
 	}
@@ -488,12 +528,22 @@ bool UN2CTranslationSubsystem::Cancel(const FGuid& SessionId)
 		UN2CBatchTranslationOrchestrator::Get().CancelBatch();
 		return true;
 	}
-	// False: the result is being delivered now, so the session finishes with it
+	// False: the result is being delivered now, so the session finishes with it. The loop stops between turns too.
+	if (Session->Loop.IsValid() && !Session->Loop->Cancel())
+	{
+		return false;
+	}
 	if (Session->Handle.IsValid() && !Session->Handle->Cancel())
 	{
 		return false;
 	}
 	Session->Handle.Reset();
+	if (Session->Loop.IsValid())
+	{
+		Session->Verify = Session->Loop->GetOutcome();
+		Session->Info.RefineTurns = Session->Verify.RefineTurns;
+		Session->Loop.Reset();
+	}
 	SetState(*Session, EN2CTranslationSessionState::Cancelled);
 	return true;
 }
@@ -738,6 +788,10 @@ void UN2CTranslationSubsystem::UpdateNotification(const FN2CTranslationSession& 
 	case EN2CTranslationSessionState::Sending:
 		Item->SetText(FText::Format(LOCTEXT("Sending", "Translating {0} with {1}..."), GraphName, FText::FromString(Session.Info.Model)));
 		return;
+	case EN2CTranslationSessionState::Refining:
+		Item->SetText(FText::Format(LOCTEXT("Refining", "Refining {0}: verification found errors (refine turn {1})..."), GraphName,
+			FText::AsNumber(Session.Info.RefineTurns)));
+		return;
 	case EN2CTranslationSessionState::Succeeded:
 		Item->SetText(FText::Format(LOCTEXT("Succeeded", "Translated {0}"), GraphName));
 		Item->SetCompletionState(SNotificationItem::CS_Success);
@@ -786,7 +840,7 @@ FN2CTranslationRunInfo UN2CTranslationSubsystem::MakeSingleRunInfo(const FN2CBlu
 }
 
 bool UN2CTranslationSubsystem::SaveSingleTranslation(const FN2CTagInfo& Graph, const FN2CTranslationResponse& Response,
-	const FN2CBlueprint& Capture, const FN2CTranslationRunInfo* RunInfo, FN2CArchivedResponse* OutSaved)
+	const FN2CBlueprint& Capture, const FN2CTranslationRunInfo* RunInfo, FN2CArchivedResponse* OutSaved, const FN2CVerifyOutcome* Verify)
 {
 	const FN2CTranslationRunInfo Info = RunInfo ? *RunInfo : MakeSingleRunInfo(Capture);
 	const TSharedPtr<FN2CTranslationArchive> Run = FN2CTranslationArchive::BeginRun(Info);
@@ -804,6 +858,11 @@ bool UN2CTranslationSubsystem::SaveSingleTranslation(const FN2CTagInfo& Graph, c
 	Source.GraphGuid = Graph.GraphGuid;
 	FN2CArchivedResponse Saved;
 	Run->WriteResponse(Response, Source, FString(), Saved);
+	// What Verify and Refine did, beside the entry folders (the viewer reads it back)
+	if (Verify && Verify->Status != EN2CVerifyStatus::Off)
+	{
+		Run->WriteRunFile(FN2CVerifyOutcome::FileName(), Verify->ToJsonString());
+	}
 	if (OutSaved)
 	{
 		*OutSaved = Saved;

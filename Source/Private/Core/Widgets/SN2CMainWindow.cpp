@@ -741,6 +741,13 @@ void SN2CMainWindow::HandleSessionChanged(const FN2CTranslationSession& Session)
 			BatchProgressModal->SetProgress(0, 1, Info.GraphName);
 		}
 		return;
+	case EN2CTranslationSessionState::Refining:
+		// Verify and Refine sent the answer back with its findings (card 0313)
+		if (Info.SessionId == ObservedSession && BatchProgressModal.IsValid())
+		{
+			BatchProgressModal->SetProgress(0, 1, FString::Printf(TEXT("%s (refine turn %d)"), *Info.GraphName, Info.RefineTurns));
+		}
+		return;
 	default:
 		break;
 	}
@@ -789,6 +796,11 @@ void SN2CMainWindow::ShowSessionResult(const FN2CTranslationSession& Session)
 	if (const FN2CGraphTranslation* Translation = Session.GetRootTranslation())
 	{
 		ShowTranslationViewer(*Translation, Session.Info.GraphName, Session.Json);
+		// How Verify and Refine ended for it (card 0313)
+		if (TranslationViewer.IsValid())
+		{
+			TranslationViewer->SetVerifyOutcome(&Session.Verify);
+		}
 	}
 }
 

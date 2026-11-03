@@ -12,6 +12,9 @@ in [Window Overview](Top-Navbar-Overview).
   implementation and highlights it in the translation's language. A translation opened from the graph list is that
   row's Blueprint's own (a copy of a Blueprint keeps separate translations) and uses the language it was saved in.
 - **The code** ([Code Editor](Code-Editor)). The clipboard button at the top right copies the open tab.
+- **The verify status**, beside the tabs, when [Verify and Refine](Target-Language-Settings#verify-and-refine) checked
+  the translation: **Verified: passed**, **passed after N refine turns**, **N errors left after N refine turns**, or
+  **skipped**. Hover it for the findings.
 - **Translation Notes**: the model's notes on what the code needs and assumes ([Implementation Notes](Implementation-Notes)),
   with their own copy button.
 - The cross at the top right closes the viewer and shows the Tag Manager again.

@@ -450,7 +450,7 @@ Singleton orchestrator managing batch operations:
 
 The editor's Batch Translate does not call it directly: it starts a batch session of `UN2CTranslationSubsystem`
 (`StartBatch`, card 0255), which holds the busy state and ends the session on `OnBatchCompleteNative` whether or not
-the window still exists; `Cancel(session)` cancels the batch. `SenderOverride` sends items to a fake service in specs.
+the window still exists; `Cancel(session)` cancels the batch. `SenderOverride` sends items to a fake service in specs. Each item, like a single session, goes through Verify and Refine when it is on for the language ([C++ compile check](compile-gate.md#verify-and-refine)).
 
 Key features:
 - Loads blueprints via `FSoftObjectPath::TryLoad()` without editor focus

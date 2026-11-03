@@ -214,7 +214,8 @@ void FN2CTranslationSubsystemSpec::Define()
 		States.Reset();
 		BusyChanges.Reset();
 		Started.Reset();
-		Subsystem->SenderOverride = [this](const FString& Json, const FN2CLLMConfig&, EN2CCodeLanguage, const FOnN2CTranslationParsed& OnParsed)
+		Subsystem->SenderOverride = [this](const FString& Json, const FN2CLLMConfig&, EN2CCodeLanguage, const FString&,
+			const FOnN2CTranslationParsed& OnParsed)
 		{
 			FN2CLLMRequestHandleRef Handle = FN2CLLMRequestHandle::Create();
 			Sent.Add({Json, Handle, OnParsed});
