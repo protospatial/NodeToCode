@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Nick McClure (Protospatial)
 # SPDX-License-Identifier: Apache-2.0
 """NodeToCode's Agent Skills in the toolset registry (card 0177), run in the editor as
-NodeToCode.Toolsets.PythonTests.*: Epic's AgentSkillToolset lists the three skills with their descriptions and serves
+NodeToCode.Toolsets.PythonTests.*: Epic's AgentSkillToolset lists the six skills with their descriptions and serves
 their instructions, the text Agents/sync_skills.py generated from the SKILL.md files."""
 
 import json
@@ -15,7 +15,8 @@ from toolset_registry._registry_interface import execute_tool
 from nodetocode import skills
 
 SKILL_FILES = os.path.dirname(os.path.abspath(skills.__file__))
-EXPECTED = {'blueprint-comprehension', 'blueprint-to-cpp', 'blueprint-migration'}
+EXPECTED = {'blueprint-comprehension', 'blueprint-to-cpp', 'blueprint-migration', 'asset-iterator', 'asset-validator',
+            'project-folder-scaffold'}
 
 
 def _skill_toolset():
@@ -35,9 +36,9 @@ def _read(name):
 
 
 class NodeToCodeSkillsTestCase(unittest.IsolatedAsyncioTestCase):
-    """The three skills are AgentSkill classes the registry lists and serves."""
+    """The six skills are AgentSkill classes the registry lists and serves."""
 
-    def test_three_skills_with_description_and_instructions(self):
+    def test_every_skill_with_description_and_instructions(self):
         self.assertEqual(set(skills.SKILLS), EXPECTED)
         with open(os.path.join(SKILL_FILES, 'skills.json'), encoding='utf-8') as f:
             descriptions = json.load(f)
@@ -49,7 +50,7 @@ class NodeToCodeSkillsTestCase(unittest.IsolatedAsyncioTestCase):
             self.assertTrue(cdo.get_editor_property('description').strip(), name)
             self.assertTrue(cdo.get_editor_property('instructions').strip(), name)
 
-    async def test_list_skills_finds_the_three(self):
+    async def test_list_skills_finds_every_skill(self):
         toolset, tools = _skill_toolset()
         list_name, _params = tools['listskills']
         listed = (await execute_tool(toolset, list_name, {}))['returnValue']
@@ -74,3 +75,6 @@ class NodeToCodeSkillsTestCase(unittest.IsolatedAsyncioTestCase):
         self.assertIn('NodeToCodeTools.get_n2c_json', instructions['blueprint-comprehension'])
         self.assertIn('NodeToCodeTools.translate_graphs_by_tag', instructions['blueprint-to-cpp'])
         self.assertIn('BlueprintTools.compile_blueprint', instructions['blueprint-migration'])
+        # The asset skills load their script through nodetocode (card 0306)
+        for name in ('asset-iterator', 'asset-validator', 'project-folder-scaffold'):
+            self.assertIn("n2c.skill_script('%s')" % name, instructions[name], name)
