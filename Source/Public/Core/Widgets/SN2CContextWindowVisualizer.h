@@ -41,8 +41,9 @@ public:
 	void UpdateForSelection(const TArray<FN2CTagInfo>& SelectedGraphs);
 
 	/**
-	 * Saves settings the quick picker changed (provider, model) through UN2CSettings::SaveToProjectConfig, the path
-	 * Project Settings edits take, so a later Project Settings edit is not overridden at the next start
+	 * Saves settings the quick picker changed: the provider (a UN2CUserSettings property) to the user's own config with
+	 * UN2CUserSettings::SaveToUserConfig, the model through UN2CSettings::SaveToProjectConfig, the path Project
+	 * Settings edits take, so a later Project Settings edit is not overridden at the next start
 	 */
 	static void SaveSettings(TConstArrayView<FName> PropertyNames);
 

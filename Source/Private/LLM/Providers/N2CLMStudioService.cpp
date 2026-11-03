@@ -3,6 +3,7 @@
 #include "LLM/Providers/N2CLMStudioService.h"
 
 #include "Core/N2CSettings.h"
+#include "Core/N2CUserSettings.h"
 #include "Core/Services/N2CTokenEstimationService.h"
 #include "LLM/N2CSystemPromptManager.h"
 #include "Utils/N2CLogger.h"
@@ -17,10 +18,10 @@ bool UN2CLMStudioService::Initialize(const FN2CLLMConfig& InConfig)
     if (Settings)
     {
         // Use custom endpoint if provided, otherwise use default
-        if (!Settings->LMStudioEndpoint.IsEmpty())
+        if (!GetDefault<UN2CUserSettings>()->LMStudioEndpoint.IsEmpty())
         {
             // Normalize the base URL (remove trailing slash if present)
-            FString BaseUrl = Settings->LMStudioEndpoint;
+            FString BaseUrl = GetDefault<UN2CUserSettings>()->LMStudioEndpoint;
             if (BaseUrl.EndsWith(TEXT("/")))
             {
                 BaseUrl.RemoveAt(BaseUrl.Len() - 1);

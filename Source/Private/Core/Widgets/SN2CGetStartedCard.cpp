@@ -136,14 +136,15 @@ void SN2CGetStartedCard::Construct(const FArguments& InArgs)
 						})
 						.OnSelectionChanged_Lambda([this](TSharedPtr<EN2CLLMProvider> Item, ESelectInfo::Type SelectInfo)
 						{
-							UN2CSettings* Settings = GetMutableDefault<UN2CSettings>();
-							if (!Item.IsValid() || SelectInfo == ESelectInfo::Direct || Settings->Provider == *Item)
+							// The provider is the user's own setting: saved to their per-user config, never the project's
+							UN2CUserSettings* UserSettings = GetMutableDefault<UN2CUserSettings>();
+							if (!Item.IsValid() || SelectInfo == ESelectInfo::Direct || UserSettings->Provider == *Item)
 							{
 								return;
 							}
-							Settings->Provider = *Item;
-							Settings->SaveToProjectConfig({ GET_MEMBER_NAME_CHECKED(UN2CSettings, Provider) });
-							Settings->NotifyModelSettingsChanged();
+							UserSettings->Provider = *Item;
+							UserSettings->SaveToUserConfig({ GET_MEMBER_NAME_CHECKED(UN2CUserSettings, Provider) });
+							GetMutableDefault<UN2CSettings>()->NotifyModelSettingsChanged();
 							TestState = ETestState::None;
 							KeySaveMessage.Reset();
 						})
@@ -349,7 +350,7 @@ void SN2CGetStartedCard::RefreshSavedTranslationCount()
 
 EN2CLLMProvider SN2CGetStartedCard::GetProvider() const
 {
-	return GetDefault<UN2CSettings>()->Provider;
+	return GetDefault<UN2CUserSettings>()->Provider;
 }
 
 FReply SN2CGetStartedCard::HandleSaveKeyClicked()

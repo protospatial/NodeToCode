@@ -30,12 +30,13 @@
 > Default server will run on `http://localhost:1234`
 
 ### 4. Configure NodeToCode
-- In the Unreal Engine Editor, go to **Edit → Project Settings → Plugins → Node to Code**
-- Set **LLM Provider** to "LM Studio"
+- In the Unreal Engine Editor, go to **Edit → Editor Preferences → Plugins → Node to Code (User)** and set
+  **Provider** to "LM Studio" (or pick it in the Node to Code window's provider list)
+- Then go to **Edit → Project Settings → Plugins → Node to Code**
 - Configure **LM Studio Settings**:
   - **Model Name**: Enter the exact model name (e.g., "qwen3-32b") that you see in the `Models` (Red button) page of LM Studio
 	  - You can also click the `...` button to the right of the model and click `Copy Default Identifier` and paste it into the `Model Name` field in the Plugin settings
-  - **Server Endpoint**: `http://localhost:1234` (default)
+  - **LM Studio Server Endpoint**: `http://localhost:1234` (default), in **Editor Preferences → Plugins → Node to Code (User)**: it is your own setting, not the project's
   - **Prepended Model Command**: Optional commands like `/no_think` for faster responses with Qwen3 at the expense of potential translation quality degradation
 
 ### 5. Test Your Setup

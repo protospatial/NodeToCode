@@ -6,6 +6,7 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Core/N2CSettings.h"
+#include "Core/N2CUserSettings.h"
 #include "Core/Style/N2CStyle.h"
 #include "Core/Style/N2CUIColors.h"
 #include "Tests/N2CTestHelpers.h"
@@ -20,7 +21,7 @@ BEGIN_DEFINE_SPEC(FN2CUIColorsSpec, "NodeToCode.Style.UIColors", N2C_TEST_FLAGS)
 
 	FN2CUIColors Saved;
 
-	static FN2CUIColors& Palette() { return GetMutableDefault<UN2CSettings>()->UIColors; }
+	static FN2CUIColors& Palette() { return GetMutableDefault<UN2CUserSettings>()->UIColors; }
 
 	static bool Near(const FLinearColor& A, const FLinearColor& B) { return A.Equals(B, 1.e-4f); }
 
@@ -42,7 +43,7 @@ void FN2CUIColorsSpec::Define()
 
 	It(TEXT("Colors() is the UIColors property of the settings object"), [this]()
 	{
-		TestTrue(TEXT("same object"), &N2C::UI::Colors() == &GetDefault<UN2CSettings>()->UIColors);
+		TestTrue(TEXT("same object"), &N2C::UI::Colors() == &GetMutableDefault<UN2CUserSettings>()->UIColors);
 	});
 
 	It(TEXT("Linear and LinearAlpha convert a palette color from sRGB"), [this]()

@@ -19,38 +19,48 @@ thing you may want to act on, such as a model that is no longer offered. The sec
 project with nothing to upgrade is not written. If source control keeps either file read-only, the log says so and
 the upgrade runs again at every start until you check the file out.
 
+2.0 keeps the choices that differ per developer out of the project: **Provider**, the LM Studio endpoint, the
+translation output folder and reference files outside the project are your own settings, in **Editor Preferences →
+Plugins → Node to Code (User)** (saved in `Saved/Config/<Platform>Editor/EditorPerProjectUserSettings.ini`, which is
+not committed). At the first start each developer's editor copies their values there from `DefaultNodeToCode.ini`,
+once, and logs a line starting "NodeToCode settings version 5". Those keys are left in `DefaultNodeToCode.ini` so
+every teammate's editor can copy them too; delete them once everyone has opened the project with 2.0.
+
 ## Every 1.2.x setting
 
 Names as in **Project Settings → Plugins → Node to Code**, with the key in `DefaultNodeToCode.ini` in brackets.
 
 | 1.2.x setting | In 2.0 |
 |---|---|
-| **Provider** (`Provider`) | Kept |
+| **Provider** (`Provider`) | Kept, as your own setting (**Editor Preferences → Plugins → Node to Code (User)**); the key stays in `DefaultNodeToCode.ini` until you delete it |
 | Anthropic **Model** (`AnthropicModel`) | Every 1.2.x Claude model is retired, so it becomes `claude-sonnet-5-5`, with a warning. Saved as `AnthropicModelId`; the old key is removed |
 | OpenAI **Model** (`OpenAI_Model`) | GPT-4o, GPT-4o mini, GPT-4.1 and o3 keep their model (`gpt-4o-2024-08-06`, `gpt-4o-mini-2024-07-18`, `gpt-4.1`, `o3`). o1, o1-preview, o1-mini, o3-mini and o4-mini are retired and become `gpt-6.1-sol`, with a warning. Saved as `OpenAIModelId`; the old key is removed |
 | Gemini **Model** (`Gemini_Model`) | Every 1.2.x Gemini model is retired or gone, so it becomes `gemini-3.8-flash`, with a warning. Saved as `GeminiModelId`; the old key is removed |
 | DeepSeek **Model** (`DeepSeekModel`) | Both become `deepseek-flash`, the model DeepSeek now serves: R1 with **Thinking** `high`, V3 with **Thinking** `none`. No warning. Saved as `DeepSeekModelId` and `DeepSeekReasoningEffort`; the old key is removed |
 | Ollama settings (`OllamaConfig`) | **Ollama Endpoint**, **Prepended Model Command** and **Keep Alive Duration** are kept. **Context Window** and **Max Tokens** still at 1.2.x's 8192 become 0 (the server's own default); other values are kept. **Use System Prompts** is turned on. Each sampler (**Temperature**, **Top P**, **Top K** and the rest) that you changed from 1.2.x's default keeps your value and is switched on; one left at the default stays off, so the model's own default applies |
 | Ollama **Model Name** (`OllamaModel`) | Kept |
-| LM Studio **Model Name**, **Server Endpoint**, **Prepended Model Command** (`LMStudioModel`, `LMStudioEndpoint`, `LMStudioPrependedModelCommand`) | Kept |
+| LM Studio **Model Name**, **Prepended Model Command** (`LMStudioModel`, `LMStudioPrependedModelCommand`) | Kept |
+| LM Studio **Server Endpoint** (`LMStudioEndpoint`) | Kept, as your own **LM Studio Server Endpoint** (Node to Code (User)); the key stays in `DefaultNodeToCode.ini` until you delete it |
 | Model prices (`OpenAIModelPricing`, `AnthropicModelPricing`, `GeminiModelPricing`, `DeepSeekModelPricing`) | Replaced by one **Model Price Overrides** list keyed by model ID; prices come from the model catalog. A price you changed for a model 2.0 still offers stays as an override. Entries still at 1.2.x's built-in price, and entries for retired models, are dropped (so a price you typed that equals 1.2.x's own is dropped too). The four old keys are removed |
 | **Target Language** (`TargetLanguage`) | Kept |
 | **Max Translation Depth** (`TranslationDepth`) | Kept |
 | **Min Severity** (`MinSeverity`) | Kept |
 | Code editor themes (`CPPThemes`, `PythonThemes`, `JavaScriptThemes`, `CSharpThemes`, `SwiftThemes`, `PseudocodeThemes`) | Not used. 2.0 draws every language with one theme, **Theming → Code Editor Theme**. One warning names the keys; they are left in the file so you can copy your colours across, then delete them |
-| **Reference Source Files** (`ReferenceSourceFilePaths`) | Kept, including a path to a file that no longer exists (each translation then warns about it) |
+| **Reference Source Files** (`ReferenceSourceFilePaths`) | Kept, including a path to a file that no longer exists (each translation then warns about it). A file outside the project that exists on your machine is also added to your own **My Reference Source Files** (Node to Code (User)); the next edit of the project's list moves such files out of it and stores the rest relative to the project folder |
 | **Estimated Reference File Tokens** (`EstimatedReferenceTokens`) | Kept; the saved number shows until you edit **Reference Source Files** |
-| **Custom Translation Output Directory** (`CustomTranslationOutputDirectory`) | Kept |
+| **Custom Translation Output Directory** (`CustomTranslationOutputDirectory`) | Kept, as your own setting (Node to Code (User)); the key stays in `DefaultNodeToCode.ini` until you delete it |
 
 When a model is replaced, choose another one in the provider's **Model** list, or type an ID into **Custom Model ID**.
 
 ## New settings
 
 These have no 1.2.x value, so they start at their defaults: **Max Output Tokens** for each provider (0, Auto),
-**Custom Model ID** (empty), **HTTP Activity Timeout** (300 s), **UI Colors** and **Code Editor Theme** under
-**Theming**, and the **MCP Server** category: **Server Port** 27000, **Port Fallback Range** 10, **Tool Profile**
-Default toolsets, **Tool Exposure** List every tool and **Overlapping Tools** Automatic. Under **Node to Code (User)** (in **Editor Preferences → Plugins**), **Enable MCP Server** is on and **Allow MCP Python
-Execution** and **Allow MCP Writes Outside Project** are off. The file also gains `SettingsVersion=4`, which marks it as upgraded. What these settings mean
+**Custom Model ID** (empty), **HTTP Activity Timeout** (300 s), **Code Editor Theme** under **Theming**, and the
+**MCP Server** category: **Port Fallback Range** 10, **Tool Profile** Default toolsets, **Tool Exposure** List every
+tool and **Overlapping Tools** Automatic. Under **Node to Code (User)** (in **Editor Preferences → Plugins**),
+**Server Port** is 27000, **UI Colors** has its defaults, **Enable MCP Server** is on and **Allow MCP Python
+Execution** and **Allow MCP Writes Outside Project** are off. Both files gain `SettingsVersion=5`, which marks them
+as upgraded. What these settings mean
 for your machine: [Security Model](Security-Model).
 
 ## API keys

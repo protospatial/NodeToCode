@@ -36,7 +36,7 @@ options = {
     "deepseek_thinking": list(s.get_deep_seek_reasoning_effort_options()),
     "pricing_keys": list(s.get_model_pricing_key_options()),
 }
-s.set_editor_property("provider", unreal.N2CLLMProvider.ANTHROPIC)
+unreal.get_default_object(unreal.N2CUserSettings).set_editor_property("provider", unreal.N2CLLMProvider.ANTHROPIC)
 s.set_editor_property("anthropic_model_id", "claude-haiku-5-5")
 s.set_editor_property("open_ai_custom_model_id", "gpt-roundtrip-test")
 s.set_editor_property("deep_seek_reasoning_effort", "none")
@@ -55,7 +55,7 @@ s = unreal.get_default_object(unreal.N2CSettings)
 pricing = {str(k): [v.get_editor_property("input_cost"), v.get_editor_property("output_cost")]
            for k, v in s.get_editor_property("model_pricing").items()}
 result = {
-    "provider": s.get_editor_property("provider").name,
+    "provider": unreal.get_default_object(unreal.N2CUserSettings).get_editor_property("provider").name,
     "anthropic_model_id": s.get_editor_property("anthropic_model_id"),
     "open_ai_model_id": s.get_editor_property("open_ai_model_id"),
     "open_ai_custom_model_id": s.get_editor_property("open_ai_custom_model_id"),

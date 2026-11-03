@@ -418,7 +418,7 @@ void FN2CMcpHttpServerManager::StopServer()
 bool FN2CMcpHttpServerManager::StartConfiguredServers()
 {
 	const UN2CSettings* Settings = GetDefault<UN2CSettings>();
-	const int32 Port = Settings ? Settings->McpServerPort : 27000;
+	const int32 Port = Settings ? GetDefault<UN2CUserSettings>()->McpServerPort : 27000;
 	const int32 Range = Settings ? Settings->McpServerPortRange : DefaultPortRange;
 	bConfiguredServersStarted = true;
 
@@ -478,14 +478,14 @@ void FN2CMcpHttpServerManager::RestartConfiguredServers()
 	{
 		return;
 	}
-	if (bIsServerRunning && RequestedPort == Settings->McpServerPort && ServerPort == Settings->McpServerPort)
+	if (bIsServerRunning && RequestedPort == GetDefault<UN2CUserSettings>()->McpServerPort && ServerPort == GetDefault<UN2CUserSettings>()->McpServerPort)
 	{
 		return;
 	}
 
-	FN2CLogger::Get().Log(FString::Printf(TEXT("MCP server port changed to %d: restarting the MCP server"), Settings->McpServerPort), EN2CLogSeverity::Info);
+	FN2CLogger::Get().Log(FString::Printf(TEXT("MCP server port changed to %d: restarting the MCP server"), GetDefault<UN2CUserSettings>()->McpServerPort), EN2CLogSeverity::Info);
 	StopConfiguredServers();
-	if (StartConfiguredServers() && ServerPort == Settings->McpServerPort)
+	if (StartConfiguredServers() && ServerPort == GetDefault<UN2CUserSettings>()->McpServerPort)
 	{
 		// Not on the asked port, or not running: StartServer has already said so
 		Notify(FString::Printf(TEXT("NodeToCode MCP server restarted on http://127.0.0.1:%d/mcp. Update your MCP client's URL."), ServerPort),

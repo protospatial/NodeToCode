@@ -13,6 +13,7 @@
 #include "Utils/Validators/N2CPinValidator.h"
 #include "Core/N2CSerializer.h"
 #include "Core/N2CSettings.h"
+#include "Core/N2CUserSettings.h"
 #include "Core/N2CTargetLanguage.h"
 #include "LLM/N2CLLMModule.h"
 #include "LLM/N2CLLMTypes.h"
@@ -424,7 +425,7 @@ bool FN2CEditorIntegration::ResolveTranslationOverrides(const FString& ProviderI
     if (!OutOverrides.ModelId.IsEmpty())
     {
         // Local providers serve whatever models the user installed: only cloud model IDs can be checked
-        const EN2CLLMProvider Provider = OutOverrides.Provider.Get(GetDefault<UN2CSettings>()->Provider);
+        const EN2CLLMProvider Provider = OutOverrides.Provider.Get(GetDefault<UN2CUserSettings>()->Provider);
         if (Provider != EN2CLLMProvider::Ollama && Provider != EN2CLLMProvider::LMStudio)
         {
             const FString ProviderName = StaticEnum<EN2CLLMProvider>()->GetNameStringByValue(static_cast<int64>(Provider)).ToLower();

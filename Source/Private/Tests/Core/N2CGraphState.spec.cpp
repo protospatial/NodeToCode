@@ -7,6 +7,7 @@
 
 #include "Core/N2CGraphStateManager.h"
 #include "Core/N2CSettings.h"
+#include "Core/N2CUserSettings.h"
 #include "Core/N2CTargetLanguage.h"
 #include "HAL/FileManager.h"
 #include "HAL/PlatformProcess.h"
@@ -631,8 +632,8 @@ void FN2CGraphStateSpec::Define()
 					TUniquePtr<N2CTest::FScratchDir> Inside;
 					FString Base;
 					UN2CSettings* Settings = GetMutableDefault<UN2CSettings>();
-					const FString SettingBefore = Settings->CustomTranslationOutputDirectory.Path;
-					ON_SCOPE_EXIT { Settings->CustomTranslationOutputDirectory.Path = SettingBefore; };
+					const FString SettingBefore = GetMutableDefault<UN2CUserSettings>()->CustomTranslationOutputDirectory.Path;
+					ON_SCOPE_EXIT { GetMutableDefault<UN2CUserSettings>()->CustomTranslationOutputDirectory.Path = SettingBefore; };
 					switch (Kind)
 					{
 					case EFolderKind::InsideProject:
@@ -647,16 +648,16 @@ void FN2CGraphStateSpec::Define()
 						if (Kind == EFolderKind::CustomOutside)
 						{
 							Outside = MakeUnique<FOutsideDir>(TEXT("N2CStateSpecCustom"));
-							Settings->CustomTranslationOutputDirectory.Path = Outside->Path;
+							GetMutableDefault<UN2CUserSettings>()->CustomTranslationOutputDirectory.Path = Outside->Path;
 						}
 						else
 						{
 							Inside = MakeUnique<N2CTest::FScratchDir>(TEXT("N2CStateSpecCustom"));
-							Settings->CustomTranslationOutputDirectory.Path = Inside->Path;
+							GetMutableDefault<UN2CUserSettings>()->CustomTranslationOutputDirectory.Path = Inside->Path;
 						}
 						Base = FN2CPathUtils::GetTranslationsBasePath();
 						TestEqual(TEXT("the translations folder is the custom one"), NormalizedDir(Base),
-							NormalizedDir(Settings->CustomTranslationOutputDirectory.Path));
+							NormalizedDir(GetMutableDefault<UN2CUserSettings>()->CustomTranslationOutputDirectory.Path));
 						break;
 					}
 

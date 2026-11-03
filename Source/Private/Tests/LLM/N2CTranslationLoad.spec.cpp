@@ -10,6 +10,7 @@
 #include "Core/N2CGraphStateManager.h"
 #include "Core/N2CSerializer.h"
 #include "Core/N2CSettings.h"
+#include "Core/N2CUserSettings.h"
 #include "Core/Widgets/SN2CMainWindow.h"
 #include "HAL/FileManager.h"
 #include "HAL/PlatformProcess.h"
@@ -85,8 +86,8 @@ BEGIN_DEFINE_SPEC(FN2CTranslationLoadSpec, "NodeToCode.LLM.TranslationLoad", N2C
 
 			UN2CSettings* Settings = GetMutableDefault<UN2CSettings>();
 			SavedLanguage = Settings->TargetLanguage;
-			SavedOutput = Settings->CustomTranslationOutputDirectory.Path;
-			Settings->CustomTranslationOutputDirectory.Path = OutputDir;
+			SavedOutput = GetMutableDefault<UN2CUserSettings>()->CustomTranslationOutputDirectory.Path;
+			GetMutableDefault<UN2CUserSettings>()->CustomTranslationOutputDirectory.Path = OutputDir;
 		}
 
 		~FScopedState()
@@ -94,7 +95,7 @@ BEGIN_DEFINE_SPEC(FN2CTranslationLoadSpec, "NodeToCode.LLM.TranslationLoad", N2C
 			*N2CTest::GetPrivateMember(N2CTest::FN2CLoadStateInstance()) = SavedInstance;
 			UN2CSettings* Settings = GetMutableDefault<UN2CSettings>();
 			Settings->TargetLanguage = SavedLanguage;
-			Settings->CustomTranslationOutputDirectory.Path = SavedOutput;
+			GetMutableDefault<UN2CUserSettings>()->CustomTranslationOutputDirectory.Path = SavedOutput;
 		}
 	};
 

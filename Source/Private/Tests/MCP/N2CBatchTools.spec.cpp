@@ -11,6 +11,7 @@
 #include "Tests/N2CTestHttpStub.h"
 #include "Core/N2CGraphStateManager.h"
 #include "Core/N2CSettings.h"
+#include "Core/N2CUserSettings.h"
 #include "Core/N2CGraphStateManager.h"
 #include "LLM/N2CBatchTranslationOrchestrator.h"
 #include "LLM/N2CLLMModule.h"
@@ -154,23 +155,23 @@ namespace N2CBatchToolsSpec
 		FScopedSettings(const FString& Endpoint, const FString& Output)
 		{
 			UN2CSettings* Settings = GetMutableDefault<UN2CSettings>();
-			SavedProvider = Settings->Provider;
+			SavedProvider = GetMutableDefault<UN2CUserSettings>()->Provider;
 			SavedEndpoint = Settings->OllamaConfig.OllamaEndpoint;
-			SavedOutput = Settings->CustomTranslationOutputDirectory.Path;
+			SavedOutput = GetMutableDefault<UN2CUserSettings>()->CustomTranslationOutputDirectory.Path;
 			SavedTimeout = Settings->HttpActivityTimeoutSeconds;
 			SavedLanguage = Settings->TargetLanguage;
-			Settings->Provider = EN2CLLMProvider::Ollama;
+			GetMutableDefault<UN2CUserSettings>()->Provider = EN2CLLMProvider::Ollama;
 			Settings->OllamaConfig.OllamaEndpoint = Endpoint;
-			Settings->CustomTranslationOutputDirectory.Path = Output;
+			GetMutableDefault<UN2CUserSettings>()->CustomTranslationOutputDirectory.Path = Output;
 			Settings->HttpActivityTimeoutSeconds = 600.0f;
 			Settings->TargetLanguage = EN2CCodeLanguage::Cpp;
 		}
 		~FScopedSettings()
 		{
 			UN2CSettings* Settings = GetMutableDefault<UN2CSettings>();
-			Settings->Provider = SavedProvider;
+			GetMutableDefault<UN2CUserSettings>()->Provider = SavedProvider;
 			Settings->OllamaConfig.OllamaEndpoint = SavedEndpoint;
-			Settings->CustomTranslationOutputDirectory.Path = SavedOutput;
+			GetMutableDefault<UN2CUserSettings>()->CustomTranslationOutputDirectory.Path = SavedOutput;
 			Settings->HttpActivityTimeoutSeconds = SavedTimeout;
 			Settings->TargetLanguage = SavedLanguage;
 		}
