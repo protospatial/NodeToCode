@@ -8,6 +8,11 @@
 #include "Tests/N2CTestHelpers.h"
 #include "Tests/N2CTestMaterialFactory.h"
 #include "Core/N2CCapture.h"
+#include "Core/N2CMaterialCaptureContext.h"
+#include "Internationalization/Culture.h"
+#include "Internationalization/Internationalization.h"
+#include "Materials/MaterialExpressionTextureProperty.h"
+#include "UObject/UObjectIterator.h"
 #include "Core/N2CSerializer.h"
 #include "MaterialEditor/PreviewMaterial.h"
 #include "Materials/MaterialExpressionBreakMaterialAttributes.h"
@@ -574,6 +579,7 @@ BEGIN_DEFINE_SPEC(FN2CMaterialCaptureSpec, "NodeToCode.Material.Capture", N2C_TE
 				Scalar.DefaultValue = 0.25f;
 				Wetness->Collection = Collection;
 				Wetness->ParameterName = TEXT("Wetness");
+				Wetness->ParameterId = Scalar.Id; // the name is resolved from the id when the expression is loaded or duplicated
 				M.ConnectToProperty(Wetness, 0, MP_Roughness);
 				return M.GetMaterial();
 			} });
@@ -606,6 +612,183 @@ BEGIN_DEFINE_SPEC(FN2CMaterialCaptureSpec, "NodeToCode.Material.Capture", N2C_TE
 				M.ConnectToProperty(Slab, 0, MP_FrontMaterial);
 				return M.GetMaterial();
 			} });
+	}
+
+
+	// ---- Card 0452: identity helpers ----
+
+	/** The expressions the capture makes nodes of, in node order (reroutes, composites and comments are traced through) */
+	static TArray<UMaterialExpression*> NodeExpressions(TConstArrayView<TObjectPtr<UMaterialExpression>> Expressions)
+	{
+		TArray<UMaterialExpression*> Out;
+		for (UMaterialExpression* Expression : Expressions)
+		{
+			if (Expression && !FN2CMaterialCaptureContext::IsTracedThrough(*Expression))
+			{
+				Out.Add(Expression);
+			}
+		}
+		return Out;
+	}
+
+	/** Pretty, normalised JSON of a capture of Asset (package path and GUIDs replaced), or empty on failure */
+	FString CaptureJson(UObject& Asset, int32 Depth, const FString& PackagePath)
+	{
+		FN2CCaptureOptions Options;
+		Options.Depth = Depth;
+		const TValueOrError<FN2CCapture, FString> Result = N2C::CaptureMaterialAsset(Asset, Options);
+		if (!Result.HasValue())
+		{
+			AddError(FString::Printf(TEXT("%s: capture failed: %s"), *Asset.GetName(), *Result.GetError()));
+			return FString();
+		}
+		return N2CTest::NormaliseCapture(FN2CSerializer::ToJson(Result.GetValue().Blueprint, EN2CJsonStyle::Pretty), PackagePath);
+	}
+
+	/** The handling name material-classes.md uses for a class under the in-code table */
+	static FString HandlingName(EN2CMaterialClassHandling Handling)
+	{
+		switch (Handling)
+		{
+		case EN2CMaterialClassHandling::Mapped: return TEXT("mapped");
+		case EN2CMaterialClassHandling::Refused: return TEXT("refused");
+		case EN2CMaterialClassHandling::Base: return TEXT("base");
+		default: return TEXT("generic");
+		}
+	}
+
+	/** {class name: handling} for this engine from Fixtures/Material/material-classes.json (material-classes.md's table) */
+	TMap<FString, FString> PageTable()
+	{
+		TMap<FString, FString> Table;
+		FString Text;
+		const FString Path = N2CTest::FixturesDir(TEXT("Material")) / TEXT("material-classes.json");
+		if (!TestTrue(TEXT("the class fixture loads: ") + Path, FFileHelper::LoadFileToString(Text, *Path)))
+		{
+			return Table;
+		}
+		const TSharedPtr<FJsonObject> Json = N2CTest::ParseJsonObject(Text);
+		const FString Engine = FString::Printf(TEXT("%d.%d"), ENGINE_MAJOR_VERSION, ENGINE_MINOR_VERSION);
+		const TSharedPtr<FJsonObject>* Rows = nullptr;
+		if (TestTrue(TEXT("the fixture has this engine: ") + Engine, Json.IsValid() && Json->TryGetObjectField(Engine, Rows)))
+		{
+			for (const TPair<FString, TSharedPtr<FJsonValue>>& Row : (*Rows)->Values)
+			{
+				Table.Add(Row.Key, Row.Value->AsString());
+			}
+		}
+		return Table;
+	}
+
+	/**
+	 * Every loaded UMaterialExpression class whose handling under Handling differs from the page table, or that the
+	 * page does not list; and every page row of a loaded class that disagrees. OutSkipped counts page rows whose class
+	 * is not loaded (its plugin is off in the host)
+	 */
+	static TArray<FString> CoverageMismatches(const TMap<FString, FString>& Page, TFunctionRef<EN2CMaterialClassHandling(const UClass*)> Handling,
+		int32& OutChecked, int32& OutSkipped)
+	{
+		TArray<FString> Mismatches;
+		TSet<FString> Loaded;
+		OutChecked = 0;
+		for (TObjectIterator<UClass> It; It; ++It)
+		{
+			const UClass* Class = *It;
+			const FString Name = Class->GetName();
+			if (!Class->IsChildOf(UMaterialExpression::StaticClass()) || Class == UMaterialExpression::StaticClass()
+				|| Class->HasAnyClassFlags(CLASS_NewerVersionExists) || Name.StartsWith(TEXT("N2CTest")) || Name.StartsWith(TEXT("SKEL_"))
+				|| Name.StartsWith(TEXT("REINST_")) || Name.StartsWith(TEXT("TRASHCLASS_")))
+			{
+				continue;
+			}
+			Loaded.Add(Name);
+			++OutChecked;
+			const FString Actual = HandlingName(Handling(Class));
+			const FString* Expected = Page.Find(Name);
+			if (!Expected)
+			{
+				Mismatches.Add(FString::Printf(TEXT("%s (%s in code) is not in material-classes.md"), *Name, *Actual));
+			}
+			else if (*Expected != Actual)
+			{
+				Mismatches.Add(FString::Printf(TEXT("%s: %s in code, %s in material-classes.md"), *Name, *Actual, **Expected));
+			}
+		}
+		OutSkipped = 0;
+		for (const TPair<FString, FString>& Row : Page)
+		{
+			OutSkipped += Loaded.Contains(Row.Key) ? 0 : 1;
+		}
+		return Mismatches;
+	}
+
+	/** True when every value is a valid GUID and no two are equal */
+	static bool AllUniqueAndValid(const TArray<FGuid>& Guids)
+	{
+		TSet<FGuid> Seen;
+		for (const FGuid& Guid : Guids)
+		{
+			if (!Guid.IsValid() || Seen.Contains(Guid))
+			{
+				return false;
+			}
+			Seen.Add(Guid);
+		}
+		return true;
+	}
+
+	/** Switches the editor to Culture and checks the switch took; restores the culture when the guard goes */
+	struct FCultureGuard
+	{
+		FString SavedLanguage;
+		FString SavedLocale;
+		FCultureGuard()
+			: SavedLanguage(FInternationalization::Get().GetCurrentLanguage()->GetName())
+			, SavedLocale(FInternationalization::Get().GetCurrentLocale()->GetName())
+		{
+		}
+		~FCultureGuard()
+		{
+			FInternationalization::Get().SetCurrentLanguage(SavedLanguage);
+			FInternationalization::Get().SetCurrentLocale(SavedLocale);
+		}
+	};
+
+	bool SwitchCulture(const TCHAR* Culture)
+	{
+		FInternationalization& I18N = FInternationalization::Get();
+		return TestTrue(FString::Printf(TEXT("the editor switches to %s"), Culture), I18N.SetCurrentCulture(Culture))
+			&& TestEqual(TEXT("the current language"), I18N.GetCurrentLanguage()->GetName(), FString(Culture));
+	}
+
+	/** Display text the engine localizes, for the culture checks: the BaseColor label and three expressions' captions */
+	static TArray<FString> LocalizedProbes(UMaterial* Material, UMaterialExpressionBreakMaterialAttributes* Break,
+		UMaterialExpressionSetMaterialAttributes* Set, UMaterialExpressionTextureProperty* TextureProperty)
+	{
+		TArray<FString> Probes;
+		Probes.Add(FMaterialAttributeDefinitionMap::GetDisplayNameForMaterial(MP_BaseColor, Material).ToString());
+		for (const UMaterialExpression* Expression : { static_cast<UMaterialExpression*>(Break), static_cast<UMaterialExpression*>(Set),
+			static_cast<UMaterialExpression*>(TextureProperty) })
+		{
+			TArray<FString> Captions;
+			Expression->GetCaption(Captions);
+			Probes.Add(FString::Join(Captions, TEXT(" / ")));
+		}
+		return Probes;
+	}
+
+	/** What a capture naming pins by GetInputName would write for Set Material Attributes and Break Material Attributes */
+	static TArray<FString> InputNames(UMaterialExpressionSetMaterialAttributes* Set, UMaterialExpressionBreakMaterialAttributes* Break)
+	{
+		TArray<FString> Names;
+		for (UMaterialExpression* Expression : { static_cast<UMaterialExpression*>(Set), static_cast<UMaterialExpression*>(Break) })
+		{
+			for (int32 Index = 0; Expression->GetInput(Index); ++Index)
+			{
+				Names.Add(Expression->GetInputName(Index).ToString());
+			}
+		}
+		return Names;
 	}
 
 END_DEFINE_SPEC(FN2CMaterialCaptureSpec)
@@ -954,6 +1137,245 @@ void FN2CMaterialCaptureSpec::Define()
 				TestTrue(TEXT("substrate read"), Read.Metadata.Material.bSubstrate);
 				TestEqual(TEXT("no warning"), Warnings.Num(), 0);
 				TestEqual(TEXT("written back byte for byte"), FN2CSerializer::ToJson(Read, EN2CJsonStyle::Condensed), With);
+			}
+		});
+	});
+
+	// Card 0452: capture identity. None of these uses RecompileMaterial or GetStatistics as an oracle (under -nullrhi they
+	// report no errors whatever the material holds)
+	Describe(TEXT("Identity"), [this]()
+	{
+		It(TEXT("gives the same JSON on a second capture and for a StaticDuplicateObject copy of the asset, in every case"), [this]()
+		{
+			for (const FMaterialCase& Case : Cases)
+			{
+				N2CTest::FTestMaterial Material(FString::Printf(TEXT("M_N2CIdentity_%s"), *Case.Name));
+				UObject* Asset = Case.Build(Material);
+				if (!NoFactoryErrors(Material) || !TestNotNull(Case.Name + TEXT(": the asset"), Asset))
+				{
+					continue;
+				}
+				const FString First = CaptureJson(*Asset, Case.Depth, Material.GetPackagePath());
+				const FString Second = CaptureJson(*Asset, Case.Depth, Material.GetPackagePath());
+				TestFalse(Case.Name + TEXT(": captured"), First.IsEmpty());
+				TestEqual(Case.Name + TEXT(": a second capture is identical"), Second, First);
+
+				const FString CopyName = Asset->GetName() + TEXT("_N2CCopy");
+				UObject* Copy = StaticDuplicateObject(Asset, Material.GetPackage(), FName(*CopyName));
+				if (TestNotNull(Case.Name + TEXT(": the copy"), Copy))
+				{
+					const FString FromCopy = CaptureJson(*Copy, Case.Depth, Material.GetPackagePath()).Replace(*CopyName, *Asset->GetName(),
+						ESearchCase::CaseSensitive);
+					TestEqual(Case.Name + TEXT(": the copy captures the same (its name aside)"), FromCopy, First);
+				}
+			}
+		});
+
+		It(TEXT("marks unused exactly the expressions UMaterial::GetAllReferencedExpressions leaves out (and, on UE 5.8, those GetUnusedMaterialExpressions finds)"), [this]()
+		{
+			// Known exclusions, each a place where GetAllReferencedExpressions knows more than a wire-following capture:
+			// - Material attributes: it follows a Break Material Attributes output back to only the Make/Set input that sets
+			//   that attribute, so a constant wired into an attribute nothing breaks out is unreferenced; capture keeps every
+			//   input of Make/Set Material Attributes live (MaterialAttributes case, the Roughness constant N2). UE 5.8's
+			//   GetUnusedMaterialExpressions follows wires as capture does and agrees with it there.
+			// - An expression wired only to a hidden or deprecated root input (GetExpressionInputForProperty returns null
+			//   for those, so capture never sees the wire); no case here has one.
+			// A static switch is followed through both inputs by capture and by both oracles when no static parameter set
+			// is given, so it needs no exclusion.
+			const TSet<FString> AttributeExclusions = { TEXT("MaterialAttributes:N2") };
+			int32 Compared = 0;
+			for (const FMaterialCase& Case : Cases)
+			{
+				N2CTest::FTestMaterial Material(FString::Printf(TEXT("M_N2CLive_%s"), *Case.Name));
+				UMaterial* Asset = Cast<UMaterial>(Case.Build(Material));
+				if (!NoFactoryErrors(Material) || !Asset)
+				{
+					continue; // a function case: no material output, no oracle
+				}
+				FN2CCaptureOptions Options;
+				Options.Depth = 0;
+				const TValueOrError<FN2CCapture, FString> Capture = N2C::CaptureMaterial(*Asset, Options);
+				if (!TestTrue(Case.Name + TEXT(": captured"), Capture.HasValue()))
+				{
+					continue;
+				}
+				const FN2CGraph& Graph = Capture.GetValue().Blueprint.Graphs[0];
+				const TArray<UMaterialExpression*> Nodes = NodeExpressions(Asset->GetExpressions());
+				if (!TestEqual(Case.Name + TEXT(": one node per captured expression, then the output node"), Graph.Nodes.Num(), Nodes.Num() + 1))
+				{
+					continue;
+				}
+				TArray<UMaterialExpression*> Referenced;
+				Asset->GetAllReferencedExpressions(Referenced, nullptr);
+#if ENGINE_MINOR_VERSION >= 8
+				TArray<UMaterialExpression*> Unused58;
+				UMaterialGraph::GetUnusedMaterialExpressions(Asset, Unused58);
+#endif
+				for (int32 Index = 0; Index < Nodes.Num(); ++Index)
+				{
+					const bool bUnused = Graph.Nodes[Index].bUnused;
+					if (!AttributeExclusions.Contains(Case.Name + TEXT(":") + Graph.Nodes[Index].ID))
+					{
+						TestEqual(FString::Printf(TEXT("%s: %s (%s) unused as GetAllReferencedExpressions says"), *Case.Name, *Graph.Nodes[Index].ID,
+							*Nodes[Index]->GetClass()->GetName()), bUnused, !Referenced.Contains(Nodes[Index]));
+					}
+					else
+					{
+						TestTrue(TEXT("the excluded expression really is where the oracles part: live in the capture, unreferenced"),
+							!bUnused && !Referenced.Contains(Nodes[Index]));
+					}
+#if ENGINE_MINOR_VERSION >= 8
+					TestEqual(FString::Printf(TEXT("%s: %s (%s) unused as GetUnusedMaterialExpressions says"), *Case.Name, *Graph.Nodes[Index].ID,
+						*Nodes[Index]->GetClass()->GetName()), bUnused, Unused58.Contains(Nodes[Index]));
+#endif
+					++Compared;
+				}
+			}
+			TestTrue(TEXT("expressions compared"), Compared > 40);
+		});
+
+		It(TEXT("captures every case the same in Japanese and German, once their localization is shown to apply"), [this]()
+		{
+			// The baseline is English whatever culture the editor runs in (build.ps1 -TestCulture de, fr, ja)
+			FCultureGuard Guard;
+			if (!SwitchCulture(TEXT("en")))
+			{
+				return;
+			}
+			TMap<FString, FString> English;
+			for (const FMaterialCase& Case : Cases)
+			{
+				FString Json;
+				TArray<FN2CDiagnostic> Warnings;
+				if (CaptureCase(Case, Json, Warnings).IsValid())
+				{
+					English.Add(Case.Name, Json);
+				}
+			}
+			N2CTest::FTestMaterial Probe(TEXT("M_N2CLocaleProbe"));
+			UMaterialExpressionBreakMaterialAttributes* Break = Probe.Add<UMaterialExpressionBreakMaterialAttributes>();
+			UMaterialExpressionSetMaterialAttributes* Set = Probe.Add<UMaterialExpressionSetMaterialAttributes>();
+			UMaterialExpressionTextureProperty* TextureProperty = Probe.Add<UMaterialExpressionTextureProperty>();
+			if (!NoFactoryErrors(Probe) || !Break || !Set || !TextureProperty)
+			{
+				return;
+			}
+			Set->AttributeSetTypes.Add(FMaterialAttributeDefinitionMap::GetID(MP_Metallic));
+			Set->Inputs.AddDefaulted();
+			const TArray<FString> EnglishProbes = LocalizedProbes(Probe.GetMaterial(), Break, Set, TextureProperty);
+			const FString EnglishInputNames = FString::Join(InputNames(Set, Break), TEXT(","));
+
+			for (const TCHAR* Culture : { TEXT("ja"), TEXT("de") })
+			{
+				if (!SwitchCulture(Culture))
+				{
+					continue;
+				}
+				// The precondition: the engine really shows these in the culture, or the comparison would prove nothing
+				const TArray<FString> Probes = LocalizedProbes(Probe.GetMaterial(), Break, Set, TextureProperty);
+				TestNotEqual(FString::Printf(TEXT("%s: the BaseColor label is localized (%s)"), Culture, *Probes[0]), Probes[0], EnglishProbes[0]);
+				// Set Material Attributes' input names are attribute display names, localized too. (The expressions' captions,
+				// "BreakMaterialAttributes", "SetMaterialAttributes", "Texture Size", are not localized on 5.6-5.8: they are
+				// logged, not required.)
+				TestNotEqual(FString::Printf(TEXT("%s: Set Material Attributes' input names are localized"), Culture),
+					FString::Join(InputNames(Set, Break), TEXT(",")), EnglishInputNames);
+				AddInfo(FString::Printf(TEXT("%s probes: %s"), Culture, *FString::Join(Probes, TEXT("; "))));
+				for (const FMaterialCase& Case : Cases)
+				{
+					FString Json;
+					TArray<FN2CDiagnostic> Warnings;
+					if (CaptureCase(Case, Json, Warnings).IsValid() && English.Contains(Case.Name))
+					{
+						TestEqual(FString::Printf(TEXT("%s: %s is identical"), Culture, *Case.Name), Json, English[Case.Name]);
+					}
+				}
+			}
+		});
+
+		It(TEXT("classifies every loaded expression class as material-classes.md does, and the page lists no loaded class it leaves out"), [this]()
+		{
+			const TMap<FString, FString> Page = PageTable();
+			int32 Checked = 0;
+			int32 Skipped = 0;
+			const TArray<FString> Mismatches = CoverageMismatches(Page,
+				[](const UClass* Class) { return FN2CMaterialCaptureContext::ClassHandling(Class); }, Checked, Skipped);
+			for (const FString& Mismatch : Mismatches)
+			{
+				AddError(TEXT("class coverage: ") + Mismatch);
+			}
+			TestTrue(FString::Printf(TEXT("classes checked (%d; %d page rows belong to plugins the host does not load)"), Checked, Skipped), Checked > 250);
+		});
+	});
+
+	// Card 0452: each identity check must be able to fail
+	Describe(TEXT("Negative controls"), [this]()
+	{
+		It(TEXT("a capture naming root pins by their display label, or pins by GetInputName, would differ in Japanese"), [this]()
+		{
+			N2CTest::FTestMaterial Probe(TEXT("M_N2CNegativeLocale"));
+			UMaterialExpressionBreakMaterialAttributes* Break = Probe.Add<UMaterialExpressionBreakMaterialAttributes>();
+			UMaterialExpressionSetMaterialAttributes* Set = Probe.Add<UMaterialExpressionSetMaterialAttributes>();
+			if (!NoFactoryErrors(Probe) || !Break || !Set)
+			{
+				return;
+			}
+			Set->AttributeSetTypes.Add(FMaterialAttributeDefinitionMap::GetID(MP_Metallic));
+			Set->Inputs.AddDefaulted();
+			FCultureGuard Guard;
+			if (!SwitchCulture(TEXT("en")))
+			{
+				return;
+			}
+			const FString EnglishLabel = FMaterialAttributeDefinitionMap::GetDisplayNameForMaterial(MP_BaseColor, Probe.GetMaterial()).ToString();
+			const TArray<FString> EnglishNames = InputNames(Set, Break);
+			if (!SwitchCulture(TEXT("ja")))
+			{
+				return;
+			}
+			TestNotEqual(TEXT("a root pin named by its display label would change"),
+				FMaterialAttributeDefinitionMap::GetDisplayNameForMaterial(MP_BaseColor, Probe.GetMaterial()).ToString(), EnglishLabel);
+			TestNotEqual(TEXT("pins named by GetInputName would change"), FString::Join(InputNames(Set, Break), TEXT(",")),
+				FString::Join(EnglishNames, TEXT(",")));
+			TestEqual(TEXT("the capture's root pin name does not"), FMaterialAttributeDefinitionMap::GetAttributeName(MP_BaseColor), FString(TEXT("BaseColor")));
+		});
+
+		It(TEXT("a class left out of the in-code table fails coverage"), [this]()
+		{
+			const TMap<FString, FString> Page = PageTable();
+			int32 Checked = 0;
+			int32 Skipped = 0;
+			const TArray<FString> Mismatches = CoverageMismatches(Page, [](const UClass* Class)
+			{
+				// The table without its Custom row: the Custom node falls back to generic
+				return Class->GetFName() == TEXT("MaterialExpressionCustom") ? EN2CMaterialClassHandling::Generic
+					: FN2CMaterialCaptureContext::ClassHandling(Class);
+			}, Checked, Skipped);
+			TestTrue(TEXT("exactly the Custom class is reported"), Mismatches.Num() == 1 && Mismatches[0].StartsWith(TEXT("MaterialExpressionCustom:")));
+		});
+
+		It(TEXT("duplicate and zero expression GUIDs are told apart in the capture, and would not be without disambiguation"), [this]()
+		{
+			N2CTest::FTestMaterial Material(TEXT("M_N2CNegativeGuids"));
+			UMaterialExpressionConstant* A = Material.Add<UMaterialExpressionConstant>();
+			UMaterialExpressionConstant* B = Material.Add<UMaterialExpressionConstant>();
+			UMaterialExpressionConstant* Zero = Material.Add<UMaterialExpressionConstant>();
+			if (!NoFactoryErrors(Material) || !A || !B || !Zero)
+			{
+				return;
+			}
+			B->MaterialExpressionGuid = A->MaterialExpressionGuid;
+			Zero->MaterialExpressionGuid = FGuid();
+			const TArray<FGuid> Raw = { A->MaterialExpressionGuid, B->MaterialExpressionGuid, Zero->MaterialExpressionGuid };
+			TestFalse(TEXT("the expressions' own GUIDs are not unique and valid"), AllUniqueAndValid(Raw));
+			const TValueOrError<FN2CCapture, FString> Capture = N2C::CaptureMaterial(*Material.GetMaterial());
+			if (TestTrue(TEXT("captured"), Capture.HasValue()))
+			{
+				TArray<FGuid> Captured;
+				Capture.GetValue().NodeGuids.GenerateValueArray(Captured);
+				TestEqual(TEXT("three node GUIDs"), Captured.Num(), 3);
+				TestTrue(TEXT("the capture's node GUIDs are unique and valid"), AllUniqueAndValid(Captured));
+				TestEqual(TEXT("two DUPLICATE_EXPRESSION_GUID warnings (the copy and the zero)"), Capture.GetValue().Diagnostics.FilterByPredicate(
+					[](const FN2CDiagnostic& Diagnostic) { return Diagnostic.Code == N2CJsonContract::Diagnostic::DuplicateExpressionGuid; }).Num(), 2);
 			}
 		});
 	});
