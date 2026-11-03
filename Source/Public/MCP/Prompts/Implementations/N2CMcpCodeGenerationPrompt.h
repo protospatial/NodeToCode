@@ -42,6 +42,12 @@ public:
 	static FString CodeGenInstructions(EN2CCodeLanguage Language);
 
 	/**
+	 * The system prompt of Family (N2C::GetPromptFamilyForDocument: CodeGen for a Blueprint document, MaterialGen for
+	 * a material, card 0455) for Language, as the in-editor translation assembles it. Game thread.
+	 */
+	static FString TranslationInstructions(const TCHAR* Family, EN2CCodeLanguage Language);
+
+	/**
 	 * Appends the Blueprint to a prompt: a text message holding FN2CMcpUntrustedContent::Notice, then the resource
 	 * as an embedded resource with annotations.audience ["assistant"] and its text marked (MarkJson, which also
 	 * escapes "</"). These are always the last two messages, so every instruction comes before the untrusted text.
