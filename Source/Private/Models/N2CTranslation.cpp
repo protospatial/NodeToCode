@@ -213,9 +213,12 @@ EN2CTranslationErrorKind FN2CTranslationError::KindFromProviderType(const FStrin
 {
     using N2CTranslationErrorPrivate::ContainsAny;
 
-    // Billing first: Anthropic reports a low credit balance as an invalid_request_error
+    // Billing first: Anthropic reports a low credit balance as an invalid_request_error, OpenAI an empty prepaid
+    // account as "You have no credits remaining", Gemini depleted prepayment credits as a RESOURCE_EXHAUSTED 429
+    // (card 0529: none of them is a rate limit, so none is retried)
     if (ContainsAny(ProviderType, { TEXT("insufficient_quota"), TEXT("billing"), TEXT("insufficient_balance") })
-        || ContainsAny(InMessage, { TEXT("insufficient balance"), TEXT("credit balance is too low") }))
+        || ContainsAny(InMessage, { TEXT("insufficient balance"), TEXT("credit balance is too low"),
+            TEXT("no credits remaining"), TEXT("credits are depleted") }))
     {
         return EN2CTranslationErrorKind::Billing;
     }
@@ -399,6 +402,35 @@ FN2CTranslationError FN2CTranslationError::FromErrorJson(const TSharedPtr<FJsonO
 
         Error.ProviderErrorType = !Type.IsEmpty() ? Type : (!StatusName.IsEmpty() ? StatusName : Code);
         ClassifyText = FString::Join(TArray<FString>{ Type, StatusName, Code }, TEXT(" "));
+
+        // Gemini answers both a per-minute rate limit and a spent daily quota with 429 RESOURCE_EXHAUSTED; only the
+        // QuotaFailure detail tells them apart (quotaId ...PerDay...). A daily quota does not come back within any
+        // retry, so it reads as out of quota (card 0529)
+        const TArray<TSharedPtr<FJsonValue>>* Details = nullptr;
+        if (ErrorObject->TryGetArrayField(TEXT("details"), Details))
+        {
+            for (const TSharedPtr<FJsonValue>& Detail : *Details)
+            {
+                const TSharedPtr<FJsonObject> DetailObject = Detail.IsValid() ? Detail->AsObject() : nullptr;
+                FString DetailType;
+                const TArray<TSharedPtr<FJsonValue>>* Violations = nullptr;
+                if (!DetailObject.IsValid() || !DetailObject->TryGetStringField(TEXT("@type"), DetailType)
+                    || !DetailType.Contains(TEXT("QuotaFailure")) || !DetailObject->TryGetArrayField(TEXT("violations"), Violations))
+                {
+                    continue;
+                }
+                for (const TSharedPtr<FJsonValue>& Violation : *Violations)
+                {
+                    const TSharedPtr<FJsonObject> ViolationObject = Violation.IsValid() ? Violation->AsObject() : nullptr;
+                    FString QuotaId;
+                    if (ViolationObject.IsValid() && ViolationObject->TryGetStringField(TEXT("quotaId"), QuotaId)
+                        && QuotaId.Contains(TEXT("PerDay")))
+                    {
+                        ClassifyText += TEXT(" billing_daily_quota");
+                    }
+                }
+            }
+        }
     }
     else if (ErrorField.IsValid() && ErrorField->Type == EJson::String)
     {
