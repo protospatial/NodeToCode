@@ -95,6 +95,11 @@ BEGIN_DEFINE_SPEC(FN2CSettingsMigrationSpec, "NodeToCode.Settings.Migration", N2
 	FString UserIni;
 	FString VaultPrefix;
 
+	// The 1.2.x project secrets.json, renamed in the fixture folder so the release package's forbidden-name check
+	// (Scripts/package-release.ps1, any file named secrets.json) keeps protecting real releases (card 0527). Each case
+	// copies it to the secrets.json path 1.2.x used.
+	static constexpr const TCHAR* SecretsFixture = TEXT("secrets.legacy12x.json");
+
 	static FString Fixture(const TCHAR* Name)
 	{
 		return N2CTest::FixturesDir(TEXT("Settings/Legacy12x")) / Name;
@@ -336,7 +341,7 @@ void FN2CSettingsMigrationSpec::Define()
 			}
 		}
 
-		const FString Secrets = ReadText(Fixture(TEXT("secrets.json")));
+		const FString Secrets = ReadText(Fixture(SecretsFixture));
 		TestFalse(TEXT("the secrets fixture holds no real OpenAI or Anthropic key"), Secrets.Contains(TEXT("sk-")));
 		TestFalse(TEXT("the secrets fixture holds no real Google key"), Secrets.Contains(TEXT("AIza")));
 	});
@@ -422,7 +427,7 @@ void FN2CSettingsMigrationSpec::Define()
 		TestEqual(TEXT("2.0 looks where 1.2.x saved"), Legacy,
 			FPaths::ConvertRelativePathToFull(FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("NodeToCode"), TEXT("User"), TEXT("secrets.json"))));
 
-		if (!CopyFixture(TEXT("secrets.json"), ProjectSecrets)) { return; }
+		if (!CopyFixture(SecretsFixture, ProjectSecrets)) { return; }
 		TUniquePtr<IN2CSecretBackend> Target = MakeTarget();
 		const FN2CSecretMigrationResult Result = FN2CSecretStore::MigrateFileToBackend(UserSecrets, ProjectSecrets, *Target);
 		TestTrue(TEXT("found the project file"), Result.bFoundFile);

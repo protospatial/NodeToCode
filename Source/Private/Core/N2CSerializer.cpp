@@ -14,9 +14,11 @@ namespace
 
     /** The fields each object of the contract has; any other is kept in UnknownFields */
     const TCHAR* const TopLevelFields[] = { N2CJsonContract::VersionField, TEXT("metadata"), TEXT("graphs"), TEXT("structs"),
-        TEXT("enums"), N2CJsonContract::VariablesField, TEXT("guids"), N2CJsonContract::WarningsField };
+        TEXT("enums"), N2CJsonContract::VariablesField, N2CJsonContract::ComponentsField, TEXT("guids"),
+        N2CJsonContract::WarningsField };
     const TCHAR* const MetadataFields[] = { TEXT("name"), TEXT("blueprint_type"), TEXT("blueprint_class"),
-        N2CJsonContract::ParentClassField, N2CJsonContract::AssetClassField, N2CJsonContract::AssetKindField,
+        N2CJsonContract::ParentClassField, N2CJsonContract::AssetClassField, N2CJsonContract::InterfacesField,
+        N2CJsonContract::AssetKindField,
         N2CJsonContract::MaterialMetadataField };
     const TCHAR* const GraphFields[] = { TEXT("name"), TEXT("graph_type"), TEXT("owner_blueprint"), TEXT("nodes"),
         N2CJsonContract::FlowsField, N2CJsonContract::CommentsField, N2CJsonContract::LocalVariablesField };
@@ -279,6 +281,100 @@ namespace
             OutVariables.Add(MoveTemp(Variable));
         }
     }
+
+    const TCHAR* const ComponentFields[] = { TEXT("name"), N2CJsonContract::ComponentClassField,
+        N2CJsonContract::ComponentParentField, N2CJsonContract::ComponentSocketField, N2CJsonContract::ComponentInheritedField,
+        N2CJsonContract::ComponentPropertiesField, N2CJsonContract::ComponentPropertiesTruncatedField };
+
+    /** Sets "components" (card 0243), when there are any: name, class, then the optional fields */
+    void WriteComponents(const TSharedPtr<FJsonObject>& Object, const TArray<FN2CComponent>& Components)
+    {
+        if (Components.Num() == 0)
+        {
+            return;
+        }
+        TArray<TSharedPtr<FJsonValue>> Array;
+        for (const FN2CComponent& Component : Components)
+        {
+            const TSharedPtr<FJsonObject> Entry = MakeShared<FJsonObject>();
+            Entry->SetStringField(TEXT("name"), Component.Name);
+            Entry->SetStringField(N2CJsonContract::ComponentClassField, Component.Class);
+            if (!Component.Parent.IsEmpty())
+            {
+                Entry->SetStringField(N2CJsonContract::ComponentParentField, Component.Parent);
+            }
+            if (!Component.Socket.IsEmpty())
+            {
+                Entry->SetStringField(N2CJsonContract::ComponentSocketField, Component.Socket);
+            }
+            if (Component.bInherited)
+            {
+                Entry->SetBoolField(N2CJsonContract::ComponentInheritedField, true);
+            }
+            if (Component.Properties.Num() > 0)
+            {
+                const TSharedPtr<FJsonObject> Properties = MakeShared<FJsonObject>();
+                for (const FN2CComponentProperty& Property : Component.Properties)
+                {
+                    Properties->SetStringField(Property.Name, Property.Value);
+                }
+                Entry->SetObjectField(N2CJsonContract::ComponentPropertiesField, Properties);
+            }
+            if (Component.bPropertiesTruncated)
+            {
+                Entry->SetBoolField(N2CJsonContract::ComponentPropertiesTruncatedField, true);
+            }
+            WriteUnknownFields(Entry, Component.UnknownFields);
+            Array.Add(MakeShared<FJsonValueObject>(Entry));
+        }
+        Object->SetArrayField(N2CJsonContract::ComponentsField, Array);
+    }
+
+    /** Reads the optional "components"; an entry that is not an object or has no "name" is skipped with a warning */
+    void ReadComponents(const TSharedPtr<FJsonObject>& Object, TArray<FN2CComponent>& OutComponents, const FString& Path,
+        TArray<FN2CJsonReadWarning>& Warnings)
+    {
+        OutComponents.Reset();
+        const TArray<TSharedPtr<FJsonValue>>* Array = nullptr;
+        if (!Object->TryGetArrayField(N2CJsonContract::ComponentsField, Array))
+        {
+            return;
+        }
+        for (int32 Index = 0; Index < Array->Num(); ++Index)
+        {
+            const FString EntryPath = FString::Printf(TEXT("%s[%d]"), *JoinPath(Path, N2CJsonContract::ComponentsField), Index);
+            const TSharedPtr<FJsonObject>* Entry = nullptr;
+            FN2CComponent Component;
+            if (!(*Array)[Index].IsValid() || !(*Array)[Index]->TryGetObject(Entry) || !(*Entry)->TryGetStringField(TEXT("name"), Component.Name))
+            {
+                AddReadWarning(Warnings, N2CJsonContract::ReadWarning::SkippedComponent, EntryPath, FString(),
+                    TEXT("component skipped: it is not an object or has no name"));
+                continue;
+            }
+            (*Entry)->TryGetStringField(N2CJsonContract::ComponentClassField, Component.Class);
+            (*Entry)->TryGetStringField(N2CJsonContract::ComponentParentField, Component.Parent);
+            (*Entry)->TryGetStringField(N2CJsonContract::ComponentSocketField, Component.Socket);
+            (*Entry)->TryGetBoolField(N2CJsonContract::ComponentInheritedField, Component.bInherited);
+            const TSharedPtr<FJsonObject>* Properties = nullptr;
+            if ((*Entry)->TryGetObjectField(N2CJsonContract::ComponentPropertiesField, Properties))
+            {
+                for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : (*Properties)->Values)
+                {
+                    FN2CComponentProperty Property;
+                    Property.Name = Pair.Key;
+                    if (Pair.Value.IsValid())
+                    {
+                        // A value of another JSON type (a hand-edited document) is kept as its text
+                        Pair.Value->TryGetString(Property.Value);
+                    }
+                    Component.Properties.Add(MoveTemp(Property));
+                }
+            }
+            (*Entry)->TryGetBoolField(N2CJsonContract::ComponentPropertiesTruncatedField, Component.bPropertiesTruncated);
+            KeepUnknownFields(*Entry, ComponentFields, Component.UnknownFields, EntryPath, Warnings);
+            OutComponents.Add(MoveTemp(Component));
+        }
+    }
 }
 
 FString FN2CSerializer::ToJson(const FN2CBlueprint& Blueprint, EN2CJsonStyle Style)
@@ -464,6 +560,16 @@ TSharedPtr<FJsonObject> FN2CSerializer::BlueprintToJsonObject(const FN2CBlueprin
     {
         MetadataObject->SetStringField(N2CJsonContract::AssetClassField, Blueprint.Metadata.AssetClass);
     }
+    // Optional (card 0243): the implemented interfaces, when there are any
+    if (Blueprint.Metadata.Interfaces.Num() > 0)
+    {
+        TArray<TSharedPtr<FJsonValue>> Interfaces;
+        for (const FString& Interface : Blueprint.Metadata.Interfaces)
+        {
+            Interfaces.Add(MakeShared<FJsonValueString>(Interface));
+        }
+        MetadataObject->SetArrayField(N2CJsonContract::InterfacesField, Interfaces);
+    }
     // asset_kind (card 0447, decision 0009): absent means Blueprint, so a Blueprint document is unchanged
     if (!bBlueprintDocument)
     {
@@ -534,6 +640,9 @@ TSharedPtr<FJsonObject> FN2CSerializer::BlueprintToJsonObject(const FN2CBlueprin
 
     // Optional (card 0242): the member variables, when the capture recorded them
     WriteVariables(JsonObject, N2CJsonContract::VariablesField, Blueprint.Variables);
+
+    // Optional (card 0243): the components, when the capture recorded them
+    WriteComponents(JsonObject, Blueprint.Components);
 
     // Top-level fields of a later 2.x document, kept by FromJson (card 0445)
     WriteUnknownFields(JsonObject, Blueprint.UnknownFields);
@@ -1027,6 +1136,19 @@ bool FN2CSerializer::ParseBlueprintFromJson(const TSharedPtr<FJsonObject>& JsonO
     OutBlueprint.Metadata.AssetClass.Reset();
     (*MetadataObject)->TryGetStringField(N2CJsonContract::ParentClassField, OutBlueprint.Metadata.ParentClass);
     (*MetadataObject)->TryGetStringField(N2CJsonContract::AssetClassField, OutBlueprint.Metadata.AssetClass);
+    OutBlueprint.Metadata.Interfaces.Reset();
+    const TArray<TSharedPtr<FJsonValue>>* Interfaces = nullptr;
+    if ((*MetadataObject)->TryGetArrayField(N2CJsonContract::InterfacesField, Interfaces))
+    {
+        for (const TSharedPtr<FJsonValue>& Interface : *Interfaces)
+        {
+            FString InterfaceName;
+            if (Interface.IsValid() && Interface->TryGetString(InterfaceName) && !InterfaceName.IsEmpty())
+            {
+                OutBlueprint.Metadata.Interfaces.Add(InterfaceName);
+            }
+        }
+    }
 
     // An unknown blueprint_type is kept as Unknown with its text (card 0445); a document of another asset kind
     // without one reads as Normal, which ToJson leaves out again
@@ -1123,6 +1245,7 @@ bool FN2CSerializer::ParseBlueprintFromJson(const TSharedPtr<FJsonObject>& JsonO
 
     // Optional (card 0242)
     ReadVariables(JsonObject, N2CJsonContract::VariablesField, OutBlueprint.Variables, Path, Warnings);
+    ReadComponents(JsonObject, OutBlueprint.Components, Path, Warnings);
 
     // Top-level fields of a later 2.x document (card 0445)
     KeepUnknownFields(JsonObject, TopLevelFields, OutBlueprint.UnknownFields, Path, Warnings);

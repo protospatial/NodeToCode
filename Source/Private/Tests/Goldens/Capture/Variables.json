@@ -128,6 +128,12 @@
 				"value_sub_type": "float",
 				"expose_on_spawn": true
 			}
+		],
+		"components": [
+			{
+				"name": "DefaultSceneRoot",
+				"class": "SceneComponent"
+			}
 		]
 	}
 }

@@ -26,6 +26,15 @@
 #include "Internationalization/Internationalization.h"
 #include "Internationalization/Regex.h"
 #include "Components/PrimitiveComponent.h"
+#include "Components/BoxComponent.h"
+#include "Components/SceneComponent.h"
+#include "Components/SphereComponent.h"
+#include "Components/StaticMeshComponent.h"
+#include "Engine/InheritableComponentHandler.h"
+#include "Engine/SCS_Node.h"
+#include "Engine/SimpleConstructionScript.h"
+#include "Engine/StaticMeshActor.h"
+#include "GameFramework/RotatingMovementComponent.h"
 #include "Engine/TimelineTemplate.h"
 #include "GameFramework/AsyncActionHandleSaveGame.h"
 #include "K2Node_AsyncAction.h"
@@ -1049,6 +1058,49 @@ namespace N2CCaptureGolden
 		return BP.AddCall(Graph, UKismetSystemLibrary::StaticClass(), GET_FUNCTION_NAME_CHECKED(UKismetSystemLibrary, ControlScreensaver));
 	}
 
+	/** An engine basic shape (/Engine/BasicShapes/<Name>.<Name>), for component properties a test edits */
+	UStaticMesh* BasicShape(const TCHAR* Name)
+	{
+		return LoadObject<UStaticMesh>(nullptr, *FString::Printf(TEXT("/Engine/BasicShapes/%s.%s"), Name, Name));
+	}
+
+	/**
+	 * A new SCS node of Class named Name in Blueprint's construction script, under Parent (a node of the same script)
+	 * or, without one, as a root node; ValidateSceneRootNodes then drops the DefaultSceneRoot once another scene
+	 * component can be the root, as the Components panel does
+	 */
+	USCS_Node* AddComponentNode(UBlueprint* Blueprint, UClass* Class, const FName Name, USCS_Node* Parent = nullptr)
+	{
+		USimpleConstructionScript* SCS = Blueprint ? Blueprint->SimpleConstructionScript.Get() : nullptr;
+		USCS_Node* Node = SCS ? SCS->CreateNode(Class, Name) : nullptr;
+		if (!Node)
+		{
+			return nullptr;
+		}
+		if (Parent)
+		{
+			Parent->AddChildNode(Node);
+		}
+		else
+		{
+			SCS->AddNode(Node);
+		}
+		SCS->ValidateSceneRootNodes();
+		return Node;
+	}
+
+	/** A function graph Setup whose entry runs CollectGarbage: the graph a class-level case is captured from */
+	UEdGraph* AddSetupFunction(FTestBlueprint& BP)
+	{
+		UEdGraph* Graph = BP.AddFunction(TEXT("Setup"));
+		UK2Node_CallFunction* Collect = Graph ? AddCollectGarbage(BP, Graph) : nullptr;
+		if (!Collect || !BP.Link(BP.FunctionEntry(Graph), UEdGraphSchema_K2::PN_Then, Collect, UEdGraphSchema_K2::PN_Execute))
+		{
+			return nullptr;
+		}
+		return Graph;
+	}
+
 	/** The pin name of a user struct member on Make/Break nodes (<DisplayName>_<n>_<GUID>) */
 	FName MemberPinName(UUserDefinedStruct* Struct, const FString& DisplayName)
 	{
@@ -1789,6 +1841,99 @@ void FN2CCaptureGoldenSpec::AddCases()
 			UK2Node_FunctionResult* Result = BP.AddFunctionOutput(Graph, TEXT("Total"), FTestBlueprint::IntPinType());
 			BP.Link(BP.FunctionEntry(Graph), UEdGraphSchema_K2::PN_Then, Result, UEdGraphSchema_K2::PN_Execute);
 			return Graph;
+		} });
+	Cases.Last().IncludeVariables = true;
+
+	// Card 0243 (PR #8 by flashpoint493): components and implemented interfaces, captured with the variables
+	Cases.Add({ TEXT("OwnComponents"),
+		TEXT("Components asked for (card 0243). An Actor Blueprint implementing BlendableInterface and the Blueprint "
+			"interface BPI_N2CGolden_Use adds a root SceneComponent Root, under it a StaticMeshComponent Mesh with the "
+			"engine Cube mesh at relative location (0, 0, 50), and a RotatingMovementComponent Spin with rotation rate "
+			"(0, 90, 0); the DefaultSceneRoot is gone. Function Setup runs CollectGarbage. Captured from Setup."),
+		{},
+		[](FTestBlueprint& BP) -> UEdGraph*
+		{
+			UBlueprint* Blueprint = BP.GetBlueprint();
+			UStaticMesh* Cube = BasicShape(TEXT("Cube"));
+			UBlueprint* Interface = FKismetEditorUtilities::CreateBlueprint(UInterface::StaticClass(), BP.GetPackage(),
+				TEXT("BPI_N2CGolden_Use"), BPTYPE_Interface, UBlueprint::StaticClass(), UBlueprintGeneratedClass::StaticClass());
+			if (!Cube || !Interface)
+			{
+				return nullptr;
+			}
+			FKismetEditorUtilities::CompileBlueprint(Interface, EBlueprintCompileOptions::SkipGarbageCollection);
+			if (!FBlueprintEditorUtils::ImplementNewInterface(Blueprint, FTopLevelAssetPath(UBlendableInterface::StaticClass()))
+				|| !FBlueprintEditorUtils::ImplementNewInterface(Blueprint, FTopLevelAssetPath(Interface->GeneratedClass)))
+			{
+				return nullptr;
+			}
+			USCS_Node* Root = AddComponentNode(Blueprint, USceneComponent::StaticClass(), TEXT("Root"));
+			USCS_Node* Mesh = AddComponentNode(Blueprint, UStaticMeshComponent::StaticClass(), TEXT("Mesh"), Root);
+			USCS_Node* Spin = AddComponentNode(Blueprint, URotatingMovementComponent::StaticClass(), TEXT("Spin"));
+			UStaticMeshComponent* MeshTemplate = Mesh ? Cast<UStaticMeshComponent>(Mesh->ComponentTemplate) : nullptr;
+			URotatingMovementComponent* SpinTemplate = Spin ? Cast<URotatingMovementComponent>(Spin->ComponentTemplate) : nullptr;
+			if (!MeshTemplate || !SpinTemplate)
+			{
+				return nullptr;
+			}
+			// As the details panel sets them
+			MeshTemplate->SetStaticMesh(Cube);
+			MeshTemplate->SetRelativeLocation_Direct(FVector(0.0, 0.0, 50.0));
+			SpinTemplate->RotationRate = FRotator(0.0, 90.0, 0.0);
+			FKismetEditorUtilities::CompileBlueprint(Blueprint, EBlueprintCompileOptions::SkipGarbageCollection);
+			return AddSetupFunction(BP);
+		} });
+	Cases.Last().IncludeVariables = true;
+
+	Cases.Add({ TEXT("InheritedComponents"),
+		TEXT("Components asked for (card 0243). The captured Blueprint derives from BP_N2CGolden_ComponentBase, which adds "
+			"a root SceneComponent Root and under it a StaticMeshComponent Mesh with the engine Cube mesh. It adds a "
+			"BoxComponent Box as a root node naming no parent (so it goes under the inherited Root) with box extent "
+			"(50, 50, 100), and a SphereComponent Trigger whose node names the inherited Mesh as its parent; it overrides "
+			"the inherited Mesh's mesh with the engine Sphere. Function Setup runs CollectGarbage. Captured from Setup."),
+		{},
+		[](FTestBlueprint& BP) -> UEdGraph*
+		{
+			UStaticMesh* Cube = BasicShape(TEXT("Cube"));
+			UStaticMesh* Sphere = BasicShape(TEXT("Sphere"));
+			FTestBlueprint* Base = BP.AddSiblingBlueprint(TEXT("BP_N2CGolden_ComponentBase"));
+			UBlueprint* BaseBlueprint = Base ? Base->GetBlueprint() : nullptr;
+			if (!Cube || !Sphere || !BaseBlueprint)
+			{
+				return nullptr;
+			}
+			USCS_Node* Root = AddComponentNode(BaseBlueprint, USceneComponent::StaticClass(), TEXT("Root"));
+			USCS_Node* Mesh = AddComponentNode(BaseBlueprint, UStaticMeshComponent::StaticClass(), TEXT("Mesh"), Root);
+			UStaticMeshComponent* MeshTemplate = Mesh ? Cast<UStaticMeshComponent>(Mesh->ComponentTemplate) : nullptr;
+			if (!MeshTemplate)
+			{
+				return nullptr;
+			}
+			MeshTemplate->SetStaticMesh(Cube);
+			FKismetEditorUtilities::CompileBlueprint(BaseBlueprint, EBlueprintCompileOptions::SkipGarbageCollection);
+
+			// The captured Blueprint derives from the base, as Reparent Blueprint sets it
+			UBlueprint* Blueprint = BP.GetBlueprint();
+			Blueprint->ParentClass = BaseBlueprint->GeneratedClass;
+			FKismetEditorUtilities::CompileBlueprint(Blueprint, EBlueprintCompileOptions::SkipGarbageCollection);
+			USCS_Node* Box = AddComponentNode(Blueprint, UBoxComponent::StaticClass(), TEXT("Box"));
+			USCS_Node* Trigger = AddComponentNode(Blueprint, USphereComponent::StaticClass(), TEXT("Trigger"));
+			UBoxComponent* BoxTemplate = Box ? Cast<UBoxComponent>(Box->ComponentTemplate) : nullptr;
+			UInheritableComponentHandler* Handler = Blueprint->GetInheritableComponentHandler(/*bCreateIfNecessary*/ true);
+			if (!BoxTemplate || !Trigger || !Handler)
+			{
+				return nullptr;
+			}
+			BoxTemplate->InitBoxExtent(FVector(50.0, 50.0, 100.0));
+			// The Components panel stores a parent from another class on the root node (ParentComponentOrVariableName)
+			Trigger->SetParent(Mesh);
+			UStaticMeshComponent* MeshOverride = Cast<UStaticMeshComponent>(Handler->CreateOverridenComponentTemplate(FComponentKey(Mesh)));
+			if (!MeshOverride)
+			{
+				return nullptr;
+			}
+			MeshOverride->SetStaticMesh(Sphere);
+			return AddSetupFunction(BP);
 		} });
 	Cases.Last().IncludeVariables = true;
 
@@ -2620,6 +2765,7 @@ void FN2CCaptureGoldenSpec::Define()
 			// The capture with variables, less the two fields, is the capture without them
 			const TSharedPtr<FJsonObject> Stripped = N2CTest::ParseJsonObject(With.Json);
 			Stripped->RemoveField(N2CJsonContract::VariablesField);
+			Stripped->RemoveField(N2CJsonContract::ComponentsField);
 			Stripped->GetArrayField(TEXT("graphs"))[0]->AsObject()->RemoveField(N2CJsonContract::LocalVariablesField);
 			TestEqual(TEXT("the rest of the capture is unchanged"), PrettyJson(Stripped), Without.Json);
 		});
@@ -3522,6 +3668,208 @@ void FN2CCaptureGoldenSpec::Define()
 	// Card 0518 (finding F4 of Context/translation-pipeline/graph-type-coverage.md): metadata.parent_class and
 	// metadata.asset_class, so a translation need not guess the base class and a Widget, Animation or Editor Utility
 	// Blueprint can be told from an Actor's
+	Describe(TEXT("Components"), [this]()
+	{
+		// The captured components, by name
+		const auto FindComponent = [](const FCaptured& Captured, const TCHAR* Name) -> const FN2CComponent*
+		{
+			return Captured.Blueprint.Components.FindByPredicate([Name](const FN2CComponent& C) { return C.Name == Name; });
+		};
+		const auto PropertyNames = [](const FN2CComponent* Component)
+		{
+			TArray<FString> Names;
+			if (Component)
+			{
+				for (const FN2CComponentProperty& Property : Component->Properties)
+				{
+					Names.Add(Property.Name);
+				}
+			}
+			return FString::Join(Names, TEXT(","));
+		};
+		const auto PropertyValue = [](const FN2CComponent* Component, const TCHAR* Name)
+		{
+			const FN2CComponentProperty* Property = Component
+				? Component->Properties.FindByPredicate([Name](const FN2CComponentProperty& P) { return P.Name == Name; }) : nullptr;
+			return Property ? Property->Value : FString();
+		};
+
+		It(TEXT("lists the components a Blueprint adds with their attach parents and only the properties edited, and its interfaces"),
+			[this, FindComponent, PropertyNames, PropertyValue]()
+		{
+			const FCaptured Captured = CaptureNamed(TEXT("OwnComponents"));
+			if (!Captured.Capture.IsValid())
+			{
+				return;
+			}
+			TArray<FString> Names;
+			for (const FN2CComponent& Component : Captured.Blueprint.Components)
+			{
+				Names.Add(Component.Name);
+			}
+			TestEqual(TEXT("components, parents first, no DefaultSceneRoot"), FString::Join(Names, TEXT(",")), FString(TEXT("Root,Mesh,Spin")));
+			const FN2CComponent* Root = FindComponent(Captured, TEXT("Root"));
+			const FN2CComponent* Mesh = FindComponent(Captured, TEXT("Mesh"));
+			const FN2CComponent* Spin = FindComponent(Captured, TEXT("Spin"));
+			if (!TestTrue(TEXT("Root, Mesh and Spin are captured"), Root && Mesh && Spin))
+			{
+				return;
+			}
+			TestTrue(TEXT("Root is the root: a SceneComponent with no parent and nothing edited"), Root->Class == TEXT("SceneComponent")
+				&& Root->Parent.IsEmpty() && Root->Properties.Num() == 0 && !Root->bInherited);
+			TestEqual(TEXT("Mesh's class"), Mesh->Class, FString(TEXT("StaticMeshComponent")));
+			TestEqual(TEXT("Mesh's parent"), Mesh->Parent, FString(TEXT("Root")));
+			TestEqual(TEXT("Mesh's edited properties, nothing else (no CreationMethod)"), PropertyNames(Mesh), FString(TEXT("StaticMesh,RelativeLocation")));
+			TestTrue(TEXT("Mesh's mesh is the Cube"), PropertyValue(Mesh, TEXT("StaticMesh")).Contains(TEXT("/Engine/BasicShapes/Cube.Cube")));
+			TestTrue(TEXT("Spin is not a scene component: no parent"), Spin->Parent.IsEmpty());
+			TestEqual(TEXT("Spin's edited property"), PropertyNames(Spin), FString(TEXT("RotationRate")));
+			TestEqual(TEXT("interfaces in metadata, in the order added"), FString::Join(Captured.Blueprint.Metadata.Interfaces, TEXT(",")),
+				FString(TEXT("BlendableInterface,BPI_N2CGolden_Use")));
+			TestEqual(TEXT("the parent class"), Captured.Blueprint.Metadata.ParentClass, FString(TEXT("Actor")));
+		});
+
+		It(TEXT("attaches to an inherited root and to the inherited parent a node names, and lists an inherited component it overrides"),
+			[this, FindComponent, PropertyNames, PropertyValue]()
+		{
+			const FCaptured Captured = CaptureNamed(TEXT("InheritedComponents"));
+			if (!Captured.Capture.IsValid())
+			{
+				return;
+			}
+			TArray<FString> Names;
+			for (const FN2CComponent& Component : Captured.Blueprint.Components)
+			{
+				Names.Add(Component.Name + (Component.bInherited ? TEXT("(inherited)") : TEXT("")));
+			}
+			TestEqual(TEXT("own components first, then the overridden inherited one; the unchanged inherited Root is left out"),
+				FString::Join(Names, TEXT(",")), FString(TEXT("Trigger,Box,Mesh(inherited)")));
+			const FN2CComponent* Box = FindComponent(Captured, TEXT("Box"));
+			const FN2CComponent* Trigger = FindComponent(Captured, TEXT("Trigger"));
+			const FN2CComponent* Mesh = FindComponent(Captured, TEXT("Mesh"));
+			if (!TestTrue(TEXT("Box, Trigger and Mesh are captured"), Box && Trigger && Mesh))
+			{
+				return;
+			}
+			TestEqual(TEXT("Box goes under the inherited root"), Box->Parent, FString(TEXT("Root")));
+			TestEqual(TEXT("Box's edited property"), PropertyNames(Box), FString(TEXT("BoxExtent")));
+			TestEqual(TEXT("Trigger goes under the inherited Mesh its node names"), Trigger->Parent, FString(TEXT("Mesh")));
+			TestEqual(TEXT("Trigger has nothing edited"), PropertyNames(Trigger), FString());
+			TestEqual(TEXT("the override lists only the changed mesh (the base's Cube is not repeated)"), PropertyNames(Mesh), FString(TEXT("StaticMesh")));
+			TestTrue(TEXT("the override's mesh is the Sphere"), PropertyValue(Mesh, TEXT("StaticMesh")).Contains(TEXT("/Engine/BasicShapes/Sphere.Sphere")));
+			TestEqual(TEXT("the parent class is the base Blueprint"), Captured.Blueprint.Metadata.ParentClass, FString(TEXT("BP_N2CGolden_ComponentBase")));
+		});
+
+		It(TEXT("lists a native component whose defaults a child Blueprint changes"), [this, FindComponent, PropertyNames]()
+		{
+			using namespace N2CCaptureGolden;
+			N2CTest::FTestBlueprint BP(TEXT("BP_N2CGolden_NativeOverride"));
+			UStaticMesh* Cube = BasicShape(TEXT("Cube"));
+			UBlueprint* Child = FKismetEditorUtilities::CreateBlueprint(AStaticMeshActor::StaticClass(), BP.GetPackage(),
+				TEXT("BP_N2CGolden_MeshActor"), BPTYPE_Normal, UBlueprint::StaticClass(), UBlueprintGeneratedClass::StaticClass());
+			if (!TestNotNull(TEXT("the Cube"), Cube) || !TestNotNull(TEXT("a Static Mesh Actor Blueprint"), Child))
+			{
+				return;
+			}
+			FKismetEditorUtilities::CompileBlueprint(Child, EBlueprintCompileOptions::SkipGarbageCollection);
+			AStaticMeshActor* Defaults = Cast<AStaticMeshActor>(Child->GeneratedClass->GetDefaultObject());
+			if (!TestNotNull(TEXT("its class defaults"), Defaults) || !TestNotNull(TEXT("its mesh component"), Defaults->GetStaticMeshComponent()))
+			{
+				return;
+			}
+			// As the details panel of the inherited StaticMeshComponent sets it
+			Defaults->GetStaticMeshComponent()->SetStaticMesh(Cube);
+			UEdGraph* Graph = FBlueprintEditorUtils::FindEventGraph(Child);
+			UK2Node_CustomEvent* Event = BP.AddCustomEvent(Graph, TEXT("OnMesh"));
+			UK2Node_CallFunction* Collect = Graph ? AddCollectGarbage(BP, Graph) : nullptr;
+			if (!TestNotNull(TEXT("an event graph"), Collect) || !BP.Link(Event, UEdGraphSchema_K2::PN_Then, Collect, UEdGraphSchema_K2::PN_Execute))
+			{
+				return;
+			}
+			const TArray<UEdGraph*> Graphs = { Graph };
+			const TValueOrError<FN2CCapture, FString> Result = N2C::CaptureGraphs(Graphs);
+			if (!TestTrue(TEXT("the whole-Blueprint capture succeeds"), Result.HasValue()))
+			{
+				return;
+			}
+			const TArray<FN2CComponent>& Components = Result.GetValue().Blueprint.Components;
+			if (TestEqual(TEXT("one component: the overridden native one"), Components.Num(), 1))
+			{
+				TestEqual(TEXT("its variable name"), Components[0].Name, FString(TEXT("StaticMeshComponent")));
+				TestTrue(TEXT("inherited"), Components[0].bInherited);
+				TestEqual(TEXT("only the changed mesh"), PropertyNames(&Components[0]), FString(TEXT("StaticMesh")));
+			}
+		});
+
+		It(TEXT("leaves components out of a graph capture unless asked"), [this]()
+		{
+			const FCaptureCase* Case = FindCase(TEXT("OwnComponents"));
+			if (!TestNotNull(TEXT("OwnComponents case"), Case))
+			{
+				return;
+			}
+			FCaptureCase Off = *Case;
+			Off.IncludeVariables.Reset();
+			const FCaptured Without = Capture(Off);
+			if (Without.Capture.IsValid())
+			{
+				TestFalse(TEXT("no components by default"), Without.Capture->HasField(N2CJsonContract::ComponentsField));
+				TestEqual(TEXT("interfaces are metadata: written either way"), Without.Blueprint.Metadata.Interfaces.Num(), 2);
+			}
+		});
+
+		It(TEXT("reads and writes every component field and the interfaces, and skips a component without a name with a warning"), [this]()
+		{
+			const FString Text = TEXT("{\"version\":\"2.0.0\",\"metadata\":{\"name\":\"BP\",\"blueprint_type\":\"Normal\",\"blueprint_class\":\"BP\",")
+				TEXT("\"parent_class\":\"Actor\",\"interfaces\":[\"BlendableInterface\",\"BPI_Use\"]},")
+				TEXT("\"graphs\":[{\"name\":\"F\",\"graph_type\":\"Function\",\"nodes\":[{\"id\":\"N1\",\"type\":\"FunctionEntry\",\"class\":\"K2Node_FunctionEntry\",\"input_pins\":[],\"output_pins\":[]}],\"flows\":{\"execution\":[],\"data\":{}}}],")
+				TEXT("\"structs\":[],\"enums\":[],\"components\":[{\"name\":\"Root\",\"class\":\"SceneComponent\"},")
+				TEXT("{\"name\":\"Mesh\",\"class\":\"StaticMeshComponent\",\"parent\":\"Root\",\"socket\":\"Hand\",\"inherited\":true,")
+				TEXT("\"properties\":{\"StaticMesh\":\"None\",\"RelativeLocation\":\"(X=0.000000,Y=0.000000,Z=50.000000)\"},\"properties_truncated\":true,\"later\":1},")
+				TEXT("{\"class\":\"BoxComponent\"}]}");
+			FN2CBlueprint Read;
+			TArray<FN2CJsonReadWarning> Warnings;
+			if (!TestTrue(TEXT("FromJson reads it"), FN2CSerializer::FromJson(Text, Read, Warnings)))
+			{
+				return;
+			}
+			TestEqual(TEXT("two components (the nameless entry skipped)"), Read.Components.Num(), 2);
+			TestEqual(TEXT("the interfaces"), FString::Join(Read.Metadata.Interfaces, TEXT(",")), FString(TEXT("BlendableInterface,BPI_Use")));
+			if (Read.Components.Num() == 2)
+			{
+				const FN2CComponent& Mesh = Read.Components[1];
+				TestTrue(TEXT("Mesh's fields"), Mesh.Parent == TEXT("Root") && Mesh.Socket == TEXT("Hand") && Mesh.bInherited
+					&& Mesh.bPropertiesTruncated && Mesh.Properties.Num() == 2 && Mesh.Properties[1].Name == TEXT("RelativeLocation"));
+			}
+			TArray<FString> Codes;
+			for (const FN2CJsonReadWarning& Warning : Warnings)
+			{
+				Codes.Add(Warning.Code);
+			}
+			TestTrue(TEXT("SKIPPED_COMPONENT warning"), Codes.Contains(N2CJsonContract::ReadWarning::SkippedComponent));
+			TestTrue(TEXT("the unknown field is kept with a warning"), Codes.Contains(N2CJsonContract::ReadWarning::UnknownField));
+
+			// Written back the same, less the skipped entry
+			const TSharedPtr<FJsonObject> Again = N2CTest::ParseJsonObject(FN2CSerializer::ToJson(Read, EN2CJsonStyle::Condensed));
+			const TSharedPtr<FJsonObject> Expected = N2CTest::ParseJsonObject(Text);
+			const auto Wrap = [](const TArray<TSharedPtr<FJsonValue>>& Array)
+			{
+				const TSharedPtr<FJsonObject> Object = MakeShared<FJsonObject>();
+				Object->SetArrayField(TEXT("array"), Array);
+				return Object;
+			};
+			if (TestTrue(TEXT("both parse"), Again.IsValid() && Expected.IsValid()))
+			{
+				TArray<TSharedPtr<FJsonValue>> ExpectedComponents = Expected->GetArrayField(N2CJsonContract::ComponentsField);
+				ExpectedComponents.RemoveAt(2);
+				Expected->SetArrayField(N2CJsonContract::ComponentsField, ExpectedComponents);
+				TestEqual(TEXT("the components written back"), PrettyJson(Wrap(Again->GetArrayField(N2CJsonContract::ComponentsField))),
+					PrettyJson(Wrap(Expected->GetArrayField(N2CJsonContract::ComponentsField))));
+				TestEqual(TEXT("the interfaces written back"), PrettyJson(Wrap(Again->GetObjectField(TEXT("metadata"))->GetArrayField(N2CJsonContract::InterfacesField))),
+					PrettyJson(Wrap(Expected->GetObjectField(TEXT("metadata"))->GetArrayField(N2CJsonContract::InterfacesField))));
+			}
+		});
+	});
+
 	Describe(TEXT("Metadata"), [this]()
 	{
 		It(TEXT("records the parent class and the asset class of an Actor, a child and a Widget Blueprint"), [this]()

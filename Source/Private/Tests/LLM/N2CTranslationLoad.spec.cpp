@@ -21,6 +21,7 @@
 #include "Models/N2CBatchTranslationTypes.h"
 #include "Models/N2CBlueprint.h"
 #include "Models/N2CTranslation.h"
+#include "Subsystems/N2CTranslationSubsystem.h"
 #include "Tests/N2CTestHelpers.h"
 #include "UObject/StrongObjectPtr.h"
 #include "Utils/N2CPathUtils.h"
@@ -42,7 +43,7 @@ N2C_TEST_PRIVATE_MEMBER(FN2CLoadBatchOutputPath, FString UN2CBatchTranslationOrc
  * through UN2CGraphStateManager::LoadTranslation (also UN2CTagBlueprintLibrary::LoadTranslation), which picks the
  * implementation file from the language the writer recorded. Before 0438 the batch recorded EN2CCodeLanguage::Python,
  * the main window recorded CPP for every language, and the loader expected Python and Pseudocode as .txt, so only
- * C++ loaded. Checks: each writer (the batch orchestrator and the main window's SaveSingleTranslation, both through
+ * C++ loaded. Checks: each writer (the batch orchestrator and the translation subsystem's SaveSingleTranslation, both through
  * the translation archive, card 0252) saves each of the six languages and the reader gets the code back; the record
  * keeps the canonical id across a reload of the state file; folders recorded by older builds (enum-qualified id, CPP,
  * Pseudocode as .txt) still load.
@@ -259,7 +260,7 @@ void FN2CTranslationLoadSpec::Define()
 
 							const FString What = FString::Printf(TEXT("single%s%s"), bRenamed ? TEXT(" (renamed)") : TEXT(""),
 								bOutsideProject ? TEXT(" outside the project") : TEXT(""));
-							if (!TestTrue(What + TEXT(": saved and recorded"), SN2CMainWindow::SaveSingleTranslation(Tag, Response, Blueprint)))
+							if (!TestTrue(What + TEXT(": saved and recorded"), UN2CTranslationSubsystem::SaveSingleTranslation(Tag, Response, Blueprint)))
 							{
 								continue;
 							}

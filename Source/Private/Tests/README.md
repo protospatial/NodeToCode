@@ -274,7 +274,7 @@ card 0305).
   - Checked graphs stay checked when the same view is refreshed.
   - The header names the view, and an empty list says why.
 - `NodeToCode.UI.TranslationViewerJson` (`Core/N2CTranslationViewerJson.spec.cpp`, card 0501) saves a single
-  translation with the real writer (`SN2CMainWindow::SaveSingleTranslation`, through `FN2CTranslationArchive`)
+  translation with the real writer (`UN2CTranslationSubsystem::SaveSingleTranslation`, through `FN2CTranslationArchive`)
   into a scratch output folder on an isolated graph state manager. `LoadN2CJson` returns the `N2C_BP_<run>.json`
   capture from the run folder, one folder above the recorded entry folder, also when the LLM renamed the graph.
 - `NodeToCode.Translation.Archive` (`LLM/N2CTranslationArchive.spec.cpp`, card 0252) writes a response with root,
@@ -304,7 +304,8 @@ card 0305).
   an hour ago (an aborted or killed run in any checkout). Never write a credential outside `NodeToCodeTest/`.
 - `NodeToCode.Settings.Migration` (`Core/N2CSettingsMigration.spec.cpp`) upgrades `Fixtures/Settings/Legacy12x`, a
   1.2.x project: `DefaultNodeToCode.ini` with every config key of main's `UN2CSettings`, the `DefaultEngine.ini`
-  1.2.x wrote, and a 1.2.x project `secrets.json`. Every key has a fate in the spec's table (kept, migrated, model ID,
+  1.2.x wrote, and a 1.2.x project `secrets.json` (checked in as `secrets.legacy12x.json`, so the release
+  package's forbidden-name check stays strict; card 0527). Every key has a fate in the spec's table (kept, migrated, model ID,
   pricing, theme); each value is checked after the upgrade and again after a restart, and every key lands in the
   per-user store. A key added to the fixture without a fate fails the spec.
 - `NodeToCode.StructUtils` (`Core/N2CStructUtils.spec.cpp`) calls `UN2CStructUtilsLibrary` with bad package paths and
@@ -376,6 +377,13 @@ whole output to `<Project>/Saved/Automation/N2CCaptureGolden/<case>.actual.json`
   Reverse of an empty timeline).
 - **Exec pins (card 0136):** `BranchSameTarget` (True and False into one node), `Sequence` (then_0 and then_1) and
   `ForEachLoop` (the StandardMacros loop over an int array input: Loop Body and Completed).
+- **Components (card 0243):** `OwnComponents` (an Actor Blueprint implementing BlendableInterface and a Blueprint
+  interface adds Root, Mesh under it with the Cube mesh and a relative location, and a RotatingMovementComponent) and
+  `InheritedComponents` (a child of a Blueprint that adds Root and Mesh: a Box under the inherited root, a Trigger whose
+  node names the inherited Mesh, and an override of the inherited Mesh's mesh), both with `IncludeVariables`. The
+  `Components` tests check the attach parents, that only edited properties are listed, the interfaces in metadata, a
+  native component a Static Mesh Actor child changes, that a translation capture leaves components out, and the
+  reader and writer of every field.
 - **Map and set loops (card 0484):** `ForEachMapSet` (For Each (Map) over a Name-to-int map input, whose Completed runs
   For Each (Set) over a Name set input). The engine stores their key and value pin labels with `FText::FromString`, so
   `N2CStableNames::PinLabel` maps the engine's default names back to "Map Key", "Map Value" and "Set Value"; the
