@@ -69,6 +69,7 @@ Available Functions (the authoritative list is __all__ below):
     - get_focused_blueprint() - Get info about the focused Blueprint
     - get_blueprint_n2cjson(path, graph_name, graph_guid, depth, to_file) - Any Blueprint as N2C JSON by path
     - list_blueprint_graphs(path) - Every graph of a Blueprint by path
+    - get_blueprint_dependencies(paths) - Dependency index: nodes, edges, order, cycle groups
     - read_n2c_json(text) - Read N2C JSON (1.x or 2.x) into the current version
     - compile_blueprint(path=None) - Compile the Blueprint at path, else the focused Blueprint
     - save_blueprint(path=None, only_if_dirty=True) - Save the Blueprint at path, else the focused Blueprint
@@ -130,6 +131,7 @@ from .blueprint import (
     get_focused_blueprint,
     get_blueprint_n2cjson,
     list_blueprint_graphs,
+    get_blueprint_dependencies,
     read_n2c_json,
     compile_blueprint,
     save_blueprint,
@@ -201,6 +203,7 @@ __all__ = [
     'get_focused_blueprint',
     'get_blueprint_n2cjson',
     'list_blueprint_graphs',
+    'get_blueprint_dependencies',
     'read_n2c_json',
     'compile_blueprint',
     'save_blueprint',

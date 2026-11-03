@@ -170,7 +170,8 @@ void FN2CMcpUntrustedContentSpec::Define()
 				TEXT("get-blueprint-function-local-variables"), TEXT("list-blueprint-functions"),
 				TEXT("list-overridable-functions"), TEXT("search-blueprint-nodes"), TEXT("list-blueprint-tags"),
 				TEXT("get-blueprint-n2cjson"), TEXT("list-blueprint-graphs"), TEXT("get-editor-context"),
-				TEXT("translate-focused-blueprint"), TEXT("export-n2cjson-batch"), TEXT("translate-batch")};
+				TEXT("translate-focused-blueprint"), TEXT("export-n2cjson-batch"), TEXT("translate-batch"),
+				TEXT("get-blueprint-dependencies")};
 			TSet<FString> Declared;
 			for (const TSharedPtr<IN2CMcpTool>& Tool : FN2CMcpToolRegistry::Get().GetTools())
 			{

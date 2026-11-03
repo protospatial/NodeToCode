@@ -84,6 +84,22 @@ public:
 	static FString ListBlueprintGraphs(const FString& BlueprintPath);
 
 	/**
+	 * The dependency index over asset paths and content folders (card 0319), as the MCP get-blueprint-dependencies
+	 * tool returns it, always whole (there is no size limit here).
+	 *
+	 * @param Paths Asset paths (/Game/Blueprints/BP_Door) and content folders (/Game/Blueprints, with subfolders)
+	 * @param bIncludeCallGraph Load the Blueprints for call, macro, cast and variable-type edges (false: AssetRegistry only)
+	 * @param bIncludeReferenced Also index the project's own assets the roots depend on outside Paths
+	 * @param bToFile Also write the JSON export under Saved/NodeToCode/Dependencies (savedTo, bytes)
+	 * @return {"success", "data": {"roots", "nodeCount", "edgeCount", "nodes": [{"path", "name", "kind", "root"}],
+	 *         "edges": [{"from", "to", "kind", "graph", "node"}], "order", "cycleGroups", "warnings", "inline",
+	 *         "savedTo", "bytes"}, "error"}; errors start with INVALID_ARGUMENT, NOT_FOUND or EXPORT_FAILED
+	 */
+	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python")
+	static FString GetBlueprintDependencies(const TArray<FString>& Paths, bool bIncludeCallGraph = true,
+		bool bIncludeReferenced = true, bool bToFile = false);
+
+	/**
 	 * Read N2C JSON text (a saved N2C_BP_*.json, get_focused_blueprint_json's "n2c_json", or the agent document of
 	 * get_blueprint_n2c_json, whose "ids" {"short", "guid"} are read as the IDs) with NodeToCode's reader.
 	 * Reads version 1.x (1.2.x and earlier 2.0 builds) and 2.x into the current model; the result is that model

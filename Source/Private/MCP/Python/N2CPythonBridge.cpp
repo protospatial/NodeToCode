@@ -19,6 +19,7 @@
 #include "MCP/Utils/N2CMcpBlueprintExport.h"
 #include "MCP/Utils/N2CMcpUntrustedContent.h"
 #include "MCP/Tools/Implementations/Translation/N2CMcpGetAvailableTranslationTargetsTool.h"
+#include "MCP/Tools/Implementations/Dependencies/N2CMcpDependencies.h"
 #include "MCP/Tools/N2CMcpFunctionGuidUtils.h"
 #include "MCP/Utils/N2CMcpFunctionPinUtils.h"
 #include "MCP/Utils/N2CPinConnectPolicy.h"
@@ -334,6 +335,19 @@ FString UN2CPythonBridge::ListBlueprintGraphs(const FString& BlueprintPath)
 		return MakeErrorJson(LoadError);
 	}
 	return MakeSuccessJson(N2CMcpBlueprintExport::ListGraphs(*Blueprint));
+}
+
+FString UN2CPythonBridge::GetBlueprintDependencies(const TArray<FString>& Paths, bool bIncludeCallGraph,
+	bool bIncludeReferenced, bool bToFile)
+{
+	N2CMcpDependencies::FRequest Request;
+	Request.Paths = Paths;
+	Request.bIncludeCallGraph = bIncludeCallGraph;
+	Request.bIncludeReferenced = bIncludeReferenced;
+	Request.bToFile = bToFile;
+	FString Error;
+	const TSharedPtr<FJsonObject> Json = N2CMcpDependencies::Run(Request, Error);
+	return Json.IsValid() ? MakeSuccessJson(Json) : MakeErrorJson(Error);
 }
 
 FString UN2CPythonBridge::ReadN2CJson(const FString& N2CJson)
