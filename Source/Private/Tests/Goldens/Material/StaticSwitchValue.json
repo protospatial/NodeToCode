@@ -1,0 +1,126 @@
+{
+	"case": "StaticSwitchValue",
+	"description": "A Static Switch (not a parameter) with its Value input unwired and Default Value true: both branches kept and live, the default in properties",
+	"depth": 0,
+	"warnings": [],
+	"capture":
+	{
+		"version": "2.0.0",
+		"metadata":
+		{
+			"name": "M_N2CGolden_StaticSwitchValue",
+			"asset_class": "Material",
+			"asset_kind": "Material",
+			"material":
+			{
+				"domain": "Surface",
+				"blend_mode": "Opaque",
+				"shading_models": [
+					"DefaultLit"
+				]
+			}
+		},
+		"graphs": [
+			{
+				"name": "M_N2CGolden_StaticSwitchValue",
+				"graph_type": "Material",
+				"nodes": [
+					{
+						"id": "N1",
+						"type": "MaterialExpression",
+						"class": "MaterialExpressionConstant",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P1",
+								"name": "Output",
+								"type": "Wildcard",
+								"connected": true
+							}
+						],
+						"properties":
+						{
+							"R": "1.000000"
+						}
+					},
+					{
+						"id": "N2",
+						"type": "MaterialExpression",
+						"class": "MaterialExpressionConstant",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P2",
+								"name": "Output",
+								"type": "Wildcard",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N3",
+						"type": "MaterialExpression",
+						"class": "MaterialExpressionStaticSwitch",
+						"input_pins": [
+							{
+								"id": "P3",
+								"name": "A",
+								"type": "Wildcard",
+								"connected": true
+							},
+							{
+								"id": "P4",
+								"name": "B",
+								"type": "Wildcard",
+								"connected": true
+							},
+							{
+								"id": "P5",
+								"name": "Value",
+								"type": "Wildcard"
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P6",
+								"name": "Output",
+								"type": "Wildcard",
+								"connected": true
+							}
+						],
+						"properties":
+						{
+							"DefaultValue": "True"
+						}
+					},
+					{
+						"id": "N4",
+						"type": "MaterialOutput",
+						"class": "Material",
+						"input_pins": [
+							{
+								"id": "P7",
+								"name": "Roughness",
+								"type": "Wildcard",
+								"connected": true
+							}
+						],
+						"output_pins": []
+					}
+				],
+				"flows":
+				{
+					"execution": [],
+					"data":
+					{
+						"N1.P1": "N3.P3",
+						"N2.P2": "N3.P4",
+						"N3.P6": "N4.P7"
+					}
+				}
+			}
+		],
+		"structs": [],
+		"enums": []
+	}
+}

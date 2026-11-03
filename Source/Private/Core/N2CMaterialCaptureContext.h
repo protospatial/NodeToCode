@@ -25,7 +25,11 @@ struct FExpressionInput;
  *   call's input by the function input's name; GetInputName and GetCaption text is never an identifier. An output is
  *   named by its OutputName, else by the channels its mask selects ("RGB", "R"), else "Output". The output node has
  *   one input per connected material property, named by FMaterialAttributeDefinitionMap::GetAttributeName.
- * - Flows: each input's source is followed through reroutes and named reroutes (they get no node).
+ * - Flows: each input's source is followed through reroutes, named reroutes and composites with their pin bases (card
+ *   0450; none of them gets a node: a composite only organises the nodes inside it, which are in the expression list).
+ * - Material attributes (card 0450): Set Material Attributes' inputs and Get Material Attributes' outputs are named by
+ *   their attribute (FMaterialAttributeDefinitionMap::GetAttributeName of the attribute GUID), "MaterialAttributes" for
+ *   the attributes pin itself; Make and Break Material Attributes already name their pins by attribute.
  * - Liveness: the output node, FunctionOutput and custom outputs are boundaries; an expression none of them reads,
  *   directly or through others, is "unused". Both inputs of a static switch are read.
  * - Function calls: a call to a UMaterialFunction (exact class) is followed when its depth (calls from the captured
