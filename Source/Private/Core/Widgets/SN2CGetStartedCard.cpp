@@ -294,7 +294,7 @@ void SN2CGetStartedCard::Construct(const FArguments& InArgs)
 					.Padding(FN2CSpacing::MD, 0.0f, 0.0f, 0.0f)
 					[
 						SNew(STextBlock)
-						.Text(LOCTEXT("TagHint", "Open a Blueprint. Every graph shows this N2C bar at its top right: click the tag button to tag the graph (it then shows up in the list below), or click Translate. This card hides after the first saved translation."))
+						.Text(LOCTEXT("TagHint", "Open a Blueprint. Every graph shows this N2C bar at its bottom left: click the tag button to tag the graph (it then shows up in the list below), or click Translate. This card hides after the first saved translation."))
 						.AutoWrapText(true)
 						.ColorAndOpacity(N2C::UI::Bind(&FN2CUIColors::TextSecondary))
 					])
