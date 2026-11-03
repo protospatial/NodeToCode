@@ -43,7 +43,7 @@ from live_env_translation import (ASSET_DIR, PROVIDER_VARIABLE, SETUP_PY, STORE_
 from live_translate_cancel import response_of  # noqa: E402
 
 SERVICE_CLASS = {'anthropic': 'N2CAnthropicService', 'openai': 'N2COpenAIService', 'gemini': 'N2CGeminiService',
-                 'deepseek': 'N2CDeepSeekService'}
+                 'deepseek': 'N2COpenAICompatibleService'}
 PROVIDER_ENUM = {'anthropic': 'Anthropic', 'openai': 'OpenAI', 'gemini': 'Gemini', 'deepseek': 'DeepSeek'}
 # Settings model entries for the toolbar translation (the toolbar uses Project Settings, not the MCP arguments)
 MODEL_SETTING = {('anthropic', 'claude-haiku-5-5'): ('AnthropicModelId', 'claude-haiku-5-5'),

@@ -1569,6 +1569,9 @@ FString UN2CSettings::GetActiveModelForProvider(EN2CLLMProvider InProvider) cons
             return OllamaModel;
         case EN2CLLMProvider::LMStudio:
             return LMStudioModel;
+        case EN2CLLMProvider::OpenAICompatible:
+            // Per user, like the profile it belongs to; empty sends the profile's default model
+            return GetDefault<UN2CUserSettings>()->OpenAICompatibleModel.TrimStartAndEnd();
         default:
             break;
     }
@@ -1799,6 +1802,9 @@ void UN2CSettings::ResolveRequestModel(EN2CLLMProvider InProvider, const FString
     InOutConfig.ActivityTimeoutSeconds = FMath::Clamp(HttpActivityTimeoutSeconds, 1.0f, 3600.0f);
     InOutConfig.MaxRetries = FMath::Clamp(MaxRequestRetries, 0, 10);
     const FString SelectedModel = GetActiveModelForProvider(InProvider);
+    // The OpenAI-Compatible profile travels in the request config, so a request keeps its profile (card 0218)
+    InOutConfig.ProviderProfile = InProvider == EN2CLLMProvider::OpenAICompatible
+        ? GetDefault<UN2CUserSettings>()->ProviderProfile.TrimStartAndEnd() : FString();
     if (ModelIdOverride.IsEmpty() || ModelIdOverride == SelectedModel)
     {
         InOutConfig.Model = SelectedModel;

@@ -379,6 +379,14 @@ void FN2CTokenEstimationService::RefreshModelInfo()
 		CachedInputCostPer1M = 0.0f;
 		bCachedIsLocal = true;
 		return;
+	case EN2CLLMProvider::OpenAICompatible:
+		// Context length unknown until live discovery (card 0216): the local estimate
+		CachedModelName = GetDefault<UN2CUserSettings>()->OpenAICompatibleModel;
+		CachedFullContextWindow = 128000;
+		CachedUsableContextWindow = FMath::RoundToInt(CachedFullContextWindow * ContextWindowFactor);
+		CachedInputCostPer1M = 0.0f;
+		bCachedIsLocal = true;
+		return;
 	case EN2CLLMProvider::LMStudio:
 		CachedModelName = Settings->LMStudioModel;
 		CachedFullContextWindow = 128000; // Default estimate for local models

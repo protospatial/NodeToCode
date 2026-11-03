@@ -246,6 +246,7 @@ void SN2CContextWindowVisualizer::PopulateProviderOptions()
 	ProviderOptions.Add(MakeShared<FString>(TEXT("DeepSeek")));
 	ProviderOptions.Add(MakeShared<FString>(TEXT("Ollama")));
 	ProviderOptions.Add(MakeShared<FString>(TEXT("LM Studio")));
+	ProviderOptions.Add(MakeShared<FString>(TEXT("OpenAI-Compatible")));
 }
 
 void SN2CContextWindowVisualizer::PopulateModelOptions()
@@ -347,6 +348,10 @@ void SN2CContextWindowVisualizer::OnProviderSelectionChanged(TSharedPtr<FString>
 	{
 		NewProvider = EN2CLLMProvider::LMStudio;
 	}
+	else if (*NewValue == TEXT("OpenAI-Compatible"))
+	{
+		NewProvider = EN2CLLMProvider::OpenAICompatible;
+	}
 
 	// Check if provider actually changed
 	if (GetDefault<UN2CUserSettings>()->Provider == NewProvider)
@@ -414,6 +419,11 @@ void SN2CContextWindowVisualizer::OnLocalModelTextCommitted(const FText& NewText
 		Settings->LMStudioModel = ModelName;
 		Changed = GET_MEMBER_NAME_CHECKED(UN2CSettings, LMStudioModel);
 		break;
+	case EN2CLLMProvider::OpenAICompatible:
+		// Per user, as the profile is
+		GetMutableDefault<UN2CUserSettings>()->OpenAICompatibleModel = ModelName.TrimStartAndEnd();
+		Changed = GET_MEMBER_NAME_CHECKED(UN2CUserSettings, OpenAICompatibleModel);
+		break;
 	default:
 		break;
 	}
@@ -457,6 +467,8 @@ FText SN2CContextWindowVisualizer::GetCurrentProviderText() const
 		return FText::FromString(TEXT("Ollama"));
 	case EN2CLLMProvider::LMStudio:
 		return FText::FromString(TEXT("LM Studio"));
+	case EN2CLLMProvider::OpenAICompatible:
+		return FText::FromString(TEXT("OpenAI-Compatible"));
 	default:
 		return FText::FromString(TEXT("Unknown"));
 	}
@@ -472,6 +484,8 @@ FText SN2CContextWindowVisualizer::GetLocalModelText() const
 		return FText::FromString(Settings->OllamaModel);
 	case EN2CLLMProvider::LMStudio:
 		return FText::FromString(Settings->LMStudioModel);
+	case EN2CLLMProvider::OpenAICompatible:
+		return FText::FromString(GetDefault<UN2CUserSettings>()->OpenAICompatibleModel);
 	default:
 		return FText::GetEmpty();
 	}
@@ -480,8 +494,10 @@ FText SN2CContextWindowVisualizer::GetLocalModelText() const
 bool SN2CContextWindowVisualizer::IsLocalProvider() const
 {
 	const UN2CSettings* Settings = GetDefault<UN2CSettings>();
+	// A text box for the model: local servers and OpenAI-Compatible hosts serve whatever models they load
 	return GetDefault<UN2CUserSettings>()->Provider == EN2CLLMProvider::Ollama ||
-		   GetDefault<UN2CUserSettings>()->Provider == EN2CLLMProvider::LMStudio;
+		   GetDefault<UN2CUserSettings>()->Provider == EN2CLLMProvider::LMStudio ||
+		   GetDefault<UN2CUserSettings>()->Provider == EN2CLLMProvider::OpenAICompatible;
 }
 
 FReply SN2CContextWindowVisualizer::OnSettingsClicked()

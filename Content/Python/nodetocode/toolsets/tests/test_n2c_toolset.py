@@ -214,7 +214,7 @@ class NodeToCodeToolsSettingsTestCase(ToolCallTestCase):
     def test_list_llm_providers(self):
         providers = NodeToCodeTools.list_llm_providers()
         self.assertEqual({p.name for p in providers},
-                         {'OpenAI', 'Anthropic', 'Gemini', 'Ollama', 'DeepSeek', 'LMStudio'})
+                         {'OpenAI', 'Anthropic', 'Gemini', 'Ollama', 'DeepSeek', 'LMStudio', 'OpenAICompatible'})
         current = [p for p in providers if p.is_current]
         self.assertEqual(len(current), 1)
         self.assertTrue(all(p.model == '' for p in providers if not p.is_current))

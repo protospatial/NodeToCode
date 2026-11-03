@@ -132,7 +132,7 @@ FMcpToolCallResult FN2CMcpGetAvailableLLMProvidersTool::Execute(const TSharedPtr
 bool FN2CMcpGetAvailableLLMProvidersTool::IsProviderConfigured(EN2CLLMProvider Provider) const
 {
     // Local providers are always available
-    if (Provider == EN2CLLMProvider::Ollama || Provider == EN2CLLMProvider::LMStudio)
+    if (Provider == EN2CLLMProvider::Ollama || Provider == EN2CLLMProvider::LMStudio || Provider == EN2CLLMProvider::OpenAICompatible)
     {
         return true;
     }
@@ -157,6 +157,8 @@ FString FN2CMcpGetAvailableLLMProvidersTool::GetProviderDisplayName(EN2CLLMProvi
             return TEXT("Ollama (Local)");
         case EN2CLLMProvider::LMStudio:
             return TEXT("LM Studio (Local)");
+        case EN2CLLMProvider::OpenAICompatible:
+            return TEXT("OpenAI-Compatible (vLLM, llama.cpp, OpenRouter, ...)");
         default:
             return TEXT("Unknown Provider");
     }

@@ -43,13 +43,35 @@
 			"id": "deepseek",
 			"display_name": "DeepSeek",
 			"legacy_enum": "DeepSeek",
-			"dialect": "deepseek_chat",
+			"dialect": "openai_chat",
 			"base_url": "https://api.deepseek.com",
 			"path": "/chat/completions",
 			"auth_style": "bearer",
 			"is_local": false,
 			"needs_key": true,
-			"models_path": "/models"
+			"models_path": "/models",
+			"structured_output": "json_object",
+			"max_tokens_field": "max_tokens",
+			"thinking_on": {
+				"thinking": {
+					"type": "enabled"
+				}
+			},
+			"thinking_off": {
+				"thinking": {
+					"type": "disabled"
+				}
+			},
+			"reasoning_effort_field": "reasoning_effort",
+			"reasoning_fields": [
+				"reasoning_content"
+			],
+			"secret_id": "DeepSeek",
+			"api_key_env": [
+				"DEEPSEEK_API_KEY",
+				"DEEPSEEK_API"
+			],
+			"context_discovery": "catalog"
 		},
 		{
 			"id": "ollama",
@@ -73,7 +95,402 @@
 			"auth_style": "bearer",
 			"is_local": true,
 			"needs_key": false,
-			"models_path": "/v1/models"
+			"models_path": "/v1/models",
+			"structured_output": "json_schema_strict",
+			"max_tokens_field": "max_tokens",
+			"extra_body": {
+				"stream": false
+			},
+			"reasoning_fields": [
+				"reasoning_content",
+				"reasoning"
+			],
+			"context_discovery": "models"
+		},
+		{
+			"id": "vllm",
+			"display_name": "vLLM (localhost:8000)",
+			"legacy_enum": "OpenAICompatible",
+			"dialect": "openai_chat",
+			"base_url": "http://localhost:8000/v1",
+			"path": "/chat/completions",
+			"auth_style": "bearer",
+			"is_local": true,
+			"needs_key": false,
+			"models_path": "/models",
+			"structured_output": "json_schema_strict",
+			"max_tokens_field": "max_tokens",
+			"thinking_on": {
+				"chat_template_kwargs": {
+					"enable_thinking": true
+				}
+			},
+			"thinking_off": {
+				"chat_template_kwargs": {
+					"enable_thinking": false
+				}
+			},
+			"reasoning_fields": [
+				"reasoning_content",
+				"reasoning"
+			],
+			"api_key_env": [
+				"VLLM_API_KEY"
+			],
+			"context_discovery": "models"
+		},
+		{
+			"id": "llamacpp",
+			"display_name": "llama.cpp server (localhost:8080)",
+			"legacy_enum": "OpenAICompatible",
+			"dialect": "openai_chat",
+			"base_url": "http://localhost:8080/v1",
+			"path": "/chat/completions",
+			"auth_style": "bearer",
+			"is_local": true,
+			"needs_key": false,
+			"models_path": "/models",
+			"structured_output": "json_schema",
+			"max_tokens_field": "max_tokens",
+			"thinking_on": {
+				"chat_template_kwargs": {
+					"enable_thinking": true
+				}
+			},
+			"thinking_off": {
+				"chat_template_kwargs": {
+					"enable_thinking": false
+				}
+			},
+			"reasoning_fields": [
+				"reasoning_content",
+				"reasoning"
+			],
+			"api_key_env": [
+				"LLAMA_API_KEY"
+			],
+			"context_discovery": "models"
+		},
+		{
+			"id": "ollama-openai",
+			"display_name": "Ollama, OpenAI-compatible /v1 (localhost:11434)",
+			"legacy_enum": "OpenAICompatible",
+			"dialect": "openai_chat",
+			"base_url": "http://localhost:11434/v1",
+			"path": "/chat/completions",
+			"auth_style": "none",
+			"is_local": true,
+			"needs_key": false,
+			"models_path": "/models",
+			"structured_output": "json_schema",
+			"max_tokens_field": "max_tokens",
+			"thinking_on": {
+				"think": true
+			},
+			"thinking_off": {
+				"think": false
+			},
+			"reasoning_fields": [
+				"reasoning_content",
+				"reasoning"
+			],
+			"api_key_env": [],
+			"context_discovery": "models"
+		},
+		{
+			"id": "openrouter",
+			"display_name": "OpenRouter",
+			"legacy_enum": "OpenAICompatible",
+			"dialect": "openai_chat",
+			"base_url": "https://openrouter.ai/api/v1",
+			"path": "/chat/completions",
+			"auth_style": "bearer",
+			"is_local": false,
+			"needs_key": true,
+			"models_path": "/models",
+			"structured_output": "json_schema_strict",
+			"max_tokens_field": "max_tokens",
+			"thinking_on": {
+				"reasoning": {
+					"enabled": true
+				}
+			},
+			"thinking_off": {
+				"reasoning": {
+					"enabled": false
+				}
+			},
+			"reasoning_fields": [
+				"reasoning"
+			],
+			"extra_headers": {
+				"HTTP-Referer": "https://github.com/protospatial/NodeToCode",
+				"X-Title": "NodeToCode"
+			},
+			"secret_id": "OpenRouter",
+			"api_key_env": [
+				"OPENROUTER_API_KEY"
+			],
+			"context_discovery": "models"
+		},
+		{
+			"id": "groq",
+			"display_name": "Groq",
+			"legacy_enum": "OpenAICompatible",
+			"dialect": "openai_chat",
+			"base_url": "https://api.groq.com/openai/v1",
+			"path": "/chat/completions",
+			"auth_style": "bearer",
+			"is_local": false,
+			"needs_key": true,
+			"models_path": "/models",
+			"structured_output": "json_object",
+			"max_tokens_field": "max_tokens",
+			"reasoning_fields": [
+				"reasoning"
+			],
+			"secret_id": "Groq",
+			"api_key_env": [
+				"GROQ_API_KEY"
+			],
+			"context_discovery": "models"
+		},
+		{
+			"id": "together",
+			"display_name": "Together AI",
+			"legacy_enum": "OpenAICompatible",
+			"dialect": "openai_chat",
+			"base_url": "https://api.together.xyz/v1",
+			"path": "/chat/completions",
+			"auth_style": "bearer",
+			"is_local": false,
+			"needs_key": true,
+			"models_path": "/models",
+			"structured_output": "json_schema",
+			"max_tokens_field": "max_tokens",
+			"reasoning_fields": [
+				"reasoning_content",
+				"reasoning"
+			],
+			"secret_id": "Together",
+			"api_key_env": [
+				"TOGETHER_API_KEY"
+			],
+			"context_discovery": "models"
+		},
+		{
+			"id": "fireworks",
+			"display_name": "Fireworks AI",
+			"legacy_enum": "OpenAICompatible",
+			"dialect": "openai_chat",
+			"base_url": "https://api.fireworks.ai/inference/v1",
+			"path": "/chat/completions",
+			"auth_style": "bearer",
+			"is_local": false,
+			"needs_key": true,
+			"models_path": "/models",
+			"structured_output": "json_schema",
+			"max_tokens_field": "max_tokens",
+			"reasoning_fields": [
+				"reasoning_content",
+				"reasoning"
+			],
+			"secret_id": "Fireworks",
+			"api_key_env": [
+				"FIREWORKS_API_KEY"
+			],
+			"context_discovery": "models"
+		},
+		{
+			"id": "xai",
+			"display_name": "xAI",
+			"legacy_enum": "OpenAICompatible",
+			"dialect": "openai_chat",
+			"base_url": "https://api.x.ai/v1",
+			"path": "/chat/completions",
+			"auth_style": "bearer",
+			"is_local": false,
+			"needs_key": true,
+			"models_path": "/models",
+			"structured_output": "json_schema_strict",
+			"max_tokens_field": "max_tokens",
+			"reasoning_fields": [
+				"reasoning_content"
+			],
+			"secret_id": "xAI",
+			"api_key_env": [
+				"XAI_API_KEY"
+			],
+			"context_discovery": "models"
+		},
+		{
+			"id": "mistral",
+			"display_name": "Mistral AI",
+			"legacy_enum": "OpenAICompatible",
+			"dialect": "openai_chat",
+			"base_url": "https://api.mistral.ai/v1",
+			"path": "/chat/completions",
+			"auth_style": "bearer",
+			"is_local": false,
+			"needs_key": true,
+			"models_path": "/models",
+			"structured_output": "json_schema_strict",
+			"max_tokens_field": "max_tokens",
+			"reasoning_fields": [
+				"reasoning_content",
+				"reasoning"
+			],
+			"secret_id": "Mistral",
+			"api_key_env": [
+				"MISTRAL_API_KEY"
+			],
+			"context_discovery": "models"
+		},
+		{
+			"id": "azure-openai",
+			"display_name": "Azure OpenAI (v1 API; set Base URL Override to your resource)",
+			"legacy_enum": "OpenAICompatible",
+			"dialect": "openai_chat",
+			"base_url": "https://YOUR-RESOURCE.openai.azure.com/openai/v1",
+			"path": "/chat/completions",
+			"auth_style": "api-key",
+			"is_local": false,
+			"needs_key": true,
+			"models_path": "/models",
+			"structured_output": "json_schema_strict",
+			"max_tokens_field": "max_completion_tokens",
+			"reasoning_fields": [
+				"reasoning_content",
+				"reasoning"
+			],
+			"secret_id": "AzureOpenAI",
+			"api_key_env": [
+				"AZURE_OPENAI_API_KEY"
+			],
+			"context_discovery": "none"
+		},
+		{
+			"id": "bedrock",
+			"display_name": "Amazon Bedrock, OpenAI-compatible (us-east-1; set Base URL Override for another region)",
+			"legacy_enum": "OpenAICompatible",
+			"dialect": "openai_chat",
+			"base_url": "https://bedrock-runtime.us-east-1.amazonaws.com/openai/v1",
+			"path": "/chat/completions",
+			"auth_style": "bearer",
+			"is_local": false,
+			"needs_key": true,
+			"models_path": "/models",
+			"structured_output": "json_schema",
+			"max_tokens_field": "max_tokens",
+			"reasoning_fields": [
+				"reasoning_content",
+				"reasoning"
+			],
+			"secret_id": "Bedrock",
+			"api_key_env": [
+				"AWS_BEARER_TOKEN_BEDROCK"
+			],
+			"context_discovery": "none"
+		},
+		{
+			"id": "gemini-openai",
+			"display_name": "Google Gemini, OpenAI-compatible endpoint",
+			"legacy_enum": "OpenAICompatible",
+			"dialect": "openai_chat",
+			"base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+			"path": "/chat/completions",
+			"auth_style": "bearer",
+			"is_local": false,
+			"needs_key": true,
+			"models_path": "/models",
+			"structured_output": "json_schema_strict",
+			"max_tokens_field": "max_tokens",
+			"reasoning_fields": [
+				"reasoning_content",
+				"reasoning"
+			],
+			"secret_id": "Gemini",
+			"api_key_env": [
+				"GEMINI_API_KEY",
+				"GOOGLE_API_KEY"
+			],
+			"context_discovery": "models"
+		},
+		{
+			"id": "minimax",
+			"display_name": "MiniMax",
+			"legacy_enum": "OpenAICompatible",
+			"dialect": "openai_chat",
+			"base_url": "https://api.minimax.io/v1",
+			"path": "/chat/completions",
+			"auth_style": "bearer",
+			"is_local": false,
+			"needs_key": true,
+			"models_path": "/models",
+			"structured_output": "json_object",
+			"max_tokens_field": "max_tokens",
+			"reasoning_fields": [
+				"reasoning_content"
+			],
+			"secret_id": "MiniMax",
+			"api_key_env": [
+				"MINIMAX_API_KEY"
+			],
+			"context_discovery": "models"
+		},
+		{
+			"id": "kimi",
+			"display_name": "Kimi (Moonshot AI)",
+			"legacy_enum": "OpenAICompatible",
+			"dialect": "openai_chat",
+			"base_url": "https://api.moonshot.ai/v1",
+			"path": "/chat/completions",
+			"auth_style": "bearer",
+			"is_local": false,
+			"needs_key": true,
+			"models_path": "/models",
+			"structured_output": "json_object",
+			"max_tokens_field": "max_tokens",
+			"reasoning_fields": [
+				"reasoning_content"
+			],
+			"secret_id": "Moonshot",
+			"api_key_env": [
+				"MOONSHOT_API_KEY"
+			],
+			"context_discovery": "models"
+		},
+		{
+			"id": "zai",
+			"display_name": "Z.ai",
+			"legacy_enum": "OpenAICompatible",
+			"dialect": "openai_chat",
+			"base_url": "https://api.z.ai/api/paas/v4",
+			"path": "/chat/completions",
+			"auth_style": "bearer",
+			"is_local": false,
+			"needs_key": true,
+			"models_path": "/models",
+			"structured_output": "json_object",
+			"max_tokens_field": "max_tokens",
+			"thinking_on": {
+				"thinking": {
+					"type": "enabled"
+				}
+			},
+			"thinking_off": {
+				"thinking": {
+					"type": "disabled"
+				}
+			},
+			"reasoning_fields": [
+				"reasoning_content"
+			],
+			"secret_id": "ZAI",
+			"api_key_env": [
+				"ZAI_API_KEY"
+			],
+			"context_discovery": "models"
 		}
 	],
 	"models": [

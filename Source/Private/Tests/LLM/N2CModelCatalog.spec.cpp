@@ -104,7 +104,9 @@ void FN2CModelCatalogSpec::Define()
 				TestFalse(FString::Printf(TEXT("%s has a base URL"), *Id.ToString()), Profile->BaseUrl.IsEmpty());
 				TestEqual(FString::Printf(TEXT("%s needs a key exactly when it is not local"), *Id.ToString()), Profile->bNeedsKey, !Profile->bIsLocal);
 			}
-			TestEqual(TEXT("six providers"), Catalog.Providers().Num(), 6);
+			// The six built-in providers, then the OpenAI-compatible presets (card 0218)
+			TestEqual(TEXT("six built-in providers"), Catalog.Providers().Num() - Catalog.OpenAICompatiblePresets().Num(), 6);
+			TestTrue(TEXT("and the OpenAI-compatible presets"), Catalog.OpenAICompatiblePresets().Num() >= 15);
 		});
 
 		It(TEXT("lists only models the providers still serve, each with a lifecycle and a cached price field"), [this]()

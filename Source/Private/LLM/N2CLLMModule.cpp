@@ -11,9 +11,8 @@
 #include "LLM/N2CBaseLLMService.h"
 #include "LLM/N2CLLMProviderRegistry.h"
 #include "LLM/Providers/N2CAnthropicService.h"
-#include "LLM/Providers/N2CDeepSeekService.h"
 #include "LLM/Providers/N2CGeminiService.h"
-#include "LLM/Providers/N2CLMStudioService.h"
+#include "LLM/Providers/N2COpenAICompatibleService.h"
 #include "LLM/Providers/N2COpenAIService.h"
 #include "LLM/Providers/N2COllamaService.h"
 #include "Utils/N2CLogger.h"
@@ -95,6 +94,22 @@ FString UN2CLLMModule::GetLocalEndpointSetting(EN2CLLMProvider Provider)
         return Settings->OllamaConfig.OllamaEndpoint;
     case EN2CLLMProvider::LMStudio:
         return GetDefault<UN2CUserSettings>()->LMStudioEndpoint;
+    case EN2CLLMProvider::OpenAICompatible:
+        {
+            // The profile as resolved now: a different preset, base URL override or custom profile edit makes a new service
+            FN2CProviderProfile Profile;
+            if (!UN2COpenAICompatibleService::ResolveProfile(Provider, FString(), Profile))
+            {
+                return FString();
+            }
+            FString Headers;
+            for (const TPair<FString, FString>& Header : Profile.ExtraHeaders)
+            {
+                Headers += Header.Key + TEXT("=") + Header.Value + TEXT(";");
+            }
+            return FString::Printf(TEXT("%s|%s|%s|%d|%d|%s|%s"), *Profile.Id.ToString(), *Profile.GetEndpoint(), *Profile.AuthStyle,
+                static_cast<int32>(Profile.StructuredOutput), static_cast<int32>(Profile.MaxTokensField), *Profile.DefaultModel, *Headers);
+        }
     default:
         return FString();
     }
@@ -449,9 +464,11 @@ void UN2CLLMModule::InitializeProviderRegistry()
     Registry->RegisterProvider(EN2CLLMProvider::OpenAI, UN2COpenAIService::StaticClass());
     Registry->RegisterProvider(EN2CLLMProvider::Anthropic, UN2CAnthropicService::StaticClass());
     Registry->RegisterProvider(EN2CLLMProvider::Gemini, UN2CGeminiService::StaticClass());
-    Registry->RegisterProvider(EN2CLLMProvider::DeepSeek, UN2CDeepSeekService::StaticClass());
+    // DeepSeek, LM Studio and every OpenAI-Compatible profile: one service and the OpenAI Chat dialect (card 0218)
+    Registry->RegisterProvider(EN2CLLMProvider::DeepSeek, UN2COpenAICompatibleService::StaticClass());
     Registry->RegisterProvider(EN2CLLMProvider::Ollama, UN2COllamaService::StaticClass());
-    Registry->RegisterProvider(EN2CLLMProvider::LMStudio, UN2CLMStudioService::StaticClass());
+    Registry->RegisterProvider(EN2CLLMProvider::LMStudio, UN2COpenAICompatibleService::StaticClass());
+    Registry->RegisterProvider(EN2CLLMProvider::OpenAICompatible, UN2COpenAICompatibleService::StaticClass());
     
     FN2CLogger::Get().Log(TEXT("Provider registry initialized"), EN2CLogSeverity::Info, TEXT("LLMModule"));
 }

@@ -94,8 +94,30 @@ with its checkbox ticked.
 - **Prepended Model Command**: optional text added to the start of each message, for example `/no_think` to turn off
   thinking on reasoning models. Sampling settings are set in the LM Studio app. Setup: [LM Studio Quick Start](LM-Studio-Quick-Start)
 - **Max Output Tokens**: 0 (Auto) by default, which sends no `max_tokens`, so the server uses whatever context the
-  prompt leaves. This is also the setting to use for an OpenAI-compatible server such as vLLM reached through the
-  LM Studio provider. See [Output Token Budget](#output-token-budget)
+  prompt leaves. See [Output Token Budget](#output-token-budget)
+
+### OpenAI-Compatible (vLLM, llama.cpp, OpenRouter, Groq, Azure and more)
+Pick **OpenAI-Compatible** as the **Provider**, then set these in **Editor Preferences → Plugins → Node to Code
+(User) → OpenAI-Compatible** (yours only, not shared with the project):
+- **Provider Profile**: the server. Presets: `vllm` (http://localhost:8000/v1), `llamacpp` (llama.cpp's server,
+  http://localhost:8080/v1), `ollama-openai` (Ollama's /v1 endpoint), `openrouter`, `groq`, `together`, `fireworks`,
+  `xai`, `mistral`, `azure-openai`, `bedrock`, `gemini-openai`, `minimax`, `kimi` and `zai`. Each preset already knows
+  how its server takes the output format, the token budget, thinking and the key.
+- **Model**: the model ID the server serves, as its `/v1/models` list names it (for vLLM, the `--served-model-name`).
+- **Base URL Override**: a different address for the preset, up to and including the version: a vLLM on another
+  machine (`http://gpu-box:8000/v1`), your Azure resource (`https://my-resource.openai.azure.com/openai/v1`) or
+  another Bedrock region. Empty keeps the preset's address.
+- **Custom Provider Profiles**: a server the presets do not cover. Give it an **Id** (then pick that Id as the
+  **Provider Profile**), its **Base Url**, the **Auth Style** (`bearer`, `api-key`, `x-api-key` or `none`), the
+  **Api Key Environment Variable** that holds its key, the **Structured Output** mode it supports and any extra headers.
+
+Keys for the hosted presets come from environment variables set before the editor starts (no key is saved in these
+settings): `OPENROUTER_API_KEY`, `GROQ_API_KEY`, `TOGETHER_API_KEY`, `FIREWORKS_API_KEY`, `XAI_API_KEY`,
+`MISTRAL_API_KEY`, `AZURE_OPENAI_API_KEY`, `AWS_BEARER_TOKEN_BEDROCK`, `MINIMAX_API_KEY`, `MOONSHOT_API_KEY`,
+`ZAI_API_KEY`; `gemini-openai` uses your Gemini key. Local servers (`vllm`, `llamacpp`) send a key only when
+`VLLM_API_KEY` or `LLAMA_API_KEY` is set. OpenAI-Compatible requests send no output budget, so the server uses the
+context the prompt leaves. DeepSeek and LM Studio work the same way inside: they are presets of the same
+OpenAI-compatible adapter, with their own settings above.
 
 ## Output Token Budget
 

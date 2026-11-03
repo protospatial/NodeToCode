@@ -335,7 +335,7 @@ TArray<EN2CLLMProvider> SN2CGetStartedCard::GetProviders()
 
 bool SN2CGetStartedCard::IsLocalProvider(EN2CLLMProvider Provider)
 {
-	return Provider == EN2CLLMProvider::Ollama || Provider == EN2CLLMProvider::LMStudio;
+	return Provider == EN2CLLMProvider::Ollama || Provider == EN2CLLMProvider::LMStudio || Provider == EN2CLLMProvider::OpenAICompatible;
 }
 
 void SN2CGetStartedCard::HandleTranslationUpdated(const FN2CGraphKey& Graph)

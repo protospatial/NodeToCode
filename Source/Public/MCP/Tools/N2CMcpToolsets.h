@@ -76,7 +76,7 @@ namespace N2CMcpToolsets
 		true };
 
 	inline constexpr FN2CMcpToolset Material{ TEXT("MaterialTools"),
-		TEXT("Read Materials and Material Functions as N2C JSON by asset path, from the saved asset: their expressions, wiring, parameters and function calls. Read-only."),
+		TEXT("Read Materials and Material Functions as N2C JSON, from the saved asset or the open Material Editor's working copy: their expressions, wiring, parameters and function calls; and explain one in pseudocode with the LLM provider configured in Project Settings. Changes nothing in the project."),
 		true };
 
 	/** Every declared toolset, in the order list_toolsets shows them */

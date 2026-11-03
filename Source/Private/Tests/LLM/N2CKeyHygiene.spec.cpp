@@ -22,9 +22,8 @@
 #include "LLM/N2CCredentialSource.h"
 #include "LLM/N2CResponseParserBase.h"
 #include "LLM/Providers/N2CAnthropicService.h"
-#include "LLM/Providers/N2CDeepSeekService.h"
+#include "LLM/Providers/N2COpenAICompatibleService.h"
 #include "LLM/Providers/N2CGeminiService.h"
-#include "LLM/Providers/N2CLMStudioService.h"
 #include "LLM/Providers/N2COpenAIService.h"
 #include "Misc/OutputDevice.h"
 #include "Misc/ScopeExit.h"
@@ -296,8 +295,8 @@ BEGIN_DEFINE_SPEC(FN2CKeyHygieneSpec, "NodeToCode.LLM.KeyHygiene", N2C_TEST_FLAG
 		case EN2CLLMProvider::Anthropic: Service = NewObject<UN2CAnthropicService>(GetTransientPackage()); break;
 		case EN2CLLMProvider::OpenAI: Service = NewObject<UN2COpenAIService>(GetTransientPackage()); break;
 		case EN2CLLMProvider::Gemini: Service = NewObject<UN2CGeminiService>(GetTransientPackage()); break;
-		case EN2CLLMProvider::DeepSeek: Service = NewObject<UN2CDeepSeekService>(GetTransientPackage()); break;
-		case EN2CLLMProvider::LMStudio: Service = NewObject<UN2CLMStudioService>(GetTransientPackage()); break;
+		case EN2CLLMProvider::DeepSeek: Service = NewObject<UN2COpenAICompatibleService>(GetTransientPackage()); break;
+		case EN2CLLMProvider::LMStudio: Service = NewObject<UN2COpenAICompatibleService>(GetTransientPackage()); break;
 		default: return nullptr;
 		}
 		// The key reaches the request only through the credential source, resolved when it is sent

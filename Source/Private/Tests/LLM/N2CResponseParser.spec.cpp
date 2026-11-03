@@ -5,9 +5,8 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "LLM/Providers/N2CAnthropicResponseParser.h"
-#include "LLM/Providers/N2CDeepSeekResponseParser.h"
+#include "LLM/Providers/N2COpenAICompatibleService.h"
 #include "LLM/Providers/N2CGeminiResponseParser.h"
-#include "LLM/Providers/N2CLMStudioResponseParser.h"
 #include "LLM/Providers/N2COllamaResponseParser.h"
 #include "LLM/Providers/N2COpenAIResponseParser.h"
 #include "Models/N2CTranslation.h"
@@ -193,9 +192,9 @@ BEGIN_DEFINE_SPEC(FN2CResponseParserSpec, "NodeToCode.LLM.Parse",
 					TEXT("\"content\":[{\"type\":\"output_text\",\"text\":%s,\"annotations\":[]}]}"), *Quote(Text))); } },
 			{ TEXT("Gemini"), [] { return Make<UN2CGeminiResponseParser>(); },
 				[](const FString& Text) { return GeminiBody(FString::Printf(TEXT("{\"text\":%s}"), *Quote(Text)), TEXT("STOP")); } },
-			{ TEXT("DeepSeek"), [] { return Make<UN2CDeepSeekResponseParser>(); },
+			{ TEXT("DeepSeek"), [] { return UN2COpenAICompatibleResponseParser::MakeFor(EN2CLLMProvider::DeepSeek, GetTransientPackage()); },
 				[](const FString& Text) { return ChatBody(TEXT("deepseek-flash"), TEXT("\"stop\""), FString::Printf(TEXT("\"content\":%s"), *Quote(Text)), ChatUsage()); } },
-			{ TEXT("LM Studio"), [] { return Make<UN2CLMStudioResponseParser>(); },
+			{ TEXT("LM Studio"), [] { return UN2COpenAICompatibleResponseParser::MakeFor(EN2CLLMProvider::LMStudio, GetTransientPackage()); },
 				[](const FString& Text) { return ChatBody(TEXT("qwen3-32b"), TEXT("\"stop\""), FString::Printf(TEXT("\"content\":%s"), *Quote(Text)), ChatUsage()); } },
 			{ TEXT("Ollama"), [] { return Make<UN2COllamaResponseParser>(); },
 				[](const FString& Text) { return OllamaBody(Text, TEXT("stop")); } },
@@ -276,11 +275,11 @@ void FN2CResponseParserSpec::Define()
 				{ TEXT("Gemini MAX_TOKENS with no content"), Make<UN2CGeminiResponseParser>(),
 					TEXT("{\"candidates\":[{\"finishReason\":\"MAX_TOKENS\",\"index\":0}],\"usageMetadata\":{\"promptTokenCount\":5120,\"thoughtsTokenCount\":256,\"totalTokenCount\":5376}}"),
 					EN2CTranslationErrorKind::Truncated, TEXT("MAX_TOKENS"), { TEXT("Gemini > Max Output Tokens") } },
-				{ TEXT("DeepSeek finish_reason length while reasoning"), Make<UN2CDeepSeekResponseParser>(),
+				{ TEXT("DeepSeek finish_reason length while reasoning"), UN2COpenAICompatibleResponseParser::MakeFor(EN2CLLMProvider::DeepSeek, GetTransientPackage()),
 					ChatBody(TEXT("deepseek-flash"), TEXT("\"length\""), TEXT("\"content\":\"\",\"reasoning_content\":\"Let me map each node to C++ first...\""), ChatUsage()),
 					EN2CTranslationErrorKind::Truncated, TEXT("length"), { TEXT("DeepSeek > Max Output Tokens") } },
 				// LM Studio: content null next to reasoning_content and finish_reason length (PR #20's case)
-				{ TEXT("LM Studio content null, finish_reason length"), Make<UN2CLMStudioResponseParser>(),
+				{ TEXT("LM Studio content null, finish_reason length"), UN2COpenAICompatibleResponseParser::MakeFor(EN2CLLMProvider::LMStudio, GetTransientPackage()),
 					ChatBody(TEXT("qwen3-32b"), TEXT("\"length\""), TEXT("\"content\":null,\"reasoning_content\":\"Thinking about the graph...\"")),
 					EN2CTranslationErrorKind::Truncated, TEXT("length"), { TEXT("LM Studio > Max Output Tokens") } },
 				{ TEXT("Ollama done_reason length"), Make<UN2COllamaResponseParser>(),
@@ -338,13 +337,13 @@ void FN2CResponseParserSpec::Define()
 				{ TEXT("Gemini finishReason RECITATION"), Make<UN2CGeminiResponseParser>(),
 					GeminiBody(FString::Printf(TEXT("{\"text\":%s}"), *Quote(CutAnswer())), TEXT("RECITATION")),
 					EN2CTranslationErrorKind::Blocked, TEXT("RECITATION"), { TEXT("finishReason \"RECITATION\"") } },
-				{ TEXT("DeepSeek content_filter"), Make<UN2CDeepSeekResponseParser>(),
+				{ TEXT("DeepSeek content_filter"), UN2COpenAICompatibleResponseParser::MakeFor(EN2CLLMProvider::DeepSeek, GetTransientPackage()),
 					ChatBody(TEXT("deepseek-flash"), TEXT("\"content_filter\""), TEXT("\"content\":\"\""), ChatUsage()),
 					EN2CTranslationErrorKind::Blocked, TEXT("content_filter"), { TEXT("content_filter") } },
-				{ TEXT("DeepSeek insufficient_system_resource"), Make<UN2CDeepSeekResponseParser>(),
+				{ TEXT("DeepSeek insufficient_system_resource"), UN2COpenAICompatibleResponseParser::MakeFor(EN2CLLMProvider::DeepSeek, GetTransientPackage()),
 					ChatBody(TEXT("deepseek-flash"), TEXT("\"insufficient_system_resource\""), FString::Printf(TEXT("\"content\":%s"), *Quote(CutAnswer())), ChatUsage()),
 					EN2CTranslationErrorKind::Overloaded, TEXT("insufficient_system_resource"), { TEXT("insufficient_system_resource") } },
-				{ TEXT("LM Studio content_filter"), Make<UN2CLMStudioResponseParser>(),
+				{ TEXT("LM Studio content_filter"), UN2COpenAICompatibleResponseParser::MakeFor(EN2CLLMProvider::LMStudio, GetTransientPackage()),
 					ChatBody(TEXT("qwen3-32b"), TEXT("\"content_filter\""), TEXT("\"content\":null")),
 					EN2CTranslationErrorKind::Blocked, TEXT("content_filter"), { TEXT("content_filter") } },
 			};
@@ -374,10 +373,10 @@ void FN2CResponseParserSpec::Define()
 			ExpectParsed(TEXT("Gemini thought + two text parts"), Make<UN2CGeminiResponseParser>(),
 				GeminiBody(FString::Printf(TEXT("{\"text\":\"Planning the translation.\",\"thought\":true},{\"text\":%s},{\"text\":%s}"),
 					*Quote(Answer.Left(50)), *Quote(Answer.Mid(50))), TEXT("STOP")));
-			ExpectParsed(TEXT("DeepSeek with reasoning_content"), Make<UN2CDeepSeekResponseParser>(),
+			ExpectParsed(TEXT("DeepSeek with reasoning_content"), UN2COpenAICompatibleResponseParser::MakeFor(EN2CLLMProvider::DeepSeek, GetTransientPackage()),
 				ChatBody(TEXT("deepseek-flash"), TEXT("\"stop\""),
 					FString::Printf(TEXT("\"content\":%s,\"reasoning_content\":\"Map nodes to calls {\""), *Quote(Answer)), ChatUsage()));
-			ExpectParsed(TEXT("LM Studio"), Make<UN2CLMStudioResponseParser>(),
+			ExpectParsed(TEXT("LM Studio"), UN2COpenAICompatibleResponseParser::MakeFor(EN2CLLMProvider::LMStudio, GetTransientPackage()),
 				ChatBody(TEXT("qwen3-32b"), TEXT("\"stop\""), FString::Printf(TEXT("\"content\":%s"), *Quote(Answer)),
 					ChatUsage() + TEXT(",\"stats\":{\"tokens_per_second\":42.5,\"time_to_first_token\":0.4,\"generation_time\":1.5}")));
 			ExpectParsed(TEXT("Ollama with thinking"), Make<UN2COllamaResponseParser>(),
@@ -396,10 +395,10 @@ void FN2CResponseParserSpec::Define()
 					AnthropicBody(TEXT("end_turn"), AnthropicThinking()),
 					EN2CTranslationErrorKind::Parse, FString(), { TEXT("stop_reason \"end_turn\""), TEXT("content blocks: thinking") } },
 				// A valid N2C answer in reasoning_content with no content must not be taken as the answer
-				{ TEXT("LM Studio content null with the answer only in reasoning_content"), Make<UN2CLMStudioResponseParser>(),
+				{ TEXT("LM Studio content null with the answer only in reasoning_content"), UN2COpenAICompatibleResponseParser::MakeFor(EN2CLLMProvider::LMStudio, GetTransientPackage()),
 					ChatBody(TEXT("qwen3-32b"), TEXT("\"stop\""), FString::Printf(TEXT("\"content\":null,\"reasoning_content\":%s"), *Quote(Answer))),
 					EN2CTranslationErrorKind::Parse, FString(), { TEXT("finish_reason \"stop\""), TEXT("only reasoning text") } },
-				{ TEXT("LM Studio content missing"), Make<UN2CLMStudioResponseParser>(),
+				{ TEXT("LM Studio content missing"), UN2COpenAICompatibleResponseParser::MakeFor(EN2CLLMProvider::LMStudio, GetTransientPackage()),
 					ChatBody(TEXT("qwen3-32b"), TEXT("null"), TEXT("\"reasoning\":\"vLLM-style reasoning\"")),
 					EN2CTranslationErrorKind::Parse, FString(), { TEXT("finish_reason \"none\"") } },
 				{ TEXT("Gemini STOP with only a thought part"), Make<UN2CGeminiResponseParser>(),
@@ -510,8 +509,8 @@ void FN2CResponseParserSpec::Define()
 
 			FLogJsonCapture Capture;
 			const TArray<TPair<FString, UN2CResponseParserBase*>> Parsers = {
-				{ TEXT("LM Studio without usage, stats or model_info"), Make<UN2CLMStudioResponseParser>() },
-				{ TEXT("DeepSeek without usage"), Make<UN2CDeepSeekResponseParser>() },
+				{ TEXT("LM Studio without usage, stats or model_info"), UN2COpenAICompatibleResponseParser::MakeFor(EN2CLLMProvider::LMStudio, GetTransientPackage()) },
+				{ TEXT("DeepSeek without usage"), UN2COpenAICompatibleResponseParser::MakeFor(EN2CLLMProvider::DeepSeek, GetTransientPackage()) },
 				{ TEXT("OpenAI without usage"), Make<UN2COpenAIResponseParser>() },
 			};
 			for (const TPair<FString, UN2CResponseParserBase*>& Parser : Parsers)
@@ -550,8 +549,8 @@ void FN2CResponseParserSpec::Define()
 				{ TEXT("Anthropic"), Make<UN2CAnthropicResponseParser>() },
 				{ TEXT("OpenAI"), Make<UN2COpenAIResponseParser>() },
 				{ TEXT("Gemini"), Make<UN2CGeminiResponseParser>() },
-				{ TEXT("DeepSeek"), Make<UN2CDeepSeekResponseParser>() },
-				{ TEXT("LM Studio"), Make<UN2CLMStudioResponseParser>() },
+				{ TEXT("DeepSeek"), UN2COpenAICompatibleResponseParser::MakeFor(EN2CLLMProvider::DeepSeek, GetTransientPackage()) },
+				{ TEXT("LM Studio"), UN2COpenAICompatibleResponseParser::MakeFor(EN2CLLMProvider::LMStudio, GetTransientPackage()) },
 				{ TEXT("Ollama"), Make<UN2COllamaResponseParser>() },
 			};
 			for (const TPair<FString, UN2CResponseParserBase*>& Parser : Parsers)
@@ -593,7 +592,7 @@ void FN2CResponseParserSpec::Define()
 						TEXT("\"output_tokens\":964,\"output_tokens_details\":{\"reasoning_tokens\":900},\"total_tokens\":6084}}"), *Quote(Answer)),
 					5120, 964, 2048, 0, 900 },
 				// DeepSeek: prompt_tokens = prompt_cache_hit_tokens + prompt_cache_miss_tokens
-				{ TEXT("DeepSeek cache hits and reasoning"), Make<UN2CDeepSeekResponseParser>(),
+				{ TEXT("DeepSeek cache hits and reasoning"), UN2COpenAICompatibleResponseParser::MakeFor(EN2CLLMProvider::DeepSeek, GetTransientPackage()),
 					ChatBody(TEXT("deepseek-flash"), TEXT("\"stop\""), ChatContent,
 						TEXT(",\"usage\":{\"prompt_tokens\":5120,\"completion_tokens\":964,\"total_tokens\":6084,")
 						TEXT("\"prompt_cache_hit_tokens\":4864,\"prompt_cache_miss_tokens\":256,")
@@ -605,13 +604,13 @@ void FN2CResponseParserSpec::Define()
 						TEXT("\"usageMetadata\":{\"promptTokenCount\":5120,\"cachedContentTokenCount\":4096,\"candidatesTokenCount\":64,")
 						TEXT("\"thoughtsTokenCount\":900,\"totalTokenCount\":6084}}"), *Quote(Answer)),
 					5120, 964, 4096, 0, 900 },
-				{ TEXT("LM Studio cached and reasoning tokens"), Make<UN2CLMStudioResponseParser>(),
+				{ TEXT("LM Studio cached and reasoning tokens"), UN2COpenAICompatibleResponseParser::MakeFor(EN2CLLMProvider::LMStudio, GetTransientPackage()),
 					ChatBody(TEXT("qwen3-32b"), TEXT("\"stop\""), ChatContent,
 						TEXT(",\"usage\":{\"prompt_tokens\":5120,\"completion_tokens\":964,\"total_tokens\":6084,")
 						TEXT("\"prompt_tokens_details\":{\"cached_tokens\":1024},\"completion_tokens_details\":{\"reasoning_tokens\":900}}")),
 					5120, 964, 1024, 0, 900 },
 				// Details present but null, as some OpenAI-compatible servers send them
-				{ TEXT("LM Studio with null details"), Make<UN2CLMStudioResponseParser>(),
+				{ TEXT("LM Studio with null details"), UN2COpenAICompatibleResponseParser::MakeFor(EN2CLLMProvider::LMStudio, GetTransientPackage()),
 					ChatBody(TEXT("qwen3-32b"), TEXT("\"stop\""), ChatContent,
 						TEXT(",\"usage\":{\"prompt_tokens\":5120,\"completion_tokens\":64,\"prompt_tokens_details\":null,\"completion_tokens_details\":null}")),
 					5120, 64, 0, 0, 0 },

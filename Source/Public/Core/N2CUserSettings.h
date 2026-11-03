@@ -6,6 +6,7 @@
 #include "Engine/DeveloperSettings.h"
 #include "Engine/EngineTypes.h"
 #include "LLM/N2CLLMTypes.h"
+#include "LLM/N2CModelCatalog.h"
 #include "Core/Style/N2CUIColors.h"
 #include "N2CUserSettings.generated.h"
 
@@ -134,6 +135,38 @@ public:
 		meta = (DisplayName = "LM Studio Server Endpoint",
 			ToolTip = "Address of your LM Studio (or other OpenAI-compatible) server. Yours only: it is saved in your user settings, not in the project."))
 	FString LMStudioEndpoint = TEXT("http://localhost:1234");
+
+	/** The OpenAI-compatible host requests go to when Provider is OpenAI-Compatible: a preset or one of your own profiles */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "LLM Provider|OpenAI-Compatible",
+		meta = (DisplayName = "Provider Profile", GetOptions = "GetProviderProfileOptions",
+			ToolTip = "The OpenAI-compatible server translations are sent to when Provider is OpenAI-Compatible: vllm (localhost:8000), llamacpp (localhost:8080), openrouter, groq and the other presets, or the ID of a profile you add under Custom Provider Profiles. Yours only: saved in your user settings."))
+	FString ProviderProfile = TEXT("vllm");
+
+	/** The model ID sent to the OpenAI-compatible server; empty sends the profile's default model */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "LLM Provider|OpenAI-Compatible",
+		meta = (DisplayName = "Model",
+			ToolTip = "The model ID the server serves, as its /v1/models list names it (for vLLM, the --served-model-name). Empty sends the profile's default model, if it has one."))
+	FString OpenAICompatibleModel;
+
+	/** Replaces the profile's base URL (a remote vLLM, your Azure resource, another Bedrock region); empty keeps it */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "LLM Provider|OpenAI-Compatible",
+		meta = (DisplayName = "Base URL Override",
+			ToolTip = "Base URL up to and including the version, for example http://gpu-box:8000/v1 or https://my-resource.openai.azure.com/openai/v1. Empty keeps the profile's own."))
+	FString OpenAICompatibleBaseUrl;
+
+	/** Profiles of your own for OpenAI-compatible servers the presets do not cover */
+	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "LLM Provider|OpenAI-Compatible",
+		meta = (DisplayName = "Custom Provider Profiles", TitleProperty = "Id",
+			ToolTip = "Servers of your own: an ID to pick under Provider Profile, the base URL, how the key is sent (from an environment variable you name; keys are never saved here), the output format and extra headers."))
+	TArray<FN2CCustomProviderProfile> CustomProviderProfiles;
+
+	/** Provider Profile's choices: every preset ID, then your own profiles' IDs */
+	UFUNCTION()
+	static TArray<FString> GetProviderProfileOptions();
+
+	/** A custom profile's Auth Style choices */
+	UFUNCTION()
+	static TArray<FString> GetAuthStyleOptions();
 
 	/**
 	 * MCP server port (http://127.0.0.1:<port>/mcp). When another program already uses it, the server takes the next free

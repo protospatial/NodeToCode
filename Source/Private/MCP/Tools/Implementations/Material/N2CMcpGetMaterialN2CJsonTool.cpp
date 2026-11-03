@@ -145,6 +145,76 @@ FString FN2CMcpGetMaterialN2CJsonTool::NotABlueprintMessage(const FString& Path)
 		*Path.TrimStartAndEnd().Left(200));
 }
 
+bool FN2CMcpGetMaterialN2CJsonTool::ResolveAndCapture(const FString& MaterialPath, int32 Depth, UObject*& OutAsset,
+	FN2CCapture& OutCapture, TSharedPtr<FJsonObject>& OutTarget, FString& OutError)
+{
+	using namespace N2CMcpGetMaterialN2CJsonToolPrivate;
+	const bool bFocus = MaterialPath.TrimStartAndEnd().IsEmpty();
+	OutAsset = nullptr;
+	UObject*& Asset = OutAsset;
+	UObject* WorkingCopy = nullptr;
+	if (bFocus)
+	{
+		// The Material Editor the user activated last: its working copy, unapplied edits included
+		Asset = FN2CBlueprintEditorTracker::Get().GetFocusedMaterialAsset();
+		const TSharedPtr<IMaterialEditor> Editor = FN2CBlueprintEditorTracker::GetMaterialEditorFor(Asset);
+		WorkingCopy = Editor.IsValid() ? FN2CBlueprintEditorTracker::WorkingCopyOf(*Editor) : nullptr;
+		if (!Asset || !WorkingCopy)
+		{
+			OutError = TEXT("NO_FOCUSED_MATERIAL: no Material Editor is open. Open a Material or ")
+				TEXT("Material Function in the editor, or pass materialPath to read the saved asset.");
+			return false;
+		}
+	}
+	else
+	{
+		Asset = LoadMaterialAsset(MaterialPath, OutError);
+		if (!Asset)
+		{
+			return false;
+		}
+		if (Asset->IsA<UBlueprint>())
+		{
+			OutError = FString::Printf(
+				TEXT("UNSUPPORTED_ASSET_TYPE: '%s' is a Blueprint, not a material: read it with get-blueprint-n2cjson (blueprintPath)"), *MaterialPath.Left(200));
+			return false;
+		}
+	}
+
+	// The asset's exact class decides what is captured (decision 0009 item 1), also for a working copy: a material
+	// layer's editor works on a plain UMaterialFunction duplicate, so the asset is checked, not its copy
+	const bool bSupportedClass = Asset->GetClass() == UMaterial::StaticClass() || Asset->GetClass() == UMaterialFunction::StaticClass();
+	TValueOrError<FN2CCapture, FString> Capture = [&]() -> TValueOrError<FN2CCapture, FString>
+	{
+		if (WorkingCopy && bSupportedClass)
+		{
+			return MakeValue(CaptureWorkingCopy(*WorkingCopy, *Asset, N2CMcpBlueprintExport::CaptureOptions(Depth)));
+		}
+		return N2C::CaptureMaterialAsset(*Asset, N2CMcpBlueprintExport::CaptureOptions(Depth));
+	}();
+	if (Capture.HasError())
+	{
+		const FString Message = Capture.GetError();
+		// UNSUPPORTED_ASSET_TYPE (a function instance, a layer or blend) keeps its code; anything else is a failed capture
+		OutError = Message.StartsWith(TEXT("UNSUPPORTED_ASSET_TYPE")) ? Message : TEXT("CAPTURE_FAILED: ") + Message;
+		return false;
+	}
+	OutCapture = Capture.StealValue();
+
+	const TSharedRef<FJsonObject> Target = MakeShared<FJsonObject>();
+	OutTarget = Target;
+	Target->SetStringField(TEXT("assetPath"), Asset->GetPathName());
+	Target->SetStringField(TEXT("kind"), Asset->IsA<UMaterialFunctionInterface>() ? TEXT("material-function") : TEXT("material"));
+	Target->SetStringField(TEXT("resolvedBy"), bFocus ? TEXT("focus") : TEXT("path"));
+	Target->SetBoolField(TEXT("workingCopy"), bFocus);
+	if (WorkingCopy)
+	{
+		// Which copy was read: the editor's transient copy (/Engine/Transient.<name>), not the saved asset
+		Target->SetStringField(TEXT("workingCopyPath"), WorkingCopy->GetPathName());
+	}
+	return true;
+}
+
 FMcpToolDefinition FN2CMcpGetMaterialN2CJsonTool::GetDefinition() const
 {
 	using namespace N2CMcpGetMaterialN2CJsonToolPrivate;
@@ -229,63 +299,13 @@ FMcpToolCallResult FN2CMcpGetMaterialN2CJsonTool::Execute(const TSharedPtr<FJson
 
 		FString Error;
 		UObject* Asset = nullptr;
-		UObject* WorkingCopy = nullptr;
-		if (bFocus)
+		FN2CCapture Captured;
+		TSharedPtr<FJsonObject> TargetPtr;
+		if (!ResolveAndCapture(MaterialPath, Depth, Asset, Captured, TargetPtr, Error))
 		{
-			// The Material Editor the user activated last: its working copy, unapplied edits included
-			Asset = FN2CBlueprintEditorTracker::Get().GetFocusedMaterialAsset();
-			const TSharedPtr<IMaterialEditor> Editor = FN2CBlueprintEditorTracker::GetMaterialEditorFor(Asset);
-			WorkingCopy = Editor.IsValid() ? FN2CBlueprintEditorTracker::WorkingCopyOf(*Editor) : nullptr;
-			if (!Asset || !WorkingCopy)
-			{
-				return FMcpToolCallResult::CreateErrorResult(TEXT("NO_FOCUSED_MATERIAL: no Material Editor is open. Open a Material or ")
-					TEXT("Material Function in the editor, or pass materialPath to read the saved asset."));
-			}
+			return FMcpToolCallResult::CreateErrorResult(Error);
 		}
-		else
-		{
-			Asset = LoadMaterialAsset(MaterialPath, Error);
-			if (!Asset)
-			{
-				return FMcpToolCallResult::CreateErrorResult(Error);
-			}
-			if (Asset->IsA<UBlueprint>())
-			{
-				return FMcpToolCallResult::CreateErrorResult(FString::Printf(
-					TEXT("UNSUPPORTED_ASSET_TYPE: '%s' is a Blueprint, not a material: read it with get-blueprint-n2cjson (blueprintPath)"), *MaterialPath.Left(200)));
-			}
-		}
-
-		// The asset's exact class decides what is captured (decision 0009 item 1), also for a working copy: a material
-		// layer's editor works on a plain UMaterialFunction duplicate, so the asset is checked, not its copy
-		const bool bSupportedClass = Asset->GetClass() == UMaterial::StaticClass() || Asset->GetClass() == UMaterialFunction::StaticClass();
-		TValueOrError<FN2CCapture, FString> Capture = [&]() -> TValueOrError<FN2CCapture, FString>
-		{
-			if (WorkingCopy && bSupportedClass)
-			{
-				return MakeValue(CaptureWorkingCopy(*WorkingCopy, *Asset, N2CMcpBlueprintExport::CaptureOptions(Depth)));
-			}
-			return N2C::CaptureMaterialAsset(*Asset, N2CMcpBlueprintExport::CaptureOptions(Depth));
-		}();
-		if (Capture.HasError())
-		{
-			const FString Message = Capture.GetError();
-			// UNSUPPORTED_ASSET_TYPE (a function instance, a layer or blend) keeps its code; anything else is a failed capture
-			return FMcpToolCallResult::CreateErrorResult(Message.StartsWith(TEXT("UNSUPPORTED_ASSET_TYPE"))
-				? Message : TEXT("CAPTURE_FAILED: ") + Message);
-		}
-		const FN2CCapture& Captured = Capture.GetValue();
-
-		const TSharedRef<FJsonObject> Target = MakeShared<FJsonObject>();
-		Target->SetStringField(TEXT("assetPath"), Asset->GetPathName());
-		Target->SetStringField(TEXT("kind"), Asset->IsA<UMaterialFunctionInterface>() ? TEXT("material-function") : TEXT("material"));
-		Target->SetStringField(TEXT("resolvedBy"), bFocus ? TEXT("focus") : TEXT("path"));
-		Target->SetBoolField(TEXT("workingCopy"), bFocus);
-		if (WorkingCopy)
-		{
-			// Which copy was read: the editor's transient copy (/Engine/Transient.<name>), not the saved asset
-			Target->SetStringField(TEXT("workingCopyPath"), WorkingCopy->GetPathName());
-		}
+		const TSharedRef<FJsonObject> Target = TargetPtr.ToSharedRef();
 
 		// The document get-blueprint-n2cjson returns for a graph (ids {short, guid}, flows, guids), plus the target
 		const TSharedPtr<FJsonObject> Document = N2CMcpOutputSchema::ParseObject(N2CMcpBlueprintExport::ToResultJson(Captured, /*bCompact*/ true));
