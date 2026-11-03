@@ -85,7 +85,8 @@ void UN2CTranslationSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 	Super::Initialize(Collection);
 
 	// A batch is part of "busy": the N2C bars grey out while one runs. Its first item's progress marks the start; its
-	// completion is broadcast before the orchestrator clears its flag, so that one says the batch ended.
+	// completion is broadcast before the orchestrator clears its flag, so that one says the batch ended (and ends the
+	// batch session it belongs to).
 	UN2CBatchTranslationOrchestrator& Orchestrator = UN2CBatchTranslationOrchestrator::Get();
 	TWeakObjectPtr<UN2CTranslationSubsystem> WeakThis(this);
 	BatchProgressHandle = Orchestrator.OnProgressNative.AddLambda([WeakThis](int32, int32, const FString&)
@@ -95,17 +96,24 @@ void UN2CTranslationSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 			This->UpdateBusy();
 		}
 	});
-	BatchCompleteHandle = Orchestrator.OnBatchCompleteNative.AddLambda([WeakThis](const FN2CBatchTranslationResult&)
+	BatchCompleteHandle = Orchestrator.OnBatchCompleteNative.AddLambda([WeakThis](const FN2CBatchTranslationResult& Result)
 	{
 		if (UN2CTranslationSubsystem* This = WeakThis.Get())
 		{
-			This->UpdateBusy(/*bBatchEnded=*/true);
+			This->HandleBatchComplete(Result);
 		}
 	});
 }
 
 void UN2CTranslationSubsystem::Deinitialize()
 {
+	// A batch session's batch is cancelled with it (at editor exit the rooted orchestrator may already be purged)
+	if (ActiveBatchSession.IsValid() && !IsEngineExitRequested())
+	{
+		UN2CBatchTranslationOrchestrator::Get().CancelBatch();
+	}
+	ActiveBatchSession.Invalidate();
+
 	// Nothing may call back into a subsystem that is gone: unfinished requests are cancelled
 	for (const TSharedRef<FN2CTranslationSession>& Session : Sessions)
 	{
@@ -177,6 +185,145 @@ FGuid UN2CTranslationSubsystem::StartTranslation(const FN2CTranslationRequest& R
 	RunSession(SessionId, Request);
 	PruneSessions();
 	return SessionId;
+}
+
+FGuid UN2CTranslationSubsystem::StartBatch(const TArray<FN2CTagInfo>& Graphs, const FN2CBatchTranslationOptions& Options,
+	FString* OutError)
+{
+	check(IsInGameThread());
+
+	auto Refuse = [OutError](const FString& Error)
+	{
+		FN2CLogger::Get().LogWarning(FString::Printf(TEXT("Batch translation did not start: %s"), *Error), TEXT("TranslationSubsystem"));
+		if (OutError)
+		{
+			*OutError = Error;
+		}
+		return FGuid();
+	};
+	if (IsBusy())
+	{
+		return Refuse(TEXT("TRANSLATION_IN_PROGRESS: another translation is running; wait for it or cancel it"));
+	}
+
+	// The orchestrator may finish the whole batch inside this call (every item failed before a request was sent):
+	// that completion is kept and ends the session once it exists
+	UN2CBatchTranslationOrchestrator& Orchestrator = UN2CBatchTranslationOrchestrator::Get();
+	FString Error;
+	bool bStarted = false;
+	StartedBatchResult.Reset();
+	{
+		TGuardValue<bool> Starting(bStartingBatch, true);
+		bStarted = Orchestrator.StartBatchTranslationWithOptions(Graphs, Options, Error);
+	}
+	if (!bStarted)
+	{
+		StartedBatchResult.Reset();
+		return Refuse(Error.IsEmpty() ? FString(TEXT("BATCH_NOT_STARTED: the batch could not start; see the Output Log")) : Error);
+	}
+
+	const UN2CSettings* Settings = GetDefault<UN2CSettings>();
+	TSharedRef<FN2CTranslationSession> Session = MakeShared<FN2CTranslationSession>();
+	Session->Config = Options.bUseRequestConfig ? Options.RequestConfig : UN2CLLMModule::MakeConfigFromSettings();
+	FN2CTranslationSessionInfo& Info = Session->Info;
+	Info.SessionId = FGuid::NewGuid();
+	Info.Source = EN2CTranslationSource::Batch;
+	Info.ItemCount = Graphs.Num();
+	Info.GraphName = Graphs.Num() == 1 ? Graphs[0].GraphName : FString::Printf(TEXT("%d graphs"), Graphs.Num());
+	if (Graphs.Num() == 1)
+	{
+		Info.BlueprintPath = Graphs[0].BlueprintPath;
+		Info.GraphGuid = Graphs[0].GraphGuid;
+	}
+	Info.Language = Options.bUseRequestConfig ? Options.Language : (Settings ? Settings->TargetLanguage : EN2CCodeLanguage::Cpp);
+	Info.Provider = UN2CLLMModule::GetProviderName(Session->Config.Provider);
+	Info.Model = Session->Config.Model;
+
+	const FGuid SessionId = Info.SessionId;
+	Sessions.Add(Session);
+	ActiveBatchSession = SessionId;
+	ActiveBatchSerial = Orchestrator.GetBatchSerial();
+	FN2CLogger::Get().Log(FString::Printf(TEXT("Translation session %s started (Batch): %d graphs, %s %s, %s"),
+		*SessionId.ToString(), Graphs.Num(), *Info.Provider, *Info.Model, *UEnum::GetValueAsString(Info.Language)),
+		EN2CLogSeverity::Info, TEXT("TranslationSubsystem"));
+
+	SetState(*Session, EN2CTranslationSessionState::Queued);
+	SetState(*Session, EN2CTranslationSessionState::Sending);
+	if (StartedBatchResult.IsSet())
+	{
+		const FN2CBatchTranslationResult Result = StartedBatchResult.GetValue();
+		StartedBatchResult.Reset();
+		FinishBatchSession(*Session, Result);
+	}
+	PruneSessions();
+	return SessionId;
+}
+
+FGuid UN2CTranslationSubsystem::StartBatchTranslation(const TArray<FN2CTagInfo>& Graphs, FString& OutError)
+{
+	OutError.Reset();
+	return StartBatch(Graphs, FN2CBatchTranslationOptions(), &OutError);
+}
+
+bool UN2CTranslationSubsystem::GetBatchSessionResult(const FGuid& SessionId, FN2CBatchTranslationResult& OutResult) const
+{
+	const FN2CTranslationSession* Session = FindSession(SessionId);
+	if (!Session || Session->Info.Source != EN2CTranslationSource::Batch)
+	{
+		return false;
+	}
+	OutResult = Session->BatchResult;
+	return true;
+}
+
+void UN2CTranslationSubsystem::HandleBatchComplete(const FN2CBatchTranslationResult& Result)
+{
+	// The orchestrator still reports the batch in progress while it broadcasts this
+	TGuardValue<bool> Ending(bBatchEnding, true);
+	if (bStartingBatch)
+	{
+		StartedBatchResult = Result;
+		return;
+	}
+	FN2CTranslationSession* Session = ActiveBatchSession.IsValid() ? FindMutable(ActiveBatchSession) : nullptr;
+	if (Session && !Session->Info.IsFinished() && ActiveBatchSerial == UN2CBatchTranslationOrchestrator::Get().GetBatchSerial())
+	{
+		FinishBatchSession(*Session, Result);
+		return;
+	}
+	// A batch without a session (translate-batch, the Blueprint library)
+	UpdateBusy(/*bBatchEnded=*/true);
+}
+
+void UN2CTranslationSubsystem::FinishBatchSession(FN2CTranslationSession& Session, const FN2CBatchTranslationResult& Result)
+{
+	ActiveBatchSession.Invalidate();
+	ActiveBatchSerial = INDEX_NONE;
+	Session.BatchResult = Result;
+	Session.Info.RunFolder = Result.BatchOutputPath;
+	if (Result.bCancelled)
+	{
+		SetState(Session, EN2CTranslationSessionState::Cancelled);
+	}
+	else if (Result.SuccessCount == 0 && Result.FailureCount > 0)
+	{
+		// The first item's reason (the orchestrator keeps the items until the next batch starts)
+		FString First;
+		for (const FN2CBatchTranslationItem& Item : UN2CBatchTranslationOrchestrator::Get().GetBatchItems())
+		{
+			if (Item.Status == EN2CBatchItemStatus::Failed && !Item.ErrorMessage.IsEmpty())
+			{
+				First = Item.ErrorMessage;
+				break;
+			}
+		}
+		SetState(Session, EN2CTranslationSessionState::Failed, FString::Printf(TEXT("None of the %d graphs was translated%s%s"),
+			Result.TotalCount, First.IsEmpty() ? TEXT("") : TEXT(": "), *First));
+	}
+	else
+	{
+		SetState(Session, EN2CTranslationSessionState::Succeeded);
+	}
 }
 
 void UN2CTranslationSubsystem::RunSession(const FGuid& SessionId, const FN2CTranslationRequest& Request)
@@ -331,6 +478,16 @@ bool UN2CTranslationSubsystem::Cancel(const FGuid& SessionId)
 	{
 		return false;
 	}
+	if (Session->Info.Source == EN2CTranslationSource::Batch)
+	{
+		// The batch's completion (inside CancelBatch, or right after the item whose result is being handled) ends it
+		if (SessionId != ActiveBatchSession)
+		{
+			return false;
+		}
+		UN2CBatchTranslationOrchestrator::Get().CancelBatch();
+		return true;
+	}
 	// False: the result is being delivered now, so the session finishes with it
 	if (Session->Handle.IsValid() && !Session->Handle->Cancel())
 	{
@@ -350,7 +507,7 @@ bool UN2CTranslationSubsystem::IsBusy() const
 			return true;
 		}
 	}
-	return UN2CBatchTranslationOrchestrator::Get().IsBatchInProgress();
+	return !bBatchEnding && UN2CBatchTranslationOrchestrator::Get().IsBatchInProgress();
 }
 
 const FN2CTranslationSession* UN2CTranslationSubsystem::FindSession(const FGuid& SessionId) const
@@ -471,7 +628,7 @@ void UN2CTranslationSubsystem::UpdateBusy(bool bBatchEnded)
 	{
 		bBusy |= !Session->Info.IsFinished();
 	}
-	if (!bBatchEnded)
+	if (!bBatchEnded && !bBatchEnding)
 	{
 		bBusy |= UN2CBatchTranslationOrchestrator::Get().IsBatchInProgress();
 	}

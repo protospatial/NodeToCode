@@ -7,8 +7,10 @@
 #include "MCP/Tools/N2CMcpToolBase.h"
 
 /**
- * get-material-n2cjson (card 0453, decision 0009): a Material or Material Function as N2C JSON by asset path, read from
- * the saved asset (never a Material Editor's working copy: target.workingCopy false), with no editor open. Other
+ * get-material-n2cjson (card 0453, decision 0009): a Material or Material Function as N2C JSON. By asset path it reads
+ * the saved asset (target.workingCopy false), with no editor open; with no path it reads the working copy of the
+ * Material Editor activated last (card 0463: FN2CBlueprintEditorTracker::GetFocusedMaterialAsset and WorkingCopyOf,
+ * resolvedBy focus, workingCopy true, workingCopyPath) or fails with NO_FOCUSED_MATERIAL. Other
  * material assets (instances, layers, blends) are UNSUPPORTED_ASSET_TYPE, as are Blueprints (get-blueprint-n2cjson
  * reads those). A document over N2CMcpBlueprintExport::MaxInlineTokens, or any with toFile, is written under
  * Saved/NodeToCode/Exports.

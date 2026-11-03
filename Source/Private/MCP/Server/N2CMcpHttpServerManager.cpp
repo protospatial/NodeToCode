@@ -5,6 +5,7 @@
 #include "Misc/ScopeExit.h"
 #include "Templates/UnrealTemplate.h"
 #include "MCP/Resources/Implementations/N2CMcpPythonStubResource.h"
+#include "MCP/Resources/Implementations/N2CMcpAppResources.h"
 #include "MCP/Server/N2CMcpProtocol.h"
 #include "MCP/Server/N2CMcpAuthToken.h"
 #include "Core/N2CUserSettings.h"
@@ -991,6 +992,14 @@ void FN2CMcpHttpServerManager::RegisterMcpResources()
 	// The engine's Python API stub (card 0214): read from disk, no game thread needed
 	FN2CMcpResourceManager::Get().RegisterStaticResource(FN2CMcpPythonStubResource::GetDefinition(),
 		FMcpResourceReadDelegate::CreateStatic(&FN2CMcpPythonStubResource::Read), false);
+
+	// MCP Apps (card 0213): the ui:// HTML apps translate-focused-blueprint and get-focused-blueprint name in their
+	// _meta.ui.resourceUri; read from the plugin's Content/MCPApps, no game thread needed
+	for (const FMcpResourceDefinition& App : FN2CMcpAppResources::GetDefinitions())
+	{
+		FN2CMcpResourceManager::Get().RegisterStaticResource(App,
+			FMcpResourceReadDelegate::CreateStatic(&FN2CMcpAppResources::Read), false);
+	}
 	
 	FN2CLogger::Get().Log(TEXT("MCP resources registered successfully"), EN2CLogSeverity::Info);
 }

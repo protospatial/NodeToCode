@@ -179,6 +179,13 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "NodeToCode|Batch Export")
 	FOnBatchJsonExportComplete OnJsonExportComplete;
 
+	/**
+	 * Sends an item's N2C JSON instead of UN2CLLMModule (specs: a fake service that answers when the test chooses).
+	 * While set, StartBatchTranslationWithOptions skips the LLM module's busy and initialization checks.
+	 */
+	using FSender = TFunction<FN2CLLMRequestHandleRef(const FString& Json, const FOnN2CTranslationParsed& OnParsed)>;
+	FSender SenderOverride;
+
 private:
 	/** Process the next pending item in the batch */
 	void ProcessNextItem();

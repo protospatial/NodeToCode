@@ -16,7 +16,9 @@ enum class EN2CBatchProgressItemStatus : uint8
 	Pending,
 	InProgress,
 	Completed,
-	Failed
+	Failed,
+	/** Not translated: the batch was cancelled before or while it ran */
+	Skipped
 };
 
 /**
@@ -114,6 +116,21 @@ public:
 	 */
 	void SetResult(const FN2CBatchTranslationResult& Result);
 
+	/**
+	 * Cancel was asked for: the dialog says "Cancelling..." and its button is disabled until the cancelled completion
+	 * arrives (SetResult, or Reset when the window closes the dialog)
+	 */
+	void SetCancelling();
+
+	/** Between SetCancelling and the completion */
+	bool IsCancelling() const { return bIsCancelling; }
+
+	/** SetResult was called: the button reads Close */
+	bool IsComplete() const { return bIsComplete; }
+
+	/** The line under the header ("Processing" item, "Cancelling...", or the summary), for tests */
+	FText GetStatusText() const;
+
 	/** Reset the modal for a new batch operation */
 	void Reset();
 
@@ -141,6 +158,7 @@ private:
 	int32 TotalItemCount;
 	FString CurrentGraphName;
 	bool bIsComplete;
+	bool bIsCancelling = false;
 
 	/** Handle cancel button click */
 	FReply HandleCancelClicked();

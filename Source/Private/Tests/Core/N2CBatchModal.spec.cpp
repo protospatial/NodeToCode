@@ -123,6 +123,41 @@ void FN2CBatchModalSpec::Define()
 		}
 	});
 
+	It(TEXT("says Cancelling... after Cancel, then ends with the unfinished rows Skipped (card 0255)"), [this]()
+	{
+		if (!Modal.IsValid()) { AddInfo(TEXT("Slate is not initialized; skipping")); return; }
+		const TArray<FN2CTagInfo> Graphs = GateBatch();
+		Modal->Initialize(Graphs);
+		Modal->SetProgress(0, Graphs.Num(), Graphs[0].GraphName);
+		Modal->MarkItemCompleteAt(0, true);
+		Modal->SetProgress(1, Graphs.Num(), Graphs[1].GraphName);
+
+		Modal->SetCancelling();
+		TestTrue(TEXT("cancelling"), Modal->IsCancelling());
+		TestFalse(TEXT("not complete yet"), Modal->IsComplete());
+		TestEqual(TEXT("the status line"), Modal->GetStatusText().ToString(), FString(TEXT("Cancelling...")));
+
+		FN2CBatchTranslationResult Result;
+		Result.TotalCount = Graphs.Num();
+		Result.SuccessCount = 1;
+		Result.SkippedCount = Graphs.Num() - 1;
+		Result.bCancelled = true;
+		Modal->SetResult(Result);
+		TestTrue(TEXT("complete"), Modal->IsComplete());
+		TestFalse(TEXT("no longer cancelling"), Modal->IsCancelling());
+		TestEqual(TEXT("the summary"), Modal->GetStatusText().ToString(), FString(TEXT("Cancelled - 1 succeeded, 0 failed, 7 skipped")));
+		TestTrue(TEXT("the finished row keeps its result"), StatusAt(0) == EN2CBatchProgressItemStatus::Completed);
+		for (int32 Index = 1; Index < Graphs.Num(); ++Index)
+		{
+			TestTrue(FString::Printf(TEXT("row %d is skipped"), Index), StatusAt(Index) == EN2CBatchProgressItemStatus::Skipped);
+		}
+		TestEqual(TEXT("a skipped row's label"), SN2CBatchProgressModal::GetStatusLabel(EN2CBatchProgressItemStatus::Skipped).ToString(),
+			FString(TEXT("Skipped (cancelled)")));
+
+		Modal->Reset();
+		TestFalse(TEXT("Reset clears the cancelled state"), Modal->IsCancelling() || Modal->IsComplete());
+	});
+
 	It(TEXT("still marks a single translation by name"), [this]()
 	{
 		if (!Modal.IsValid()) { AddInfo(TEXT("Slate is not initialized; skipping")); return; }

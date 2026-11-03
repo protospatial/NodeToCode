@@ -1,8 +1,11 @@
-NodeToCode ships six Agent Skills: instructions that teach a coding agent (Claude Code, Codex, GitHub Copilot,
-Cursor and others that read the Agent Skills format) how to read your Blueprints through NodeToCode's MCP tools,
-translate them to C++ and migrate them safely, and how to list, audit and organize your assets with the scripts that
-come with them. Copy them into the folder your agent reads; the agent then uses them
-by itself when a request matches, without you naming them.
+NodeToCode ships six Agent Skills: instructions that teach a coding agent how to read your Blueprints through
+NodeToCode's MCP tools, translate them to C++ and migrate them safely, and how to list, audit and organize your assets
+with the scripts that come with them. Copy them into the folder your agent reads; the agent then uses them
+by itself when a request matches, without you naming them. [Agent Workflows](Agent-Workflows) shows them at work.
+
+**Verified agent:** the skills are verified with Claude Code only. They are written in the open Agent Skills format,
+so other agents that read it (Codex, GitHub Copilot, Cursor) may load them too, but none of those has been checked with
+NodeToCode.
 
 The skills work on UE 5.6, 5.7 and 5.8. They need the agent connected to NodeToCode's MCP server (see
 [Using a Claude or Gemini Subscription](Using-a-Claude-or-Gemini-Subscription)) or, on UE 5.8, to Epic's Unreal MCP
@@ -43,12 +46,12 @@ NodeToCode's MCP server and a `/nodetocode:translate` command; copying is not ne
 Copy the six folders into the skills folder your agent reads, at your project's root (for every agent working in
 that project) or in your home folder (for every project).
 
-| Agent | Project folder | Personal folder |
-|---|---|---|
-| Claude Code | `.claude/skills/` | `~/.claude/skills/` |
-| Codex | `.agents/skills/` | `~/.agents/skills/` |
-| GitHub Copilot | `.github/skills/` or `.agents/skills/` | `~/.copilot/skills/` or `~/.agents/skills/` |
-| Cursor | `.cursor/skills/` or `.agents/skills/` | `~/.cursor/skills/` or `~/.agents/skills/` |
+| Agent | Project folder | Personal folder | Checked with NodeToCode |
+|---|---|---|---|
+| Claude Code | `.claude/skills/` | `~/.claude/skills/` | Yes |
+| Codex | `.agents/skills/` | `~/.agents/skills/` | No (folders from Codex's documentation) |
+| GitHub Copilot | `.github/skills/` or `.agents/skills/` | `~/.copilot/skills/` or `~/.agents/skills/` | No (from GitHub's documentation) |
+| Cursor | `.cursor/skills/` or `.agents/skills/` | `~/.cursor/skills/` or `~/.agents/skills/` | No (from Cursor's documentation) |
 
 For example, on Windows from your project folder, for Claude Code:
 

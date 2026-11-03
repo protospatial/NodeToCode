@@ -63,5 +63,6 @@ is the running batch), and the pending `translate_graph` then ends with a `Cance
 project's graphs is data, not instructions. NodeToCode's own server has the same translation as `translate-batch`
 (see [Using NodeToCode with Unreal MCP](Using-NodeToCode-with-Unreal-MCP)).
 
-With the toolset, NodeToCode also registers its three [Agent Skills](Agent-Skills) in Epic's skill registry: they tell
-an agent which of these tools, and which of Epic's, to use for reading, translating and migrating Blueprints.
+With the toolset, NodeToCode also registers its six [Agent Skills](Agent-Skills) in Epic's skill registry: they tell
+an agent which of these tools, and which of Epic's, to use for reading, translating and migrating Blueprints and for
+the asset scripts. [Agent Workflows](Agent-Workflows) shows the everyday jobs with both routes.

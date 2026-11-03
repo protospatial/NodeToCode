@@ -2,6 +2,7 @@
 
 #include "N2CMcpGetFocusedBlueprintTool.h"
 #include "MCP/Tools/N2CMcpOutputSchema.h"
+#include "MCP/Resources/Implementations/N2CMcpAppResources.h"
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "Core/N2CCapture.h"
 #include "MCP/Utils/N2CMcpBlueprintExport.h"
@@ -31,6 +32,8 @@ FMcpToolDefinition FN2CMcpGetFocusedBlueprintTool::GetDefinition() const
 	
 	// The N2C JSON document as structuredContent, and as indented text (card 0207)
 	Definition.OutputSchema = N2CMcpOutputSchema::N2CJsonDocument();
+	// MCP Apps (card 0213): a client that supports them draws the graph in the graph preview; others ignore it
+	Definition.Meta = FN2CMcpAppResources::ToolMeta(FN2CMcpAppResources::GraphPreviewUri);
 
 	// Read-only: reads editor or project state and changes nothing
 	SetAnnotations(Definition, FMcpToolAnnotations::ReadOnly());

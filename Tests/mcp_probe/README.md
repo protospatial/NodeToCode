@@ -403,6 +403,13 @@ its environment when no key is saved, so a live check never types or saves a key
   the log shows the in-flight request cancelled and no third request. The scratch folder, export folder and batch
   folders are deleted, and a leak scan covers the editor log, `Saved/NodeToCode`, `Saved/Logs` and the run's logs.
   Report: `logs/live_batch_0169_<label>.json`.
+- `live_batch_session_0255.py --engine ... --project ... --label 5.8 [--provider anthropic|gemini|deepseek --model ...]`
+  (that provider's key from `.env`, in the editor's environment only) checks Batch Translate as a session of
+  `UN2CTranslationSubsystem` (card 0255) through `StartBatchTranslation`, the window's path. A batch of a missing
+  Blueprint must not start (`NO_VALID_ITEMS`, subsystem idle); a batch of two in-memory probe Blueprints must end
+  Succeeded with two items and its run folder; a batch of three cancelled (`CancelSession`) while its second item is
+  in flight must be Cancelled in the same game-thread step, idle, 1 succeeded and 2 skipped (`bCancelled`), with no
+  third request in the log. Report: `logs/live_batch_session_0255_<label>_<provider>.json`.
 - `live_create_blueprint_0166.py --engine ... --project ... --label 5.8 [--cli-model haiku]` (no provider key) checks
   create-blueprint-class (card 0166). `claude -p` with only `mcp__nodetocode__*` creates a Widget Blueprint from
   `/Script/UMG.UserWidget` in a fresh `/Game/N2CTest/Create0166_<time>` folder and repeats the call: the first must

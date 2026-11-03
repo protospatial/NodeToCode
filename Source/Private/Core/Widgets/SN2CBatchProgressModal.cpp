@@ -327,15 +327,32 @@ FString SN2CBatchProgressModal::GetItemErrorMessage(const FString& GraphName) co
 void SN2CBatchProgressModal::SetResult(const FN2CBatchTranslationResult& Result)
 {
 	bIsComplete = true;
+	bIsCancelling = false;
+
+	// A cancelled batch: every row that had not finished was skipped (the orchestrator marks those items Skipped)
+	if (Result.bCancelled)
+	{
+		for (const TSharedPtr<FN2CBatchProgressItem>& Item : ProgressItems)
+		{
+			if (Item->Status == EN2CBatchProgressItemStatus::Pending || Item->Status == EN2CBatchProgressItemStatus::InProgress)
+			{
+				Item->Status = EN2CBatchProgressItemStatus::Skipped;
+			}
+		}
+		if (ProgressListView.IsValid())
+		{
+			ProgressListView->RequestListRefresh();
+		}
+	}
 
 	// Update current item text to show completion
 	if (CurrentItemText.IsValid())
 	{
-		CurrentItemText->SetText(FText::Format(
-			LOCTEXT("Complete", "Complete - {0} succeeded, {1} failed"),
-			FText::AsNumber(Result.SuccessCount),
-			FText::AsNumber(Result.FailureCount)
-		));
+		CurrentItemText->SetText(Result.bCancelled
+			? FText::Format(LOCTEXT("Cancelled", "Cancelled - {0} succeeded, {1} failed, {2} skipped"),
+				FText::AsNumber(Result.SuccessCount), FText::AsNumber(Result.FailureCount), FText::AsNumber(Result.SkippedCount))
+			: FText::Format(LOCTEXT("Complete", "Complete - {0} succeeded, {1} failed"),
+				FText::AsNumber(Result.SuccessCount), FText::AsNumber(Result.FailureCount)));
 	}
 
 	// Update count to show final numbers
@@ -351,11 +368,38 @@ void SN2CBatchProgressModal::SetResult(const FN2CBatchTranslationResult& Result)
 	// Update cancel button to show "Close"
 	if (CancelButton.IsValid())
 	{
+		CancelButton->SetEnabled(true);
 		CancelButton->SetContent(
 			SNew(STextBlock)
 			.Text(LOCTEXT("CloseButton", "Close"))
 		);
 	}
+}
+
+void SN2CBatchProgressModal::SetCancelling()
+{
+	if (bIsComplete)
+	{
+		return;
+	}
+	bIsCancelling = true;
+	if (CurrentItemText.IsValid())
+	{
+		CurrentItemText->SetText(LOCTEXT("Cancelling", "Cancelling..."));
+	}
+	if (CancelButton.IsValid())
+	{
+		CancelButton->SetEnabled(false);
+		CancelButton->SetContent(
+			SNew(STextBlock)
+			.Text(LOCTEXT("CancellingButton", "Cancelling..."))
+		);
+	}
+}
+
+FText SN2CBatchProgressModal::GetStatusText() const
+{
+	return CurrentItemText.IsValid() ? CurrentItemText->GetText() : FText::GetEmpty();
 }
 
 void SN2CBatchProgressModal::Reset()
@@ -365,6 +409,7 @@ void SN2CBatchProgressModal::Reset()
 	TotalItemCount = 0;
 	CurrentGraphName = FString();
 	bIsComplete = false;
+	bIsCancelling = false;
 
 	if (CurrentItemText.IsValid())
 	{
@@ -378,6 +423,7 @@ void SN2CBatchProgressModal::Reset()
 
 	if (CancelButton.IsValid())
 	{
+		CancelButton->SetEnabled(true);
 		CancelButton->SetContent(
 			SNew(STextBlock)
 			.Text(LOCTEXT("CancelButton", "Cancel"))
@@ -487,6 +533,8 @@ const FSlateBrush* SN2CBatchProgressModal::GetStatusBrush(EN2CBatchProgressItemS
 		return FAppStyle::GetBrush("Icons.ArrowRight");
 	case EN2CBatchProgressItemStatus::Failed:
 		return FAppStyle::GetBrush("Icons.X");
+	case EN2CBatchProgressItemStatus::Skipped:
+		return FAppStyle::GetBrush("Icons.Minus");
 	case EN2CBatchProgressItemStatus::Pending:
 	default:
 		return FAppStyle::GetBrush("Icons.FilledCircle");
@@ -503,6 +551,8 @@ FText SN2CBatchProgressModal::GetStatusLabel(EN2CBatchProgressItemStatus Status)
 		return LOCTEXT("StatusInProgress", "In progress");
 	case EN2CBatchProgressItemStatus::Failed:
 		return LOCTEXT("StatusFailed", "Failed");
+	case EN2CBatchProgressItemStatus::Skipped:
+		return LOCTEXT("StatusSkipped", "Skipped (cancelled)");
 	case EN2CBatchProgressItemStatus::Pending:
 	default:
 		return LOCTEXT("StatusPending", "Pending");
