@@ -366,15 +366,17 @@ bool FN2CDocsShotsSettings::RunTest(const FString& Parameters)
 	UserSettings->ReferenceSourceFilePaths.Add(Personal);
 	UserSettings->CustomTranslationOutputDirectory.Path = TEXT("C:/Projects/SampleGame/Saved/NodeToCode/Translations");
 
-	// One shot per settings area the pages describe, each the details panel filtered to that area's categories
+	// One shot per settings area the pages describe, each the details panel filtered to that area's categories. A new
+	// row in an area pushes the rows below it out of a fixed height: raise the height with it (card 0542)
 	struct FArea { const TCHAR* Name; UObject* Object; TArray<FString> Categories; double Height; };
 	const TArray<FArea> Areas = {
-		{ TEXT("settings/llm-provider"), Settings, { TEXT("Node to Code | LLM Provider"), TEXT("Node to Code | LLM Services | Anthropic") }, 300.0 },
-		{ TEXT("settings/code-generation"), Settings, { TEXT("Node to Code | Code Generation") }, 165.0 },
+		{ TEXT("settings/llm-provider"), Settings, { TEXT("Node to Code | LLM Provider"), TEXT("Node to Code | LLM Services | Anthropic") }, 354.0 },
+		{ TEXT("settings/code-generation"), Settings, { TEXT("Node to Code | Code Generation") }, 219.0 },
 		// The MCP Server category with the Write MCP Client Config row (card 0507)
 		{ TEXT("settings/mcp-server"), Settings, { TEXT("Node to Code | MCP Server") }, 218.0 },
 		// Each developer's own settings (card 0188), without the colours
-		{ TEXT("settings/user"), UserSettings, { TEXT("LLM Provider"), TEXT("LLM Provider|LM Studio"), TEXT("Code Generation"), TEXT("MCP Server") }, 440.0 },
+		{ TEXT("settings/user"), UserSettings, { TEXT("LLM Provider"), TEXT("LLM Provider|LM Studio"), TEXT("LLM Provider|OpenAI-Compatible"), TEXT("Code Generation"),
+			TEXT("MCP Server") }, 518.0 },
 	};
 	FPropertyEditorModule& PropertyEditor = FModuleManager::LoadModuleChecked<FPropertyEditorModule>(TEXT("PropertyEditor"));
 	for (const FArea& Area : Areas)

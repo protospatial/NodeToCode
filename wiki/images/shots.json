@@ -1,31 +1,31 @@
 {
   "shots": {
     "main-window/first-run.png": {
-      "commit": "d087f22a8cc034c0a27a198660d97cc69a602807"
+      "commit": "04b9c86c26cb60bf763215e6db611c1df955ff72"
     },
     "main-window/get-started.png": {
-      "commit": "d087f22a8cc034c0a27a198660d97cc69a602807"
+      "commit": "04b9c86c26cb60bf763215e6db611c1df955ff72"
     },
     "main-window/tag-manager.png": {
-      "commit": "d087f22a8cc034c0a27a198660d97cc69a602807"
+      "commit": "04b9c86c26cb60bf763215e6db611c1df955ff72"
     },
     "main-window/translation-viewer.png": {
-      "commit": "d087f22a8cc034c0a27a198660d97cc69a602807"
+      "commit": "04b9c86c26cb60bf763215e6db611c1df955ff72"
     },
     "settings/code-generation.png": {
-      "commit": "85529cb0db7be70f9b27172b308b57be622498b2"
+      "commit": "04b9c86c26cb60bf763215e6db611c1df955ff72"
     },
     "settings/llm-provider.png": {
-      "commit": "85529cb0db7be70f9b27172b308b57be622498b2"
+      "commit": "04b9c86c26cb60bf763215e6db611c1df955ff72"
     },
     "settings/mcp-server.png": {
-      "commit": "85529cb0db7be70f9b27172b308b57be622498b2"
+      "commit": "04b9c86c26cb60bf763215e6db611c1df955ff72"
     },
     "settings/user.png": {
-      "commit": "85529cb0db7be70f9b27172b308b57be622498b2"
+      "commit": "04b9c86c26cb60bf763215e6db611c1df955ff72"
     },
     "translate-entry/graph-overlay.png": {
-      "commit": "d087f22a8cc034c0a27a198660d97cc69a602807"
+      "commit": "04b9c86c26cb60bf763215e6db611c1df955ff72"
     }
   }
 }

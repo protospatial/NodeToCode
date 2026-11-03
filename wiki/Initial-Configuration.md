@@ -24,7 +24,7 @@ API keys.
 The provider picker in the Node to Code window and the Get Started card save the provider to your own settings and a
 model choice to the project's.
 
-<img src="images/settings/user.png" alt="Editor Preferences, Node to Code (User): Provider, LM Studio Server Endpoint, the MCP Server switches (Server Port, Enable MCP Server, Allow MCP Python Execution, Allow MCP Writes Outside Project, Require MCP Bearer Token), My Reference Source Files and Custom Translation Output Directory" width="760">
+<img src="images/settings/user.png" alt="Editor Preferences, Node to Code (User): Provider, LM Studio Server Endpoint, the OpenAI-Compatible rows (Provider Profile, Model, Base URL Override, Custom Provider Profiles), the MCP Server switches (Server Port, Enable MCP Server, Allow MCP Python Execution, Allow MCP Writes Outside Project, Require MCP Bearer Token), My Reference Source Files and Custom Translation Output Directory" width="760">
 
 ## Settings
 
