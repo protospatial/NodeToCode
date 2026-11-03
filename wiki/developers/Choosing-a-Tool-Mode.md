@@ -7,6 +7,8 @@ All of them are in **Project Settings → Plugins → Node to Code → MCP Serve
 need an editor restart; then reconnect your client. The list never changes while the editor runs, so a client that
 reads it once (as most do) stays correct. Every client gets the same list.
 
+<img src="../images/settings/mcp-server.png" alt="Project Settings, MCP Server: Port Fallback Range, Server Status, Tool Profile, Tool Exposure, Overlapping Tools and MCP Client Config" width="760">
+
 ## Tool Profile
 
 | Tool Profile | What the client gets | Tools |
