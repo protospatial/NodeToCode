@@ -102,7 +102,7 @@ def test_seeded_drift_fails_with_file_and_line(docs_lint, tmp_path):
     substitute(root, compilation, '  - `skipGarbageCollection`:',
                '  - `forceRecompile`: seeded\n  - `skipGarbageCollection`:')
     substitute(root, server, '[threat-model.md](threat-model.md)', '[threat-model.md](threat-modle.md)')
-    substitute(root, server, '64 tools by folder', '57 tools by folder')
+    substitute(root, server, '65 tools by folder', '57 tools by folder')
     substitute(root, page, '(Agent-Skills)', '(Agent-Skillz)')
     substitute(root, 'Source/Private/MCP/Tools/Implementations/FileSystem/N2CMcpReadFileTool.cpp',
                'TEXT("read-file")', 'TEXT("read-files")')

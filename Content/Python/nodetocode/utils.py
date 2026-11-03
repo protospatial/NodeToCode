@@ -227,6 +227,7 @@ TOOL_NAMES = {
     'open_blueprint': 'open-blueprint-asset',
     'open_blueprint_function': 'open-blueprint-function',
     'get_blueprint_dependencies': 'get-blueprint-dependencies',
+    'get_material_n2cjson': 'get-material-n2cjson',
 }
 
 # nodetocode functions that still call their own UN2CPythonBridge function, and why (card 0343 retires those)

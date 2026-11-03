@@ -5,6 +5,7 @@
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "MCP/Utils/N2CMcpBlueprintExport.h"
 #include "MCP/Utils/N2CMcpGraphTarget.h"
+#include "MCP/Tools/Implementations/Material/N2CMcpGetMaterialN2CJsonTool.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 #include "Serialization/JsonSerializer.h"
@@ -112,6 +113,11 @@ FMcpToolCallResult FN2CMcpGetBlueprintN2CJsonTool::Execute(const TSharedPtr<FJso
 		const FN2CBlueprintReadResult Result = N2CMcpBlueprintExport::Read(Request);
 		if (!Result.IsValid())
 		{
+			// A material path is not missing: it is read by get-material-n2cjson (card 0453)
+			if (Result.Error.StartsWith(TEXT("ASSET_NOT_FOUND")) && FN2CMcpGetMaterialN2CJsonTool::IsMaterialAssetPath(Request.BlueprintPath))
+			{
+				return FMcpToolCallResult::CreateErrorResult(FN2CMcpGetMaterialN2CJsonTool::NotABlueprintMessage(Request.BlueprintPath));
+			}
 			return FMcpToolCallResult::CreateErrorResult(Result.Error);
 		}
 
