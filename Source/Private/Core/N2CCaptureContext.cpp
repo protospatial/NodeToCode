@@ -1920,27 +1920,6 @@ FN2CStruct FN2CCaptureContext::ProcessBlueprintStruct(UScriptStruct* Struct)
     {
         FN2CLogger::Get().LogWarning(
             FString::Printf(TEXT("No properties found in struct '%s' - TFieldIterator returned no results"), *StructName));
-            
-        // Try alternative property access if available
-        UStruct* BaseStruct = Cast<UStruct>(Struct);
-        if (BaseStruct && BaseStruct->Children)
-        {
-            N2C_LOG(Debug, TEXT("Attempting alternative property access via Children field..."));
-            
-            for (FField* Field = BaseStruct->ChildProperties; Field; Field = Field->Next)
-            {
-                if (FProperty* Property = CastField<FProperty>(Field))
-                {
-                    N2C_LOG(Debug,
-                        TEXT("Found property via Children: '%s' of class '%s'"),
-                            *Property->GetName(), 
-                            *Property->GetClass()->GetName());
-                        
-                    FN2CStructMember Member = ProcessStructMember(Property);
-                    Result.Members.Add(Member);
-                }
-            }
-        }
     }
     
     FN2CLogger::Get().Log(

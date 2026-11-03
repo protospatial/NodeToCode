@@ -29,29 +29,7 @@ public:
      */
     bool CollectNodesFromGraph(UEdGraph* Graph, TArray<UK2Node*>& OutNodes);
 
-    /**
-     * @brief Collects detailed pin information from a node
-     * @param Node The node to collect pins from
-     * @param[out] OutInputPins Array to store input pins
-     * @param[out] OutOutputPins Array to store output pins
-     * @return True if pin collection succeeded
-     */
-    bool CollectPinsFromNode(UK2Node* Node, TArray<UEdGraphPin*>& OutInputPins, TArray<UEdGraphPin*>& OutOutputPins);
-
 private:
     /** Constructor */
     FN2CNodeCollector() = default;
-
-    /** Validates a pin is properly configured */
-    bool ValidatePin(UEdGraphPin* Pin) const;
-
-    /** Gets additional pin metadata for K2 nodes */
-    void GetK2PinMetadata(UK2Node* K2Node, UEdGraphPin* Pin);
-
-    /** Collects default value information from a pin */
-    void CollectPinDefaultValue(UEdGraphPin* Pin);
-
-    /** Collects connection information from a pin */
-    void CollectPinConnections(UEdGraphPin* Pin);
-
 };

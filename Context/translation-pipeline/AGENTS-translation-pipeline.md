@@ -62,14 +62,8 @@ Handles transforming Blueprint nodes into a structured, LLM-processable format.
 
 **`Source/Public/Core/N2CNodeCollector.h` (`FN2CNodeCollector`)**
 
-Singleton that gathers `UK2Node` instances and pin details from `UEdGraph`.
-
-| Method | Description |
-|--------|-------------|
-| `CollectNodesFromGraph()` | Collects all nodes from a specific graph |
-| `CollectPinsFromNode()` | Collects input/output pins from a node |
-
-Private helpers: `ValidatePin`, `GetK2PinMetadata`, `CollectPinDefaultValue`, `CollectPinConnections`
+Singleton that gathers the `UK2Node` instances of a `UEdGraph`: `CollectNodesFromGraph()`. Pins are read by capture
+itself (`FN2CCaptureContext`); the collector's unused pin pass went with card 0241.
 
 ### Capture
 
