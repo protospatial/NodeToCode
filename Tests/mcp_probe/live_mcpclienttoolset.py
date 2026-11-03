@@ -20,6 +20,9 @@ Epic's MCP server on its own port, all in the host's Saved/Config/WindowsEditor/
   assistant): the editor log says MCPClientToolset registered NodeToCode, list_toolsets lists it, describe_toolset
   gives every tool as NodeToCode.<tool>, and call_tool runs get-available-translation-targets and
   translate-focused-blueprint.
+- startup order (card 0536): NodeToCode's "MCP HTTP server started" line comes before MCPClientToolset starts its
+  one handshake (listener_before_handshake), so the first start after a rebuild, when NodeToCode's DLL is slow to
+  load, still registers.
 - error shape: translate-focused-blueprint before any Blueprint is focused is a CallToolResult with isError true
   from NodeToCode; through the registry the same call is recorded as what Epic returns (MCPClientToolset drops
   isError).
@@ -321,6 +324,10 @@ def main():
             order[key] = mm.start() if mm else None
         report['log_order'] = sorted([k for k in order if order[k] is not None], key=lambda k: order[k])
         report['log_missing'] = [k for k in order if order[k] is None]
+        # Card 0536: NodeToCode loads in PostDefault and starts its server there on 5.8, so the listener is up before
+        # MCPClientToolset's one handshake even on a cold start (NodeToCode's DLL slow to load)
+        listening, handshake = order.get('n2c_listening'), order.get('mcpclienttoolset_handshake')
+        checks['listener_before_handshake'] = listening is not None and handshake is not None and listening < handshake
 
         # What the editor read from the MCP Toolset Servers entry
         n2c_session = {'Content-Type': 'application/json', 'Accept': ACCEPT,

@@ -23,7 +23,7 @@ tool's full `inputSchema`, `outputSchema` and `_meta` for scripts and the docs l
 - Generate: build a host (`build.ps1`), then `python -I Scripts/generate_tool_reference.py --engine <UE root>
   --project <host .uproject>`. It runs the commandlet `UnrealEditor-Cmd <project> -run=NodeToCode.N2CToolReference
   -unattended -nullrhi [-Output=<folder>] [-Check]` (`Source/Private/MCP/Tools/N2CToolReferenceCommandlet.h`; the
-  `NodeToCode.` prefix makes the engine load the PostEngineInit module before it looks the commandlet up). The text
+  `NodeToCode.` prefix makes the engine load the NodeToCode module before it looks the commandlet up). The text
   is the same on UE 5.6, 5.7 and 5.8 and from run to run: tools sorted by name, toolsets in declaration order, LF,
   no timestamps or paths.
 - `--output <folder>` (`-Output=`) writes elsewhere; the default is this folder of the checkout the plugin's `Source`
@@ -793,9 +793,15 @@ Engine source: `Engine/Plugins/Experimental/Toolsets/MCPClientToolset/` (`FMCPCl
     with one `application/json` response; a long-running call streams (card 0437): `: keep-alive` comments every 2 s,
     which its SSE parser skips, then the response event, which it matches by id. Host `127.0.0.1:<port>`
     passes the Host check; no Origin; bodies are far below the 8 MiB cap. No logging capability is used.
-*   **Startup**: the subsystem makes one `Create()` per entry when it initializes (PostEngineInit, like NodeToCode);
-    a failure is one `failed to connect` warning and no retry. The handshake is logged before NodeToCode's
-    "MCP HTTP server started" line but is answered in frame 1; it registered on every headless start (6 of 6).
+*   **Startup**: the subsystem makes one `Create()` per entry when it initializes (PostEngineInit; before card 0536 that was before NodeToCode,
+    an engine plugin loading before a project plugin in the same phase); a failure is one `failed to connect` warning and no retry.
+    The request is answered in frame 1, so NodeToCode only has to be listening by then. On a cold start (the first
+    after a rebuild or install) NodeToCode's DLL took 2.3 s to load and the handshake failed (gate 0406, run 1).
+    Since card 0536 the NodeToCode module loads in PostDefault and, on UE 5.8+, starts its MCP server there
+    (`FNodeToCodeModule::StartMcpServer`, same rules as before); the rest of its startup (styles, editor integration,
+    tool menus, the CPU-throttle delegate) waits for `FCoreDelegates::OnPostEngineInit` (`CompleteStartup`). On 5.6
+    and 5.7 the server starts in `CompleteStartup`, as late as before. `live_mcpclienttoolset.py` checks the order
+    (`listener_before_handshake`).
 *   **Limits** (client behaviour, not fixable here): tool list fixed at connect (no `list_changed`); the session id
     is kept forever, so a NodeToCode server restart (Server Port change) or session eviction (64 sessions) makes
     every call fail until the editor restarts; port fallback moves NodeToCode off the configured URL; `isError`
