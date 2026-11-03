@@ -20,6 +20,7 @@
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SSplitter.h"
+#include "Widgets/Layout/SWrapBox.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Input/SEditableTextBox.h"
 #include "Widgets/Input/SButton.h"
@@ -168,17 +169,17 @@ void SN2CTagManager::Construct(const FArguments& InArgs)
 								]
 							]
 						]
-						// Right: action buttons
+						// Right: action buttons, wrapped onto a second line when the window is too narrow for one (card 0319)
 						+ SHorizontalBox::Slot()
 						.FillWidth(1.0f)
-						.HAlign(HAlign_Right)
 						.VAlign(VAlign_Center)
 						[
-							SNew(SHorizontalBox)
+							SNew(SWrapBox)
+							.UseAllottedSize(true)
+							.HAlign(HAlign_Right)
+							.InnerSlotPadding(FVector2D(FN2CSpacing::MD, FN2CSpacing::XS))
 							// Batch Translate button
-							+ SHorizontalBox::Slot()
-							.AutoWidth()
-							.Padding(0.0f, 0.0f, FN2CSpacing::MD, 0.0f)
+							+ SWrapBox::Slot()
 							[
 								SAssignNew(BatchTranslateButton, SN2CIconButton)
 								.IsEnabled(this, &SN2CTagManager::AreSelectionActionsEnabled)
@@ -189,9 +190,7 @@ void SN2CTagManager::Construct(const FArguments& InArgs)
 								.OnClicked(this, &SN2CTagManager::HandleBatchTranslateClicked)
 							]
 							// Export JSON button
-							+ SHorizontalBox::Slot()
-							.AutoWidth()
-							.Padding(0.0f, 0.0f, FN2CSpacing::MD, 0.0f)
+							+ SWrapBox::Slot()
 							[
 								SAssignNew(ExportJsonButton, SN2CIconButton)
 								.IsEnabled(this, &SN2CTagManager::AreSelectionActionsEnabled)
@@ -202,8 +201,7 @@ void SN2CTagManager::Construct(const FArguments& InArgs)
 								.OnClicked(this, &SN2CTagManager::HandleExportJsonClicked)
 							]
 							// Remove Selected button
-							+ SHorizontalBox::Slot()
-							.AutoWidth()
+							+ SWrapBox::Slot()
 							[
 								SAssignNew(RemoveSelectedButton, SN2CIconButton)
 								.IsEnabled(this, &SN2CTagManager::AreSelectionActionsEnabled)
@@ -214,9 +212,7 @@ void SN2CTagManager::Construct(const FArguments& InArgs)
 								.OnClicked(this, &SN2CTagManager::HandleRemoveSelectedClicked)
 							]
 							// Tag Dependencies: the selected tag on everything the checked Blueprints depend on (card 0319)
-							+ SHorizontalBox::Slot()
-							.AutoWidth()
-							.Padding(FN2CSpacing::MD, 0.0f, 0.0f, 0.0f)
+							+ SWrapBox::Slot()
 							[
 								SNew(SN2CIconButton)
 								.IsEnabled(this, &SN2CTagManager::IsTagDependenciesEnabled)
@@ -227,9 +223,7 @@ void SN2CTagManager::Construct(const FArguments& InArgs)
 								.OnClicked(this, &SN2CTagManager::HandleTagDependenciesClicked)
 							]
 							// Reference Viewer: UE's Reference Viewer on the checked Blueprints (card 0319)
-							+ SHorizontalBox::Slot()
-							.AutoWidth()
-							.Padding(FN2CSpacing::MD, 0.0f, 0.0f, 0.0f)
+							+ SWrapBox::Slot()
 							[
 								SNew(SN2CIconButton)
 								.IsEnabled(this, &SN2CTagManager::AreSelectionActionsEnabled)
@@ -240,9 +234,7 @@ void SN2CTagManager::Construct(const FArguments& InArgs)
 								.OnClicked(this, &SN2CTagManager::HandleReferenceViewerClicked)
 							]
 							// Prune Missing button: tags and translation records of deleted Blueprints
-							+ SHorizontalBox::Slot()
-							.AutoWidth()
-							.Padding(FN2CSpacing::MD, 0.0f, 0.0f, 0.0f)
+							+ SWrapBox::Slot()
 							[
 								SNew(SN2CIconButton)
 								.IconBrush(FAppStyle::GetBrush("Icons.Warning"))
