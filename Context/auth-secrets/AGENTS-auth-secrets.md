@@ -44,8 +44,8 @@ asserts a key travels in exactly one header, never in a URL or the log, and is r
 
 | Class | Saved to | Holds |
 |---|---|---|
-| `UN2CSettings` (`Source/Public/Core/N2CSettings.h`) | `Config/DefaultNodeToCode.ini`, shared with the project | Provider, models, target language, theme, MCP port and tool mode, ... (never a key) |
-| `UN2CUserSettings` (`Source/Public/Core/N2CUserSettings.h`) | `Saved/Config/<Platform>Editor/EditorPerProjectUserSettings.ini`, this user only; shown in **Editor Preferences > Plugins > Node to Code (User)** | The MCP switches below |
+| `UN2CSettings` (`Source/Public/Core/N2CSettings.h`) | `Config/DefaultNodeToCode.ini`, shared with the project | Models and prices, target language, depth, project reference files (project-relative), code editor theme, MCP port range and tool mode, ... (never a key) |
+| `UN2CUserSettings` (`Source/Public/Core/N2CUserSettings.h`) | `Saved/Config/<Platform>Editor/EditorPerProjectUserSettings.ini`, this user only; shown in **Editor Preferences > Plugins > Node to Code (User)** | The MCP switches below; since settings version 5 (card 0188) also `Provider`, `LMStudioEndpoint`, `McpServerPort`, `UIColors`, `CustomTranslationOutputDirectory` and the user's own `ReferenceSourceFilePaths` (see "Plugin Settings" in `Context/architecture/AGENTS-architecture.md`) |
 
 | Switch | Default | Read through |
 |---|---|---|

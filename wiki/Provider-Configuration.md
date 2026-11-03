@@ -3,7 +3,10 @@
 
 ## Provider Selection & Setup
 
-Choose and configure your [preferred LLM provider](Choosing-an-LLM-Provider) through the [Plugin Settings](Initial-Configuration#accessing-plugin-settings).
+Choose your [preferred LLM provider](Choosing-an-LLM-Provider) with **Provider** in **Editor Preferences → Plugins → Node to Code (User)** (or the
+provider picker in the Node to Code window, or the Get Started card). The provider is yours only: it is saved in your
+user settings, not in the project. Each provider's model and options below are in the
+[Plugin Settings](Initial-Configuration#accessing-plugin-settings) (Project Settings), shared by the project.
 Each cloud provider's **Model** is a model ID picked from the list of models Node to Code knows (shown below by
 name, with the ID the list shows). **Custom Model ID**, when set, is sent instead: use it for a model released after
 your Node to Code version. Node to Code then has no context size or price for it; add one under
@@ -85,7 +88,7 @@ Use System Prompts off) are cleared so the server and model defaults apply, and 
 with its checkbox ticked.
 
 ### [LM Studio (Local Processing)](LM-Studio-Quick-Start)
-- **Server Endpoint** (default http://localhost:1234) and **Model Name** (the model loaded in LM Studio, default `qwen3-32b`); no API key
+- **LM Studio Server Endpoint** (default http://localhost:1234; yours only, in **Editor Preferences → Plugins → Node to Code (User)**) and **Model Name** (the model loaded in LM Studio, default `qwen3-32b`); no API key
 - **Prepended Model Command**: optional text added to the start of each message, for example `/no_think` to turn off
   thinking on reasoning models. Sampling settings are set in the LM Studio app. Setup: [LM Studio Quick Start](LM-Studio-Quick-Start)
 - **Max Output Tokens**: 0 (Auto) by default, which sends no `max_tokens`, so the server uses whatever context the

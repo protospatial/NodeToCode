@@ -1104,7 +1104,7 @@ def main():
         if args.viewer:
             # A batch translation uses the provider and model the LLM module was initialized with (from the settings
             # at its first translation), so the session starts with the viewer provider's model selected
-            s._patch('NodeToCode.ini', SETTINGS_SECTION, 'Provider', VIEWER_PROVIDER[cases[0]['provider']][0])
+            s._patch('EditorPerProjectUserSettings.ini', '[/Script/NodeToCode.N2CUserSettings]', 'Provider', VIEWER_PROVIDER[cases[0]['provider']][0])  # per user since settings version 5
             s._patch('NodeToCode.ini', SETTINGS_SECTION, VIEWER_PROVIDER[cases[0]['provider']][1], cases[0]['model'])
             # The batch records graph state and the tag in Saved/NodeToCode: put both back when the session stops
             for state_file in ('BlueprintGraphState.json', 'BlueprintGraphState.json.bak'):

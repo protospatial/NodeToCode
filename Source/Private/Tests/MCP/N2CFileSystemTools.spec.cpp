@@ -7,6 +7,7 @@
 
 #include "Tests/N2CToolSpecHarness.h"
 #include "Core/N2CSettings.h"
+#include "Core/N2CUserSettings.h"
 #include "Utils/N2CPathUtils.h"
 #include "Dom/JsonObject.h"
 #include "HAL/FileManager.h"
@@ -80,12 +81,12 @@ BEGIN_DEFINE_SPEC(FN2CFileSystemToolsSpec, "NodeToCode.MCP.FileSystemTools", N2C
 		explicit FScopedOutputDirectory(const FString& Path)
 		{
 			UN2CSettings* Settings = GetMutableDefault<UN2CSettings>();
-			Saved = Settings->CustomTranslationOutputDirectory.Path;
-			Settings->CustomTranslationOutputDirectory.Path = Path;
+			Saved = GetMutableDefault<UN2CUserSettings>()->CustomTranslationOutputDirectory.Path;
+			GetMutableDefault<UN2CUserSettings>()->CustomTranslationOutputDirectory.Path = Path;
 		}
 		~FScopedOutputDirectory()
 		{
-			GetMutableDefault<UN2CSettings>()->CustomTranslationOutputDirectory.Path = Saved;
+			GetMutableDefault<UN2CUserSettings>()->CustomTranslationOutputDirectory.Path = Saved;
 		}
 	};
 

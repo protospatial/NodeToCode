@@ -14,6 +14,7 @@ from conftest import REPO_ROOT
 
 SOURCE = os.path.join(REPO_ROOT, 'Source')
 SETTINGS_H = os.path.join(SOURCE, 'Public', 'Core', 'N2CSettings.h')
+USER_SETTINGS_H = os.path.join(SOURCE, 'Public', 'Core', 'N2CUserSettings.h')
 COLORS_H = os.path.join(SOURCE, 'Public', 'Core', 'Style', 'N2CUIColors.h')
 SETTINGS_INCLUDE = '#include "Core/N2CSettings.h"'
 
@@ -44,7 +45,8 @@ def test_settings_header_has_no_ui_color_tokens_or_helpers():
     assert not re.search(r'\bstruct\s+FN2CUIColors\b', text)
     for helper in ('N2CUI', 'UIL', 'UILA', 'UIBind', 'UIBindAlpha'):
         assert not re.search(r'\b%s\s*\(' % helper, text), helper
-    assert '#include "Core/Style/N2CUIColors.h"' in text  # the UIColors property still has its type
+    # The UIColors property moved to the per-user settings (card 0188), whose header includes its type
+    assert '#include "Core/Style/N2CUIColors.h"' in _read(USER_SETTINGS_H)
 
 
 def test_color_tokens_and_helpers_live_in_the_style_header():

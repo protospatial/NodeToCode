@@ -21,6 +21,8 @@ SETTINGS = ['provider', 'anthropic_model_id', 'open_ai_model_id', 'gemini_model_
             'lm_studio_max_output_tokens', 'mcp_server_port', 'mcp_tool_exposure',
             'mcp_tool_profile', 'anthropic_api_key_source', 'open_ai_api_key_source',
             'gemini_api_key_source', 'deep_seek_api_key_source']
+# Per-user settings since settings version 5 (card 0188): read from N2CUserSettings, under the same names
+USER_SETTINGS = {'provider', 'lm_studio_endpoint', 'custom_translation_output_directory', 'mcp_server_port'}
 KEY_FIELDS = ['anthropic_api_key_ui', 'open_ai_api_key_ui', 'gemini_api_key_ui', 'deep_seek_api_key_ui']
 
 
@@ -46,9 +48,10 @@ def enum(cls, name):
 
 out = {'settings': {}, 'missing': [], 'keys': {}, 'costs': {}, 'user': {}, 'errors': []}
 s = unreal.get_default_object(unreal.N2CSettings)
+u = unreal.get_default_object(unreal.N2CUserSettings)
 for name in SETTINGS:
     try:
-        out['settings'][name] = norm(s.get_editor_property(name))
+        out['settings'][name] = norm((u if name in USER_SETTINGS else s).get_editor_property(name))
     except Exception as e:  # noqa: BLE001
         out['missing'].append('%s: %s' % (name, e))
 for name in KEY_FIELDS:
@@ -58,7 +61,7 @@ for name in KEY_FIELDS:
 try:
     theme = s.get_editor_property('code_editor_theme').get_editor_property('themes')
     out['settings']['code_editor_theme_names'] = sorted(str(k) for k in theme.keys())
-    ui = s.get_editor_property('ui_colors')
+    ui = u.get_editor_property('ui_colors')
     out['settings']['ui_colors_is_default'] = ui.export_text() == unreal.N2CUIColors().export_text()
 except Exception as e:  # noqa: BLE001
     out['errors'].append('theme/ui: %s' % e)
@@ -66,19 +69,19 @@ except Exception as e:  # noqa: BLE001
 # Pricing in effect (Model Price Overrides entry if there is one, else the model catalog) per model ID, read with
 # notify Never so nothing is saved; the selection is put back afterwards
 ID_PROPS = ('provider', 'open_ai_model_id', 'deep_seek_model_id', 'anthropic_model_id', 'gemini_model_id')
-saved = {p: s.get_editor_property(p) for p in ID_PROPS}
+saved = {p: (u if p in USER_SETTINGS else s).get_editor_property(p) for p in ID_PROPS}
 probe = [('OpenAI', 'open_ai_model_id', m) for m in ('o3', 'gpt-4.1', 'gpt-4o-2024-08-06', 'gpt-4o-mini-2024-07-18')]
 probe += [('DeepSeek', 'deep_seek_model_id', 'deepseek-flash')]
 probe += [('Anthropic', 'anthropic_model_id', m) for m in ('claude-sonnet-5-5',)]
 probe += [('Gemini', 'gemini_model_id', m) for m in ('gemini-3.8-flash',)]
 try:
     for provider, prop, model in probe:
-        s.set_editor_property('provider', enum(unreal.N2CLLMProvider, provider), NEVER)
+        u.set_editor_property('provider', enum(unreal.N2CLLMProvider, provider), NEVER)
         s.set_editor_property(prop, model, NEVER)
         out['costs'][model] = [round(s.get_current_input_cost(), 6), round(s.get_current_output_cost(), 6)]
 finally:
     for p, v in saved.items():
-        s.set_editor_property(p, v, NEVER)
+        (u if p in USER_SETTINGS else s).set_editor_property(p, v, NEVER)
 
 try:
     u = unreal.get_default_object(unreal.N2CUserSettings)

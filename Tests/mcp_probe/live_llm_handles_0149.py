@@ -162,7 +162,7 @@ def main():
     session = EditorSession(args.engine, args.project, port, log_path, allow_python=True, extra_env=keys,
                             extra_args=['-LogCmds=LogNodeToCode VeryVerbose', *BLUEPRINT_EDITOR_ARGS])
     with session as s:
-        s._patch('NodeToCode.ini', SETTINGS_SECTION, 'Provider', 'Anthropic')
+        s._patch('EditorPerProjectUserSettings.ini', '[/Script/NodeToCode.N2CUserSettings]', 'Provider', 'Anthropic')  # per user since settings version 5
         s._patch('NodeToCode.ini', SETTINGS_SECTION, 'AnthropicModelId', MODEL)
         for state_file in ('BlueprintGraphState.json', 'BlueprintGraphState.json.bak'):
             s.guard_file(os.path.join(project_dir, 'Saved', 'NodeToCode', state_file))

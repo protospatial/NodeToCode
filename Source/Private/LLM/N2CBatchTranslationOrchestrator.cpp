@@ -6,6 +6,7 @@
 #include "Core/N2CCapture.h"
 #include "Core/N2CSerializer.h"
 #include "Core/N2CSettings.h"
+#include "Core/N2CUserSettings.h"
 #include "Core/N2CTargetLanguage.h"
 #include "LLM/N2CSystemPromptManager.h"
 #include "Core/N2CGraphStateManager.h"
@@ -829,7 +830,7 @@ FString UN2CBatchTranslationOrchestrator::GetSaveProvider() const
 		return UEnum::GetValueAsString(BatchOptions.RequestConfig.Provider);
 	}
 	const UN2CSettings* Settings = GetDefault<UN2CSettings>();
-	return Settings ? UEnum::GetValueAsString(Settings->Provider) : FString(TEXT("Unknown"));
+	return Settings ? UEnum::GetValueAsString(GetDefault<UN2CUserSettings>()->Provider) : FString(TEXT("Unknown"));
 }
 
 FString UN2CBatchTranslationOrchestrator::GetSaveModel() const

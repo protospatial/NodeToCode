@@ -8,6 +8,7 @@
 #include "Core/N2CCapture.h"
 #include "Core/N2CSerializer.h"
 #include "Core/N2CSettings.h"
+#include "Core/N2CUserSettings.h"
 #include "Dom/JsonObject.h"
 #include "EdGraph/EdGraph.h"
 #include "HAL/FileManager.h"
@@ -128,18 +129,18 @@ BEGIN_DEFINE_SPEC(FN2CTranslationSaveSpec, "NodeToCode.LLM.TranslationSave", N2C
 		{
 			UN2CSettings* Settings = GetMutableDefault<UN2CSettings>();
 			SavedEndpoint = Settings->OllamaConfig.OllamaEndpoint;
-			SavedProvider = Settings->Provider;
-			SavedOutput = Settings->CustomTranslationOutputDirectory.Path;
+			SavedProvider = GetMutableDefault<UN2CUserSettings>()->Provider;
+			SavedOutput = GetMutableDefault<UN2CUserSettings>()->CustomTranslationOutputDirectory.Path;
 			Settings->OllamaConfig.OllamaEndpoint = Endpoint;
-			Settings->Provider = EN2CLLMProvider::Ollama;
-			Settings->CustomTranslationOutputDirectory.Path = Output;
+			GetMutableDefault<UN2CUserSettings>()->Provider = EN2CLLMProvider::Ollama;
+			GetMutableDefault<UN2CUserSettings>()->CustomTranslationOutputDirectory.Path = Output;
 		}
 		~FScopedSettings()
 		{
 			UN2CSettings* Settings = GetMutableDefault<UN2CSettings>();
 			Settings->OllamaConfig.OllamaEndpoint = SavedEndpoint;
-			Settings->Provider = SavedProvider;
-			Settings->CustomTranslationOutputDirectory.Path = SavedOutput;
+			GetMutableDefault<UN2CUserSettings>()->Provider = SavedProvider;
+			GetMutableDefault<UN2CUserSettings>()->CustomTranslationOutputDirectory.Path = SavedOutput;
 		}
 		FString SavedEndpoint;
 		EN2CLLMProvider SavedProvider;

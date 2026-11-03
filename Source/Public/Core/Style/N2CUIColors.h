@@ -135,7 +135,7 @@ struct FN2CUIColors
 
 namespace N2C::UI
 {
-    /** The live palette (UN2CSettings::UIColors). Defined in N2CUIColors.cpp, the one place that reads the settings. */
+    /** The live palette (UN2CUserSettings::UIColors, per user since card 0188). Defined in N2CUIColors.cpp, the one place that reads the settings. */
     NODETOCODE_API const FN2CUIColors& Colors();
 
     /** sRGB palette color to linear. */

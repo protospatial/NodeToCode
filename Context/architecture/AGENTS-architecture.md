@@ -41,6 +41,7 @@ Source/
             *   No editor preference is written at startup: HTTP timeouts are set per request (`UN2CHttpHandlerBase`), and CPU throttling is suspended only while a translation runs (a `ShouldDisableCPUThrottlingDelegates` entry). The MCP servers are skipped in commandlets and unattended runs unless `-N2CMcp` is passed
             *   API keys (`FN2CSecretStore::Get()`; on Windows it first moves the per-user and a project's old `secrets.json` into Windows Credential Manager)
             *   Settings carried over from NodeToCode 1.2.x (`UN2CSettings::MigrateLegacy12Settings`, not in commandlets): writes back model selections and other values that did not load as saved, and, once (`SettingsVersion` < 3), drops stale prices, reports the per-language theme keys, removes the 1.2.x HTTP timeouts from `Config/DefaultEngine.ini` and reports the CPU-throttle preference. The only startup write to project config; nothing is written when there is nothing to migrate. See `Context/release/migration-1.2-to-2.0.md`
+            *   Per-user settings of settings version 5 (`UN2CUserSettings::UpgradeFromProjectSettings`, right after it, not in commandlets): copies the user's provider, LM Studio endpoint, MCP port, UI colors, output folder and own reference files from the project config to their `EditorPerProjectUserSettings.ini`, once per user; reads the project config only
             *   Styles (`N2CStyle`, `FN2CCodeEditorStyle`)
             *   Editor integration (`FN2CEditorIntegration`)
             *   Widget factories (`FN2CCodeEditorWidgetFactory`)
@@ -87,35 +88,39 @@ The Editor Utility Widget UI (`Content/UI`) was removed in 2.0; the plugin UI is
 
 All presentation tokens live in `Source/Public/Core/Style/` (implementations in `Source/Private/Core/Style/`), so widget code does not include `Core/N2CSettings.h`:
 
-*   **`N2CUIColors.h` / `N2CUIColors.cpp` (`FN2CUIColors`, namespace `N2C::UI`)**: The color tokens. The live palette is the `UIColors` property on `UN2CSettings`; widgets read it with `N2C::UI::Colors()` (defined in the .cpp, the only style file that includes the settings header), convert with `N2C::UI::Linear` / `LinearAlpha`, and bind with `N2C::UI::Bind` / `BindAlpha`, which return a `TAttribute<FSlateColor>` re-read on every paint so a Project Settings edit shows in open widgets at once.
+*   **`N2CUIColors.h` / `N2CUIColors.cpp` (`FN2CUIColors`, namespace `N2C::UI`)**: The color tokens. The live palette is the `UIColors` property on `UN2CUserSettings` (per user since card 0188); widgets read it with `N2C::UI::Colors()` (defined in the .cpp, the only style file that includes the settings header), convert with `N2C::UI::Linear` / `LinearAlpha`, and bind with `N2C::UI::Bind` / `BindAlpha`, which return a `TAttribute<FSlateColor>` re-read on every paint so a Project Settings edit shows in open widgets at once.
 *   **`N2CDesignTokens.h`**: Spacing (`FN2CSpacing`), font (`FN2CFonts`) and sizing (`FN2CSizing`) tokens.
-*   **`N2CStyle.h` / `N2CStyle.cpp` (`N2CStyle`)**: The plugin's Slate style set (toolbar icon, button, border, combo box and widget styles with stable addresses). `UN2CSettings::PostEditChangeProperty` calls its `Update*` functions when `UIColors` changes. Provides the `N2C_PLUGIN_BRUSH` macro for content paths.
+*   **`N2CStyle.h` / `N2CStyle.cpp` (`N2CStyle`)**: The plugin's Slate style set (toolbar icon, button, border, combo box and widget styles with stable addresses). `UN2CUserSettings::PostEditChangeProperty` calls its `Update*` functions when `UIColors` changes. Provides the `N2C_PLUGIN_BRUSH` macro for content paths.
 *   **`Source/Public/Core/N2CTargetLanguage.h` / `Source/Private/Core/N2CTargetLanguage.cpp` (`FN2CTargetLanguage`)**: the target-language table (card 0250), one row per `EN2CCodeLanguage` value: `Id` (what translation records store: `Cpp`, `Python`, ...), `DisplayName`, `ImplementationExtension` (Pseudocode is `.md`), `DeclarationExtension` and `bHasDeclarationFile` (C++ only, `.h`), `LegacyImplementationExtension` (Pseudocode's old `.txt`, still read), `PromptKey` and the MCP description, category and features. `N2C::GetLanguage(Enum)`, `N2C::FindLanguage(Name)` (id in any case, `EN2CCodeLanguage::X`, display name or prompt key) and `N2C::GetPromptKey(Enum, Family)` (`CodeGen_CPP`; `N2C::BlueprintPromptFamily` is `CodeGen`, room for another source kind's family). The save paths, `LoadTranslation`, `FN2CPathUtils`' language helpers, the prompt manager, the translation viewer's tab labels, the translate overrides, `get-available-translation-targets` and the MCP prompts read it. The code editor keeps its own language-to-syntax and style maps (the table must not depend on Slate); `NodeToCode.Languages` checks both sides cover every enum value. Adding a language: an enum value, a row, `Content/Prompting/CodeGen_<PromptKey>.md`, and the code editor's syntax definition and style. Verse as a target was explored and deferred to UE6 Early Access (card 0328): [verse-target.md](../explorations/verse-target.md).
 
 ## Plugin Settings
 
-*   **`Source/Public/Core/N2CSettings.h` / `Source/Private/Core/N2CSettings.cpp` (`UN2CSettings`)**: `UDeveloperSettings` class for all plugin configurations:
+*   **Two classes, by scope (card 0188).** `UN2CSettings` (`Config = NodeToCode, DefaultConfig`, Project Settings > Plugins > Node to Code) holds what the team shares and is saved to the committed `Config/DefaultNodeToCode.ini`. `UN2CUserSettings` (`Config = EditorPerProjectUserSettings`, Editor Preferences > Plugins > Node to Code (User), `Source/Public/Core/N2CUserSettings.h`) holds each developer's own choices and is saved to `Saved/Config/<Platform>Editor/EditorPerProjectUserSettings.ini`: `Provider`, `LMStudioEndpoint`, `McpServerPort`, `UIColors`, `CustomTranslationOutputDirectory`, its own `ReferenceSourceFilePaths` (files anywhere, absolute) and the MCP switches (`Context/auth-secrets/AGENTS-auth-secrets.md`). Readers take a moved field from `GetDefault<UN2CUserSettings>()`; the reference files a translation sends come from `UN2CUserSettings::GetReferenceSourceFiles()` (project list, a relative entry resolved under the project, then the user's, each once, missing files left out).
+    *   Saving: Project Settings edits and the window's model picker go through `UN2CSettings::SaveToProjectConfig`; the window's provider pickers (`SN2CContextWindowVisualizer::SaveSettings`, the Get Started card) call `UN2CUserSettings::SaveToUserConfig`, which writes only the named keys, so the switches a user never set stay unwritten. Editing the project's Reference Source Files runs `UN2CSettings::NormalizeReferenceSourceFilePaths`: entries inside the project become project-relative (the property has `RelativeToGameDir`), entries outside move to the user's list.
+    *   Settings version 5 upgrade: `UN2CUserSettings::UpgradeFromProjectSettings` (`FN2CUserSettingsUpgradeSources::ForProject()` in the editor, scratch files in `NodeToCode.Settings.UserUpgrade`) copies each moved key from the project's `[/Script/NodeToCode.N2CSettings]` (Default plus Saved layer) into the user config unless the user already set it, adds existing outside-project reference files to the user's list, moves a saved `UIColors.TextMuted` of the old 107 grey to the 148 default (decision for card 0188: every other saved colour is kept; a palette left at the defaults is not copied), and stamps the user's own `SettingsVersion=5`. It never writes the project config, because every developer copies from it; it logs the old keys as safe to delete once the team has upgraded. `UN2CSettings::CurrentSettingsVersion` is 5 too (a `static_assert` keeps it at or above the user class's).
+
+*   **`Source/Public/Core/N2CSettings.h` / `Source/Private/Core/N2CSettings.cpp` (`UN2CSettings`)**: `UDeveloperSettings` class for the project-shared configuration:
 
     **LLM Provider Settings:**
-    *   `Provider` - Selected LLM provider (`EN2CLLMProvider`)
+    *   `Provider` - per user since settings version 5 (`UN2CUserSettings::Provider`, `EN2CLLMProvider`)
     *   `AnthropicModelId`, `OpenAIModelId`, `GeminiModelId`, `DeepSeekModelId` - model selection by catalog model ID, each with a `<Provider>CustomModelId` sent instead when set; `DeepSeekReasoningEffort` - DeepSeek thinking mode (settings version 4; configs saved with the old enum keys `AnthropicModel`, `OpenAI_Model`, `Gemini_Model`, `DeepSeekModel` are converted once, see `Context/llm-providers/AGENTS-llm-providers.md`)
     *   `OllamaConfig`, `OllamaModel` - Ollama settings
-    *   `LMStudioModel`, `LMStudioEndpoint`, `LMStudioPrependedModelCommand` - LM Studio settings
+    *   `LMStudioModel`, `LMStudioPrependedModelCommand` - LM Studio settings (`LMStudioEndpoint` is per user, `UN2CUserSettings`)
     *   `ModelPricing` - price overrides keyed by model ID (replaces the four per-provider maps)
 
     **Code Generation Settings:**
     *   `TargetLanguage` - Target programming language (`EN2CCodeLanguage`)
     *   `TranslationDepth` - Max depth for nested graph translation (0-5)
-    *   `ReferenceSourceFilePaths` - Source files for LLM context
-    *   `CustomTranslationOutputDirectory` - Custom output path for translations
+    *   `ReferenceSourceFilePaths` - the project's source files for LLM context, stored project-relative (a user's own files: `UN2CUserSettings::ReferenceSourceFilePaths`)
+    *   `CustomTranslationOutputDirectory` - per user since settings version 5 (`UN2CUserSettings`); a relative path is under the project
 
     **MCP Server Settings:**
-    *   `McpServerPort` - HTTP server port (default: 27000); `McpServerPortRange` - fallback ports tried when it is taken (default: 10)
+    *   `McpServerPortRange` - fallback ports tried when the port is taken (default: 10); the port itself, `McpServerPort` (default 27000), is per user (`UN2CUserSettings`)
     *   `McpToolProfile`, `McpCustomToolsets` - which toolsets the MCP server serves (default: all; Python scripting only)
     *   `McpToolExposure` - list every tool, or tool search (`list_toolsets`, `describe_toolset`, `call_tool`)
 
     **Theming:**
-    *   `UIColors` (`FN2CUIColors`, `Core/Style/N2CUIColors.h`) - the window's colors, read through `N2C::UI::Colors()`; spacing, font and sizing tokens are constants in `Core/Style/N2CDesignTokens.h` (see `Context/code-editor/AGENTS-code-editor.md`, Colors)
+    *   `UIColors` (`FN2CUIColors`, `Core/Style/N2CUIColors.h`) - the window's colors, per user since settings version 5 (`UN2CUserSettings::UIColors`, whose `PostEditChangeProperty` calls the `N2CStyle::Update*` functions), read through `N2C::UI::Colors()`; spacing, font and sizing tokens are constants in `Core/Style/N2CDesignTokens.h` (see `Context/code-editor/AGENTS-code-editor.md`, Colors)
     *   `CodeEditorTheme` (`FN2CCodeEditorThemes`) - one theme for every language; the code editor draws its "Unreal Engine" entry. 1.2.x's per-language theme maps are no longer read (migration S18)
     *   `FN2CCodeEditorColors` struct with: NormalText, Operators, Keywords, Strings, Numbers, Comments, Preprocessor, Parentheses, CurlyBraces, SquareBrackets, Background
 

@@ -1,16 +1,19 @@
-Node to Code's colors are two settings in **Project Settings → Plugins → Node to Code → Theming**: **UI Colors** for
-the window and the N2C bar, and **Code Editor Theme** for the syntax colors of the translation viewer. There is one
+Node to Code's colors are two settings: **UI Colors** for the window and the N2C bar, your own setting in **Editor
+Preferences → Plugins → Node to Code (User) → Theming**, and **Code Editor Theme** for the syntax colors of the
+translation viewer, a project setting in **Project Settings → Plugins → Node to Code → Theming**. There is one
 code theme for every language; the theme collections and the theme and font pickers of 1.x are gone.
 
 ## UI Colors
 
 **UI Colors** holds the colors of the Node to Code window and of the N2C bar on each graph: backgrounds, buttons,
-borders, text and accents. A change shows at once in an open window. Each entry has a reset arrow that returns it to
+borders, text and accents. It is saved in your user settings, not in the project, so each developer keeps their
+own. A change shows at once in an open window. Each entry has a reset arrow that returns it to
 the default.
 
-The default **Text Muted** is a light gray (148, 148, 148), so muted text keeps a 4.5:1 contrast on the panels. A
-project that saved its UI colors with the older, darker default (107, 107, 107) keeps it; use the reset arrow next to
-**Text Muted** to take the new default.
+The default **Text Muted** is a light gray (148, 148, 148), so muted text keeps a 4.5:1 contrast on the panels.
+Earlier 2.0 builds kept UI Colors in the project's settings; the first start with this version copies them to your
+own settings once, and a saved **Text Muted** still at the older, darker default (107, 107, 107) takes the new
+default then. Every other saved color is kept.
 
 ## Code Editor Theme
 

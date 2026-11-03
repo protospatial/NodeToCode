@@ -92,7 +92,7 @@ def test_mcp_config_matches_manifest_and_editor_default():
     match = re.fullmatch(r'\$\{user_config\.(\w+)\}', server['url'])
     assert match and match.group(1) in manifest['userConfig']
     default = manifest['userConfig'][match.group(1)]['default']
-    with open(os.path.join(REPO_ROOT, 'Source', 'Public', 'Core', 'N2CSettings.h'), encoding='utf-8') as f:
+    with open(os.path.join(REPO_ROOT, 'Source', 'Public', 'Core', 'N2CUserSettings.h'), encoding='utf-8') as f:
         port = re.search(r'int32 McpServerPort = (\d+);', f.read()).group(1)
     assert default == 'http://127.0.0.1:%s/mcp' % port
 

@@ -6,6 +6,7 @@
 
 #include "Core/N2CEditorIntegration.h"
 #include "Core/N2CSettings.h"
+#include "Core/N2CUserSettings.h"
 #include "Core/Widgets/SN2CBatchProgressModal.h"
 #include "Dom/JsonObject.h"
 #include "EdGraphSchema_K2.h"
@@ -207,15 +208,15 @@ BEGIN_DEFINE_SPEC(FN2CErrorsSpec, "NodeToCode.LLM.Errors",
 		{
 			UN2CSettings* Settings = GetMutableDefault<UN2CSettings>();
 			SavedEndpoint = Settings->OllamaConfig.OllamaEndpoint;
-			SavedProvider = Settings->Provider;
+			SavedProvider = GetMutableDefault<UN2CUserSettings>()->Provider;
 			Settings->OllamaConfig.OllamaEndpoint = Endpoint;
-			Settings->Provider = EN2CLLMProvider::Ollama;
+			GetMutableDefault<UN2CUserSettings>()->Provider = EN2CLLMProvider::Ollama;
 		}
 		~FScopedOllamaAt()
 		{
 			UN2CSettings* Settings = GetMutableDefault<UN2CSettings>();
 			Settings->OllamaConfig.OllamaEndpoint = SavedEndpoint;
-			Settings->Provider = SavedProvider;
+			GetMutableDefault<UN2CUserSettings>()->Provider = SavedProvider;
 		}
 		FString SavedEndpoint;
 		EN2CLLMProvider SavedProvider;

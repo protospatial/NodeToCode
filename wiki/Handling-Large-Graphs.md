@@ -37,7 +37,8 @@ sends: the graph and its nested graphs up to the [Translation Depth](Translation
 Translation Depth change. Compiling one Blueprint re-estimates only that Blueprint's graphs. A graph with nothing to
 translate shows **n/a**.
 
-The provider and model you pick beside the bar are saved to the project's settings (`Config/DefaultNodeToCode.ini`),
+The model you pick beside the bar is saved to the project's settings (`Config/DefaultNodeToCode.ini`) and the
+provider to your own settings (Editor Preferences → Plugins → Node to Code (User)),
 the same place Project Settings saves them, so whichever you changed last is used after a restart.
 
 ## Translation Approaches

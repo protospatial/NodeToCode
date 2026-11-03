@@ -1,14 +1,28 @@
 ### Plugin Setup → Initial Configuration
 ***
 
-Node to Code is configured in Project Settings, under Plugins → Node to Code. This page shows where the settings
-are, which tools the MCP server offers to AI clients, and where the plugin keeps its settings and API keys.
+Node to Code is configured in two places: **Project Settings → Plugins → Node to Code** holds what everyone on the
+project shares, and **Editor Preferences → Plugins → Node to Code (User)** holds your own choices. This page shows
+where the settings are, which tools the MCP server offers to AI clients, and where the plugin keeps its settings and
+API keys.
 
 ## Accessing Plugin Settings
 
 1. Open Project Settings (Edit → Project Settings)
 2. Navigate to Plugins → Node to Code
 3. You'll see several categories of settings to configure
+4. For your own settings, open Editor Preferences (Edit → Editor Preferences) → Plugins → Node to Code (User)
+
+| Project Settings → Plugins → Node to Code (shared, `Config/DefaultNodeToCode.ini`) | Editor Preferences → Plugins → Node to Code (User) (yours, not in the project) |
+|---|---|
+| Each provider's **Model**, **Custom Model ID**, **Max Output Tokens**, **Model Price Overrides**, Ollama options, LM Studio **Model Name** | **Provider** |
+| **Target Language**, **Max Translation Depth**, **Reference Source Files** (files in the project) | **LM Studio Server Endpoint** |
+| **HTTP Activity Timeout**, **Logging**, **Code Editor Theme** | **My Reference Source Files** (files outside the project), **Custom Translation Output Directory** |
+| MCP **Port Fallback Range**, **Tool Profile**, **Tool Exposure**, **Overlapping Tools** | MCP **Server Port**, **Enable MCP Server** and the other MCP switches |
+| | **UI Colors**, **Show Get Started Card** |
+
+The provider picker in the Node to Code window and the Get Started card save the provider to your own settings and a
+model choice to the project's.
 
 <p align="left">
     <img src="https://github.com/protospatial/NodeToCode/blob/main/assets/Image_NodeToCode_PluginSettings.jpg" alt="Node to Code plugin settings" width="750">
@@ -51,13 +65,28 @@ open with Python scripting only or Tool search set for them.
 
 ## Plugins Config Files & Source Control
 
-Node to Code keeps settings and API keys apart:
+Node to Code keeps the team's settings, your own settings and API keys apart:
 - DefaultNodeToCode.ini
-  - Stores all of your modified non-sensitive plugin settings
+  - Stores the project settings everyone shares (Project Settings → Plugins → Node to Code)
   - Saved in your Project's **Config** path
-  - Project Settings and the provider and model picker in the Node to Code window both save here, so the last
-    choice made in either one is the one used after a restart
-  - Can be committed to source control without leaking API Keys
+  - Project Settings and the model picker in the Node to Code window both save here, so the last choice made in
+    either one is the one used after a restart
+  - Can be committed to source control without leaking API Keys, a provider choice or a path on your machine
+  - Reference files inside the project are saved relative to the project folder; a file outside the project added
+    there moves to your **My Reference Source Files**
+
+- EditorPerProjectUserSettings.ini
+  - Stores your own settings (Editor Preferences → Plugins → Node to Code (User)): provider, LM Studio endpoint,
+    MCP server port and switches, UI colors, your reference files and translation output folder
+  - Saved in the project's `Saved/Config/<Platform>Editor` folder, which is not committed
+
+- Settings saved by an earlier 2.0 build
+  - Builds before settings version 5 saved the provider, LM Studio endpoint, MCP server port, UI colors and output
+    folder in `DefaultNodeToCode.ini`. The first start with this version copies your values from there to your own
+    settings, once, and the Output Log lists them. Nothing is removed from `DefaultNodeToCode.ini`, because everyone
+    else on the project copies their values from it too: delete those keys once the whole team has upgraded. A UI
+    Colors palette saved with the old **Text Muted** grey (107) gets the new, easier-to-read default (148); every
+    other saved color is kept
 
 - API keys
   - Never written to a config file or to the project, so they are never in a project you commit, zip or sync

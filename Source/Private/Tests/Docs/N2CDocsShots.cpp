@@ -7,7 +7,9 @@
 
 #include "Code Editor/Models/N2CCodeLanguage.h"
 #include "Core/N2CSettings.h"
+#include "Core/N2CUserSettings.h"
 #include "Core/Widgets/SN2CCircularProgressBar.h"
+#include "Misc/ScopeExit.h"
 #include "Core/Widgets/SN2CGetStartedCard.h"
 #include "Core/Widgets/SN2CGraphOverlay.h"
 #include "Core/Widgets/SN2CTagManager.h"
@@ -240,12 +242,12 @@ bool FN2CDocsShotsMainWindow::RunTest(const FString& Parameters)
 	const TArray<FN2CTaggedBlueprintGraph> Tags = N2CDocsShots::SampleTags();
 	// The Output row shows the translations folder: a sample project's, not this machine's (in memory, never saved)
 	UN2CSettings* Settings = GetMutableDefault<UN2CSettings>();
-	const FString SavedOutput = Settings->CustomTranslationOutputDirectory.Path;
-	Settings->CustomTranslationOutputDirectory.Path = TEXT("C:/Projects/SampleGame/Saved/NodeToCode/Translations");
+	const FString SavedOutput = GetMutableDefault<UN2CUserSettings>()->CustomTranslationOutputDirectory.Path;
+	GetMutableDefault<UN2CUserSettings>()->CustomTranslationOutputDirectory.Path = TEXT("C:/Projects/SampleGame/Saved/NodeToCode/Translations");
 	const TSharedRef<SN2CTagManager> Manager = SNew(SN2CTagManager)
 		.ShowActionBar(true)
 		.TagSource([Tags]() { return Tags; });
-	Settings->CustomTranslationOutputDirectory.Path = SavedOutput;
+	GetMutableDefault<UN2CUserSettings>()->CustomTranslationOutputDirectory.Path = SavedOutput;
 	Manager->SelectCategory(TEXT("Gameplay"));
 	N2CDocsShots::Shoot(*this, N2CDocsShots::OnPanel(Manager), FVector2D(880.0, 460.0), Folder, TEXT("main-window/tag-manager"));
 
@@ -254,16 +256,16 @@ bool FN2CDocsShotsMainWindow::RunTest(const FString& Parameters)
 	N2CDocsShots::Shoot(*this, N2CDocsShots::OnPanel(Viewer), FVector2D(880.0, 560.0), Folder, TEXT("main-window/translation-viewer"));
 
 	// A first run (card 0269): no tags yet (the tree's guidance, the selection buttons disabled) ...
-	Settings->CustomTranslationOutputDirectory.Path = TEXT("C:/Projects/SampleGame/Saved/NodeToCode/Translations");
+	GetMutableDefault<UN2CUserSettings>()->CustomTranslationOutputDirectory.Path = TEXT("C:/Projects/SampleGame/Saved/NodeToCode/Translations");
 	const TSharedRef<SN2CTagManager> EmptyManager = SNew(SN2CTagManager)
 		.ShowActionBar(true)
 		.TagSource([]() { return TArray<FN2CTaggedBlueprintGraph>(); });
-	Settings->CustomTranslationOutputDirectory.Path = SavedOutput;
+	GetMutableDefault<UN2CUserSettings>()->CustomTranslationOutputDirectory.Path = SavedOutput;
 	N2CDocsShots::Shoot(*this, N2CDocsShots::OnPanel(EmptyManager), FVector2D(880.0, 460.0), Folder, TEXT("main-window/first-run"));
 
 	// ... and the Get Started card, with the Anthropic key row; refused when it would show the end of a saved key
-	const EN2CLLMProvider SavedProvider = Settings->Provider;
-	Settings->Provider = EN2CLLMProvider::Anthropic;
+	const EN2CLLMProvider SavedProvider = GetMutableDefault<UN2CUserSettings>()->Provider;
+	GetMutableDefault<UN2CUserSettings>()->Provider = EN2CLLMProvider::Anthropic;
 	const FString KeyStatus = UN2CSettings::DescribeApiKeySource(EN2CLLMProvider::Anthropic);
 	if (KeyStatus.Contains(TEXT("ends")))
 	{
@@ -274,7 +276,7 @@ bool FN2CDocsShotsMainWindow::RunTest(const FString& Parameters)
 		const TSharedRef<SN2CGetStartedCard> Card = SNew(SN2CGetStartedCard).AlwaysShow(true);
 		N2CDocsShots::Shoot(*this, N2CDocsShots::OnPanel(Card), FVector2D(880.0, 262.0), Folder, TEXT("main-window/get-started"));
 	}
-	Settings->Provider = SavedProvider;
+	GetMutableDefault<UN2CUserSettings>()->Provider = SavedProvider;
 	return !HasAnyErrors();
 }
 
@@ -318,8 +320,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FN2CDocsShotsSettings, "N2CDocs.Shots.settings"
 
 /**
  * settings: NodeToCode's Project Settings page (Plugins > Node to Code) as its details panel shows it, one shot per
- * area (the provider choice with the Anthropic rows, Code Generation, and MCP Server). Refuses to capture when any API key
- * field holds text or a status row shows the end of a saved key.
+ * area (the LLM Provider rows with Anthropic's, Code Generation, and MCP Server), and the per-user page (Editor
+ * Preferences > Plugins > Node to Code (User), card 0188) with the provider, endpoint, port and the user's own files.
+ * Refuses to capture when any API key field holds text or a status row shows the end of a saved key.
  */
 bool FN2CDocsShotsSettings::RunTest(const FString& Parameters)
 {
@@ -339,13 +342,39 @@ bool FN2CDocsShotsSettings::RunTest(const FString& Parameters)
 		return false;
 	}
 
+	// The user page shows the fixture's values, not this machine's
+	UN2CUserSettings* UserSettings = GetMutableDefault<UN2CUserSettings>();
+	const EN2CLLMProvider SavedProvider = UserSettings->Provider;
+	const FString SavedEndpoint = UserSettings->LMStudioEndpoint;
+	const int32 SavedPort = UserSettings->McpServerPort;
+	const TArray<FFilePath> SavedFiles = UserSettings->ReferenceSourceFilePaths;
+	const FString SavedOutput = UserSettings->CustomTranslationOutputDirectory.Path;
+	ON_SCOPE_EXIT
+	{
+		UserSettings->Provider = SavedProvider;
+		UserSettings->LMStudioEndpoint = SavedEndpoint;
+		UserSettings->McpServerPort = SavedPort;
+		UserSettings->ReferenceSourceFilePaths = SavedFiles;
+		UserSettings->CustomTranslationOutputDirectory.Path = SavedOutput;
+	};
+	UserSettings->Provider = EN2CLLMProvider::Anthropic;
+	UserSettings->LMStudioEndpoint = TEXT("http://localhost:1234");
+	UserSettings->McpServerPort = 27000;
+	UserSettings->ReferenceSourceFilePaths.Reset();
+	FFilePath Personal;
+	Personal.FilePath = TEXT("C:/Users/Sam/Shared/SampleUtils.h");
+	UserSettings->ReferenceSourceFilePaths.Add(Personal);
+	UserSettings->CustomTranslationOutputDirectory.Path = TEXT("C:/Projects/SampleGame/Saved/NodeToCode/Translations");
+
 	// One shot per settings area the pages describe, each the details panel filtered to that area's categories
-	struct FArea { const TCHAR* Name; TArray<FString> Categories; double Height; };
+	struct FArea { const TCHAR* Name; UObject* Object; TArray<FString> Categories; double Height; };
 	const TArray<FArea> Areas = {
-		{ TEXT("settings/llm-provider"), { TEXT("Node to Code | LLM Provider"), TEXT("Node to Code | LLM Services | Anthropic") }, 300.0 },
-		{ TEXT("settings/code-generation"), { TEXT("Node to Code | Code Generation") }, 222.0 },
+		{ TEXT("settings/llm-provider"), Settings, { TEXT("Node to Code | LLM Provider"), TEXT("Node to Code | LLM Services | Anthropic") }, 300.0 },
+		{ TEXT("settings/code-generation"), Settings, { TEXT("Node to Code | Code Generation") }, 165.0 },
 		// The MCP Server category with the Write MCP Client Config row (card 0507)
-		{ TEXT("settings/mcp-server"), { TEXT("Node to Code | MCP Server") }, 280.0 },
+		{ TEXT("settings/mcp-server"), Settings, { TEXT("Node to Code | MCP Server") }, 218.0 },
+		// Each developer's own settings (card 0188), without the colours
+		{ TEXT("settings/user"), UserSettings, { TEXT("LLM Provider"), TEXT("LLM Provider|LM Studio"), TEXT("Code Generation"), TEXT("MCP Server") }, 440.0 },
 	};
 	FPropertyEditorModule& PropertyEditor = FModuleManager::LoadModuleChecked<FPropertyEditorModule>(TEXT("PropertyEditor"));
 	for (const FArea& Area : Areas)
@@ -363,7 +392,7 @@ bool FN2CDocsShotsSettings::RunTest(const FString& Parameters)
 			const FProperty* Top = Item.ParentProperties.Num() > 0 ? Item.ParentProperties.Last() : &Item.Property;
 			return Categories.Contains(Top->GetMetaData(TEXT("Category")));
 		}));
-		Details->SetObject(Settings, true);
+		Details->SetObject(Area.Object, true);
 #if ENGINE_MAJOR_VERSION > 5 || ENGINE_MINOR_VERSION >= 7
 		// Every category open, as the page shows it (UE 5.6 has no call for it; shots come from 5.8)
 		Details->SetRootExpansionStates(true, true);
