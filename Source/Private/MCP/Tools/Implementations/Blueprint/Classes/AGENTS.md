@@ -37,11 +37,14 @@ The whole policy, and how the frozen set is read from the code, is "Frozen tool 
   - `classType`: `all`, `actor`, `actorComponent`, `object` or `userWidget`, tested with
     `IsChildOf` (`PassesClassTypeFilter`): on a native class itself, and for a Blueprint asset on its first native
     parent (the `NativeParentClass` tag), so a Character Blueprint is an `actor`
-  - `includeEngineClasses`: With false, classes under `/Script/Engine`, `/Script/CoreUObject`,
-    `/Script/UMG` and `/Engine/` are left out (`IsEngineClass`); other engine modules (`/Script/Paper2D`,
-    `/Script/AIModule`, ...) stay
-  - `includePluginClasses`: With false, other `/Script/` modules and paths containing
-    `/Plugins/` are left out (`IsPluginClass`)
+  - `includeEngineClasses`: With false, engine classes are left out: native classes of every engine
+    module (`/Script/Engine`, `/Script/AIModule`, ...), Blueprints under `/Engine`, and the native and content classes
+    of engine plugins (`FN2CTypeScope::IsEngine`, `MCP/Utils/N2CTypeScope.h`)
+  - `includePluginClasses`: With false, classes of engine and project plugins are left out: a native
+    class by the plugin whose descriptor lists its module, a Blueprint by the plugin mounted at its path
+    (`/MyPlugin/...`, `FN2CTypeScope::IsPlugin`). The project's own modules and `/Game` stay. Before card 0348 this
+    filter took `/Script/AIModule` for a plugin, the project's second module too, and kept every plugin's Blueprints
+    (it tested for `/Plugins/`, which no object path contains)
   - `includeDeprecated`, `includeAbstract`: Keep deprecated or
     abstract classes, native or Blueprint (a Blueprint's flags come from its `ClassFlags` tag). Abstract classes such
     as `UserWidget`, `ActorComponent` and `PrimaryDataAsset` are valid parents, as in the editor's Pick Parent Class

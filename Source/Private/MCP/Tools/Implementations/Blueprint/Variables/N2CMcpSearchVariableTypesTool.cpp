@@ -2,6 +2,7 @@
 
 #include "N2CMcpSearchVariableTypesTool.h"
 #include "MCP/Utils/N2CMcpArgumentParser.h"
+#include "MCP/Utils/N2CTypeScope.h"
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "MCP/Tools/N2CMcpToolTypes.h"
 #include "Utils/N2CLogger.h"
@@ -18,7 +19,6 @@
 #include "UObject/UObjectIterator.h"
 #include "UObject/Package.h"
 #include "Blueprint/BlueprintSupport.h"
-#include "Interfaces/IPluginManager.h"
 #include "Misc/CoreDelegates.h"
 #include "Misc/PackageName.h"
 #include "Misc/Paths.h"
@@ -165,59 +165,6 @@ namespace N2CSearchVariableTypes
 		State.bSubscribed = true;
 	}
 
-	/** True when a native module's binary is under the engine directory (engine modules and engine plugins) */
-	bool IsEngineModule(const FString& ModuleName, TMap<FString, bool>& Cache)
-	{
-		if (const bool* Known = Cache.Find(ModuleName))
-		{
-			return *Known;
-		}
-		// A module the manager does not know is compiled into the executable: the engine's
-		bool bEngine = true;
-		FModuleStatus Status;
-		if (FModuleManager::Get().QueryModule(FName(*ModuleName), Status) && !Status.FilePath.IsEmpty())
-		{
-			bEngine = FPaths::IsUnderDirectory(FPaths::ConvertRelativePathToFull(Status.FilePath),
-				FPaths::ConvertRelativePathToFull(FPaths::EngineDir()));
-		}
-		Cache.Add(ModuleName, bEngine);
-		return bEngine;
-	}
-
-	/**
-	 * Classifies a type by where it comes from (mcp-tools-variables-23): /Script/<Module> by the module's location,
-	 * /Engine content as engine, /Game as the project's, and another mount point by the plugin it belongs to. A
-	 * project's own native types (/Script/MyGame) and its plugins' are not engine types.
-	 */
-	bool IsEngineTypePath(const FString& ObjectPath, TMap<FString, bool>& ModuleCache)
-	{
-		FString Rest = ObjectPath;
-		Rest.RemoveFromStart(TEXT("/"));
-		int32 End = INDEX_NONE;
-		Rest.FindChar(TEXT('/'), End);
-		const FString Root = End == INDEX_NONE ? Rest : Rest.Left(End);
-		if (Root == TEXT("Script"))
-		{
-			FString Module = Rest.Mid(End + 1);
-			int32 Dot = INDEX_NONE;
-			if (Module.FindChar(TEXT('.'), Dot))
-			{
-				Module.LeftInline(Dot);
-			}
-			return IsEngineModule(Module, ModuleCache);
-		}
-		if (Root == TEXT("Engine"))
-		{
-			return true;
-		}
-		if (Root == TEXT("Game"))
-		{
-			return false;
-		}
-		const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(Root);
-		return Plugin.IsValid() && Plugin->GetLoadedFrom() == EPluginLoadedFrom::Engine;
-	}
-
 	/** Engine-internal class copies a Blueprint compile leaves in memory, never a type to offer */
 	bool IsCompilerCopy(const UObject* Object)
 	{
@@ -353,7 +300,8 @@ void FN2CMcpSearchVariableTypesTool::BuildTypeIndex() const
 	FTypeIndex& State = Index();
 	IAssetRegistry& AssetRegistry = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry").Get();
 	Subscribe(AssetRegistry);
-	TMap<FString, bool> ModuleCache;
+	// Engine and engine-plugin types are what includeEngineTypes false leaves out (card 0348)
+	const FN2CTypeScope Scopes;
 
 	if (State.bNativeStale)
 	{
@@ -384,7 +332,7 @@ void FN2CMcpSearchVariableTypesTool::BuildTypeIndex() const
 			{
 				Info.ParentClass = Class->GetSuperClass()->GetPathName();
 			}
-			Finish(Info, IsEngineTypePath(Info.TypeIdentifier, ModuleCache));
+			Finish(Info, FN2CTypeScope::IsEngine(Scopes.Classify(Info.TypeIdentifier)));
 			State.NativeTypes.Add(MoveTemp(Info));
 		}
 
@@ -405,7 +353,7 @@ void FN2CMcpSearchVariableTypesTool::BuildTypeIndex() const
 			Info.TypeIdentifier = Struct->GetPathName();
 			Info.Category = TEXT("struct");
 			Info.Description = GetTypeDescription(Struct);
-			Finish(Info, IsEngineTypePath(Info.TypeIdentifier, ModuleCache));
+			Finish(Info, FN2CTypeScope::IsEngine(Scopes.Classify(Info.TypeIdentifier)));
 			State.NativeTypes.Add(MoveTemp(Info));
 		}
 		for (TObjectIterator<UEnum> It; It; ++It)
@@ -424,7 +372,7 @@ void FN2CMcpSearchVariableTypesTool::BuildTypeIndex() const
 			Info.TypeIdentifier = Enum->GetPathName();
 			Info.Category = TEXT("enum");
 			Info.Description = GetTypeDescription(Enum);
-			Finish(Info, IsEngineTypePath(Info.TypeIdentifier, ModuleCache));
+			Finish(Info, FN2CTypeScope::IsEngine(Scopes.Classify(Info.TypeIdentifier)));
 			State.NativeTypes.Add(MoveTemp(Info));
 		}
 		FN2CLogger::Get().Log(FString::Printf(TEXT("Indexed %d native variable types in %.0f ms"),
@@ -452,7 +400,7 @@ void FN2CMcpSearchVariableTypesTool::BuildTypeIndex() const
 			if (!Seen.Contains(Info.TypeIdentifier))
 			{
 				Seen.Add(Info.TypeIdentifier);
-				Finish(Info, IsEngineTypePath(Info.TypeIdentifier, ModuleCache));
+				Finish(Info, FN2CTypeScope::IsEngine(Scopes.Classify(Info.TypeIdentifier)));
 				State.AssetTypes.Add(MoveTemp(Info));
 			}
 		}
@@ -469,7 +417,7 @@ void FN2CMcpSearchVariableTypesTool::BuildTypeIndex() const
 			if (!Seen.Contains(Info.TypeIdentifier))
 			{
 				Seen.Add(Info.TypeIdentifier);
-				Finish(Info, IsEngineTypePath(Info.TypeIdentifier, ModuleCache));
+				Finish(Info, FN2CTypeScope::IsEngine(Scopes.Classify(Info.TypeIdentifier)));
 				State.AssetTypes.Add(MoveTemp(Info));
 			}
 		}
@@ -507,7 +455,7 @@ void FN2CMcpSearchVariableTypesTool::BuildTypeIndex() const
 			Info.Description = TEXT("Blueprint class");
 			Info.ParentClass = TagObjectPath(AssetData, FBlueprintTags::ParentClassPath);
 			Seen.Add(Info.TypeIdentifier);
-			Finish(Info, IsEngineTypePath(Info.TypeIdentifier, ModuleCache));
+			Finish(Info, FN2CTypeScope::IsEngine(Scopes.Classify(Info.TypeIdentifier)));
 			State.AssetTypes.Add(MoveTemp(Info));
 		}
 
@@ -528,7 +476,8 @@ void FN2CMcpSearchVariableTypesTool::CollectLoadedUserTypes(TArray<FVariableType
 	{
 		Seen.Add(Info.TypeIdentifier);
 	}
-	TMap<FString, bool> ModuleCache;
+	// Engine and engine-plugin types are what includeEngineTypes false leaves out (card 0348)
+	const FN2CTypeScope Scopes;
 	UPackage* const TransientPackage = GetTransientPackage();
 
 	auto Add = [&](const UObject* Object, const TCHAR* Category, FVariableTypeInfo&& Info)
@@ -544,7 +493,7 @@ void FN2CMcpSearchVariableTypesTool::CollectLoadedUserTypes(TArray<FVariableType
 			Info.TypeName = Object->GetName();
 		}
 		Info.Category = Category;
-		Finish(Info, IsEngineTypePath(Info.TypeIdentifier, ModuleCache));
+		Finish(Info, FN2CTypeScope::IsEngine(Scopes.Classify(Info.TypeIdentifier)));
 		InOutTypes.Add(MoveTemp(Info));
 	};
 

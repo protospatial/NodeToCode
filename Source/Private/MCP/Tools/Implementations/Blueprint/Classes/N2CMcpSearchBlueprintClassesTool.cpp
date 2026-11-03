@@ -3,6 +3,7 @@
 #include "N2CMcpSearchBlueprintClassesTool.h"
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "MCP/Tools/N2CMcpToolTypes.h"
+#include "MCP/Utils/N2CTypeScope.h"
 #include "Engine/Blueprint.h"
 #include "Engine/BlueprintGeneratedClass.h"
 #include "GameFramework/Actor.h"
@@ -99,14 +100,14 @@ FMcpToolDefinition FN2CMcpSearchBlueprintClassesTool::GetDefinition() const
 	TSharedPtr<FJsonObject> IncludeEngineProp = MakeShareable(new FJsonObject);
 	IncludeEngineProp->SetStringField(TEXT("type"), TEXT("boolean"));
 	IncludeEngineProp->SetBoolField(TEXT("default"), true);
-	IncludeEngineProp->SetStringField(TEXT("description"), TEXT("Include engine-provided classes in results"));
+	IncludeEngineProp->SetStringField(TEXT("description"), TEXT("Include engine-provided classes in results: the engine's modules, /Engine content and engine plugins"));
 	Properties->SetObjectField(TEXT("includeEngineClasses"), IncludeEngineProp);
 
 	// includePluginClasses
 	TSharedPtr<FJsonObject> IncludePluginProp = MakeShareable(new FJsonObject);
 	IncludePluginProp->SetStringField(TEXT("type"), TEXT("boolean"));
 	IncludePluginProp->SetBoolField(TEXT("default"), true);
-	IncludePluginProp->SetStringField(TEXT("description"), TEXT("Include plugin-provided classes in results"));
+	IncludePluginProp->SetStringField(TEXT("description"), TEXT("Include plugin-provided classes in results: native and content classes of engine and project plugins"));
 	Properties->SetObjectField(TEXT("includePluginClasses"), IncludePluginProp);
 
 	// includeDeprecated
@@ -211,6 +212,7 @@ FMcpToolCallResult FN2CMcpSearchBlueprintClassesTool::Execute(const TSharedPtr<F
 void FN2CMcpSearchBlueprintClassesTool::CollectNativeClasses(TArray<FBlueprintClassInfo>& OutClasses, const FString& ClassTypeFilter, 
 	bool bIncludeEngineClasses, bool bIncludePluginClasses, bool bIncludeDeprecated, bool bIncludeAbstract) const
 {
+	const FN2CTypeScope Scopes;
 	// Iterate through all loaded native classes
 	for (TObjectIterator<UClass> It; It; ++It)
 	{
@@ -252,13 +254,10 @@ void FN2CMcpSearchBlueprintClassesTool::CollectNativeClasses(TArray<FBlueprintCl
 			continue;
 		}
 
-		// Check module filter
+		// Where the class comes from: its module's owner (card 0348)
 		FString ClassPath = Class->GetPathName();
-		if (!bIncludeEngineClasses && IsEngineClass(ClassPath))
-		{
-			continue;
-		}
-		if (!bIncludePluginClasses && IsPluginClass(ClassPath))
+		const EN2CTypeScope Scope = Scopes.Classify(ClassPath);
+		if ((!bIncludeEngineClasses && FN2CTypeScope::IsEngine(Scope)) || (!bIncludePluginClasses && FN2CTypeScope::IsPlugin(Scope)))
 		{
 			continue;
 		}
@@ -290,6 +289,7 @@ void FN2CMcpSearchBlueprintClassesTool::CollectBlueprintClasses(TArray<FBlueprin
 	FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
 	IAssetRegistry& AssetRegistry = AssetRegistryModule.Get();
 
+	const FN2CTypeScope Scopes;
 	// Search for Blueprint assets
 	TArray<FAssetData> BlueprintAssets;
 	AssetRegistry.GetAssetsByClass(UBlueprint::StaticClass()->GetClassPathName(), BlueprintAssets, true);
@@ -304,13 +304,9 @@ void FN2CMcpSearchBlueprintClassesTool::CollectBlueprintClasses(TArray<FBlueprin
 
 	for (const FAssetData& AssetData : BlueprintAssets)
 	{
-		// Skip if module filter doesn't match
-		FString PackagePath = AssetData.PackagePath.ToString();
-		if (!bIncludeEngineClasses && IsEngineClass(PackagePath))
-		{
-			continue;
-		}
-		if (!bIncludePluginClasses && IsPluginClass(PackagePath))
+		// Where the Blueprint comes from: its mount point (/Engine, /Game or a plugin's, card 0348)
+		const EN2CTypeScope Scope = Scopes.Classify(AssetData.PackagePath.ToString());
+		if ((!bIncludeEngineClasses && FN2CTypeScope::IsEngine(Scope)) || (!bIncludePluginClasses && FN2CTypeScope::IsPlugin(Scope)))
 		{
 			continue;
 		}
@@ -581,22 +577,6 @@ FString FN2CMcpSearchBlueprintClassesTool::GetClassIcon(const UClass* Class) con
 	}
 	
 	return TEXT("Object");
-}
-
-bool FN2CMcpSearchBlueprintClassesTool::IsEngineClass(const FString& ClassPath) const
-{
-	return ClassPath.StartsWith(TEXT("/Script/Engine")) || 
-	       ClassPath.StartsWith(TEXT("/Engine/")) ||
-	       ClassPath.StartsWith(TEXT("/Script/CoreUObject")) ||
-	       ClassPath.StartsWith(TEXT("/Script/UMG"));
-}
-
-bool FN2CMcpSearchBlueprintClassesTool::IsPluginClass(const FString& ClassPath) const
-{
-	return ClassPath.Contains(TEXT("/Plugins/")) || 
-	       (ClassPath.StartsWith(TEXT("/Script/")) && 
-	        !IsEngineClass(ClassPath) && 
-	        !ClassPath.StartsWith(FString(TEXT("/Script/")) + FApp::GetProjectName()));
 }
 
 TArray<FN2CMcpSearchBlueprintClassesTool::FBlueprintClassInfo> FN2CMcpSearchBlueprintClassesTool::FilterAndScoreClasses(

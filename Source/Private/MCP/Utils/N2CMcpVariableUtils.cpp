@@ -2,6 +2,7 @@
 
 #include "MCP/Utils/N2CMcpVariableUtils.h"
 #include "MCP/Utils/N2CMcpTypeResolver.h"
+#include "MCP/Utils/N2CPinTypeCodec.h"
 #include "MCP/Utils/N2CMcpArgumentParser.h"
 #include "EdGraphSchema_K2.h"
 #include "Kismet2/BlueprintEditorUtils.h"
@@ -111,33 +112,40 @@ void FN2CMcpVariableUtils::AddContainerInfoToResult(TSharedPtr<FJsonObject> Resu
 
 TSharedPtr<FJsonObject> FN2CMcpVariableUtils::BuildTypeInfo(const FEdGraphPinType& PinType)
 {
+	// The condensed form of the shared description (N2C::PinType::Describe, card 0348): the terminal type (for a map,
+	// the key), as object, struct or enum with its name and path, or primitive with the pin category
+	TSharedPtr<FJsonObject> Described = N2C::PinType::Describe(PinType);
+	const TSharedPtr<FJsonObject>* Element = nullptr;
+	for (const TCHAR* Field : { TEXT("innerType"), TEXT("elementType"), TEXT("keyType") })
+	{
+		if (Described->TryGetObjectField(Field, Element))
+		{
+			Described = *Element;
+			break;
+		}
+	}
+
 	TSharedPtr<FJsonObject> TypeInfo = MakeShareable(new FJsonObject);
-	
-	if (PinType.PinCategory == UEdGraphSchema_K2::PC_Object && PinType.PinSubCategoryObject.IsValid())
+	const FString Category = Described->GetStringField(TEXT("category"));
+	struct FNamed { const TCHAR* Category; const TCHAR* NameIn; const TCHAR* PathIn; const TCHAR* NameOut; };
+	static const FNamed Named[] = {
+		{ TEXT("object"), TEXT("objectType"), TEXT("objectPath"), TEXT("className") },
+		{ TEXT("struct"), TEXT("structType"), TEXT("structPath"), TEXT("structName") },
+		{ TEXT("enum"), TEXT("enumType"), TEXT("enumPath"), TEXT("enumName") },
+	};
+	for (const FNamed& Entry : Named)
 	{
-		TypeInfo->SetStringField(TEXT("category"), TEXT("object"));
-		TypeInfo->SetStringField(TEXT("className"), PinType.PinSubCategoryObject->GetName());
-		TypeInfo->SetStringField(TEXT("path"), PinType.PinSubCategoryObject->GetPathName());
+		FString Name, Path;
+		if (Category == Entry.Category && Described->TryGetStringField(Entry.NameIn, Name) && Described->TryGetStringField(Entry.PathIn, Path))
+		{
+			TypeInfo->SetStringField(TEXT("category"), Entry.Category);
+			TypeInfo->SetStringField(Entry.NameOut, Name);
+			TypeInfo->SetStringField(TEXT("path"), Path);
+			return TypeInfo;
+		}
 	}
-	else if (PinType.PinCategory == UEdGraphSchema_K2::PC_Struct && PinType.PinSubCategoryObject.IsValid())
-	{
-		TypeInfo->SetStringField(TEXT("category"), TEXT("struct"));
-		TypeInfo->SetStringField(TEXT("structName"), PinType.PinSubCategoryObject->GetName());
-		TypeInfo->SetStringField(TEXT("path"), PinType.PinSubCategoryObject->GetPathName());
-	}
-	else if ((PinType.PinCategory == UEdGraphSchema_K2::PC_Byte || PinType.PinCategory == UEdGraphSchema_K2::PC_Enum)
-		&& Cast<UEnum>(PinType.PinSubCategoryObject.Get()))
-	{
-		TypeInfo->SetStringField(TEXT("category"), TEXT("enum"));
-		TypeInfo->SetStringField(TEXT("enumName"), PinType.PinSubCategoryObject->GetName());
-		TypeInfo->SetStringField(TEXT("path"), PinType.PinSubCategoryObject->GetPathName());
-	}
-	else
-	{
-		TypeInfo->SetStringField(TEXT("category"), TEXT("primitive"));
-		TypeInfo->SetStringField(TEXT("typeName"), PinType.PinCategory.ToString());
-	}
-	
+	TypeInfo->SetStringField(TEXT("category"), TEXT("primitive"));
+	TypeInfo->SetStringField(TEXT("typeName"), PinType.PinCategory.ToString());
 	return TypeInfo;
 }
 

@@ -215,7 +215,9 @@ document or a file summary), nor list-blueprint-functions and list-overridable-f
   interface), `functionType` (`Event`: implement it as an event node; `Function`: as a function graph;
   `UEdGraphSchema_K2::FunctionCanBePlacedAsEvent`, so a function with outputs or `const` is a `Function`),
   `isCallable` (BlueprintCallable), `implementationType`, `category` (`Default` when the function has none),
-  `inputs`, `outputs` (`{"name", "type": {"cppType", "type", "category", ...}}`), `metadata` (`tooltip`,
+  `inputs`, `outputs` (`{"name", "type": {"cppType", "type", "category", ...}}`, the shared description
+  `N2C::PinType::Describe` in `MCP/Utils/N2CPinTypeCodec.h`: a `TSubclassOf` names its meta class in `objectType`, and
+  soft references, interfaces and delegates have their own `type` instead of `object` or `unknown`, card 0348), `metadata` (`tooltip`,
   `displayName`, `keywords`, ...) and `flags`
 
 ### get-open-blueprint-editors

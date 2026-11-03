@@ -65,8 +65,6 @@ private:
 	FString GetClassDescription(const UClass* Class) const;
 	FString GetClassDisplayName(const UClass* Class) const;
 	FString GetClassIcon(const UClass* Class) const;
-	bool IsEngineClass(const FString& ClassPath) const;
-	bool IsPluginClass(const FString& ClassPath) const;
 	
 	// Filtering and scoring
 	TArray<FBlueprintClassInfo> FilterAndScoreClasses(const TArray<FBlueprintClassInfo>& AllClasses,

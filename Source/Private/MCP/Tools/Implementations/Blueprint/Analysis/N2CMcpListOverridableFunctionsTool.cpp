@@ -3,6 +3,7 @@
 #include "N2CMcpListOverridableFunctionsTool.h"
 #include "MCP/Utils/N2CMcpBlueprintUtils.h"
 #include "MCP/Utils/N2CMcpArgumentParser.h"
+#include "MCP/Utils/N2CPinTypeCodec.h"
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "MCP/Tools/N2CMcpToolTypes.h"
 #include "Utils/N2CLogger.h"
@@ -436,7 +437,8 @@ void FN2CMcpListOverridableFunctionsTool::ExtractFunctionParameters(
 		
 		TSharedPtr<FJsonObject> ParamInfo = MakeShareable(new FJsonObject);
 		ParamInfo->SetStringField(TEXT("name"), Property->GetName());
-		ParamInfo->SetObjectField(TEXT("type"), ConvertPropertyToJson(Property));
+		// The shared type description (card 0348)
+		ParamInfo->SetObjectField(TEXT("type"), N2C::PinType::Describe(Property));
 		
 		// Check if it's an output parameter
 		bool bIsOutput = Property->HasAnyPropertyFlags(CPF_OutParm) && !Property->HasAnyPropertyFlags(CPF_ReferenceParm);
@@ -456,166 +458,9 @@ void FN2CMcpListOverridableFunctionsTool::ExtractFunctionParameters(
 	{
 		TSharedPtr<FJsonObject> ReturnInfo = MakeShareable(new FJsonObject);
 		ReturnInfo->SetStringField(TEXT("name"), TEXT("ReturnValue"));
-		ReturnInfo->SetObjectField(TEXT("type"), ConvertPropertyToJson(Function->GetReturnProperty()));
+		ReturnInfo->SetObjectField(TEXT("type"), N2C::PinType::Describe(Function->GetReturnProperty()));
 		OutOutputParams.Add(MakeShareable(new FJsonValueObject(ReturnInfo)));
 	}
-}
-
-TSharedPtr<FJsonObject> FN2CMcpListOverridableFunctionsTool::ConvertPropertyToJson(const FProperty* Property) const
-{
-	TSharedPtr<FJsonObject> TypeInfo = MakeShareable(new FJsonObject);
-	
-	if (!Property)
-	{
-		TypeInfo->SetStringField(TEXT("type"), TEXT("unknown"));
-		return TypeInfo;
-	}
-	
-	// Get the property type
-	FString TypeName = Property->GetCPPType();
-	TypeInfo->SetStringField(TEXT("cppType"), TypeName);
-	
-	// Determine the category and additional info based on property class
-	if (Property->IsA(FBoolProperty::StaticClass()))
-	{
-		TypeInfo->SetStringField(TEXT("type"), TEXT("bool"));
-		TypeInfo->SetStringField(TEXT("category"), TEXT("bool"));
-	}
-	else if (Property->IsA(FByteProperty::StaticClass()))
-	{
-		TypeInfo->SetStringField(TEXT("type"), TEXT("byte"));
-		TypeInfo->SetStringField(TEXT("category"), TEXT("byte"));
-		
-		// Check if it's an enum
-		if (const FByteProperty* ByteProp = CastField<FByteProperty>(Property))
-		{
-			if (ByteProp->Enum)
-			{
-				TypeInfo->SetStringField(TEXT("type"), TEXT("enum"));
-				TypeInfo->SetStringField(TEXT("category"), TEXT("enum"));
-				TypeInfo->SetStringField(TEXT("enumType"), ByteProp->Enum->GetName());
-				TypeInfo->SetStringField(TEXT("enumPath"), ByteProp->Enum->GetPathName());
-			}
-		}
-	}
-	else if (Property->IsA(FIntProperty::StaticClass()))
-	{
-		TypeInfo->SetStringField(TEXT("type"), TEXT("int"));
-		TypeInfo->SetStringField(TEXT("category"), TEXT("int"));
-	}
-	else if (Property->IsA(FInt64Property::StaticClass()))
-	{
-		TypeInfo->SetStringField(TEXT("type"), TEXT("int64"));
-		TypeInfo->SetStringField(TEXT("category"), TEXT("int64"));
-	}
-	else if (Property->IsA(FFloatProperty::StaticClass()))
-	{
-		TypeInfo->SetStringField(TEXT("type"), TEXT("float"));
-		TypeInfo->SetStringField(TEXT("category"), TEXT("real"));
-		TypeInfo->SetStringField(TEXT("subCategory"), TEXT("float"));
-	}
-	else if (Property->IsA(FDoubleProperty::StaticClass()))
-	{
-		TypeInfo->SetStringField(TEXT("type"), TEXT("double"));
-		TypeInfo->SetStringField(TEXT("category"), TEXT("real"));
-		TypeInfo->SetStringField(TEXT("subCategory"), TEXT("double"));
-	}
-	else if (Property->IsA(FStrProperty::StaticClass()))
-	{
-		TypeInfo->SetStringField(TEXT("type"), TEXT("string"));
-		TypeInfo->SetStringField(TEXT("category"), TEXT("string"));
-	}
-	else if (Property->IsA(FNameProperty::StaticClass()))
-	{
-		TypeInfo->SetStringField(TEXT("type"), TEXT("name"));
-		TypeInfo->SetStringField(TEXT("category"), TEXT("name"));
-	}
-	else if (Property->IsA(FTextProperty::StaticClass()))
-	{
-		TypeInfo->SetStringField(TEXT("type"), TEXT("text"));
-		TypeInfo->SetStringField(TEXT("category"), TEXT("text"));
-	}
-	else if (const FStructProperty* StructProp = CastField<FStructProperty>(Property))
-	{
-		TypeInfo->SetStringField(TEXT("type"), TEXT("struct"));
-		TypeInfo->SetStringField(TEXT("category"), TEXT("struct"));
-		if (StructProp->Struct)
-		{
-			TypeInfo->SetStringField(TEXT("structType"), StructProp->Struct->GetName());
-			TypeInfo->SetStringField(TEXT("structPath"), StructProp->Struct->GetPathName());
-		}
-	}
-	else if (const FObjectPropertyBase* ObjectProp = CastField<FObjectPropertyBase>(Property))
-	{
-		if (Property->IsA(FClassProperty::StaticClass()))
-		{
-			TypeInfo->SetStringField(TEXT("type"), TEXT("class"));
-			TypeInfo->SetStringField(TEXT("category"), TEXT("class"));
-		}
-		else
-		{
-			TypeInfo->SetStringField(TEXT("type"), TEXT("object"));
-			TypeInfo->SetStringField(TEXT("category"), TEXT("object"));
-		}
-		
-		if (ObjectProp->PropertyClass)
-		{
-			TypeInfo->SetStringField(TEXT("objectType"), ObjectProp->PropertyClass->GetName());
-			TypeInfo->SetStringField(TEXT("objectPath"), ObjectProp->PropertyClass->GetPathName());
-		}
-	}
-	else if (const FArrayProperty* ArrayProp = CastField<FArrayProperty>(Property))
-	{
-		TypeInfo->SetStringField(TEXT("type"), TEXT("array"));
-		TypeInfo->SetStringField(TEXT("container"), TEXT("array"));
-		if (ArrayProp->Inner)
-		{
-			TypeInfo->SetObjectField(TEXT("innerType"), ConvertPropertyToJson(ArrayProp->Inner));
-		}
-	}
-	else if (const FSetProperty* SetProp = CastField<FSetProperty>(Property))
-	{
-		TypeInfo->SetStringField(TEXT("type"), TEXT("set"));
-		TypeInfo->SetStringField(TEXT("container"), TEXT("set"));
-		if (SetProp->ElementProp)
-		{
-			TypeInfo->SetObjectField(TEXT("elementType"), ConvertPropertyToJson(SetProp->ElementProp));
-		}
-	}
-	else if (const FMapProperty* MapProp = CastField<FMapProperty>(Property))
-	{
-		TypeInfo->SetStringField(TEXT("type"), TEXT("map"));
-		TypeInfo->SetStringField(TEXT("container"), TEXT("map"));
-		if (MapProp->KeyProp)
-		{
-			TypeInfo->SetObjectField(TEXT("keyType"), ConvertPropertyToJson(MapProp->KeyProp));
-		}
-		if (MapProp->ValueProp)
-		{
-			TypeInfo->SetObjectField(TEXT("valueType"), ConvertPropertyToJson(MapProp->ValueProp));
-		}
-	}
-	else if (const FEnumProperty* EnumProp = CastField<FEnumProperty>(Property))
-	{
-		TypeInfo->SetStringField(TEXT("type"), TEXT("enum"));
-		TypeInfo->SetStringField(TEXT("category"), TEXT("enum"));
-		if (EnumProp->GetEnum())
-		{
-			TypeInfo->SetStringField(TEXT("enumType"), EnumProp->GetEnum()->GetName());
-			TypeInfo->SetStringField(TEXT("enumPath"), EnumProp->GetEnum()->GetPathName());
-		}
-	}
-	else
-	{
-		TypeInfo->SetStringField(TEXT("type"), TEXT("unknown"));
-		TypeInfo->SetStringField(TEXT("category"), TEXT("unknown"));
-	}
-	
-	// Add property flags
-	TypeInfo->SetBoolField(TEXT("isReference"), Property->HasAnyPropertyFlags(CPF_ReferenceParm));
-	TypeInfo->SetBoolField(TEXT("isConst"), Property->HasAnyPropertyFlags(CPF_ConstParm));
-	
-	return TypeInfo;
 }
 
 TSharedPtr<FJsonObject> FN2CMcpListOverridableFunctionsTool::GetFunctionMetadata(const UFunction* Function) const
