@@ -177,6 +177,10 @@ arguments and the keys of its `data`. Grouped:
 *   `list_blueprint_graphs(blueprint_path)` - Every graph of a Blueprint by asset path, as list-blueprint-graphs
     returns it (`UN2CPythonBridge::ListBlueprintGraphs`): `graphs` with `name`, `graphGuid`, `kind`, `nodeCount`,
     `readOnly` and, for collapsed graphs, `parentGraph`
+*   `get_blueprint_dependencies(paths, include_call_graph=True, include_referenced=True, to_file=False)` - The
+    dependency index under asset paths or content folders (a string or a list), as get-blueprint-dependencies returns
+    it but always whole (`UN2CPythonBridge::GetBlueprintDependencies`, card 0319): `nodes`, `edges`, `order`
+    (dependencies first), `cycleGroups`, `warnings`; with `to_file` also `savedTo` (`Saved/NodeToCode/Dependencies`)
 *   `read_n2c_json(text)` - Read N2C JSON 1.x or 2.x (for example a saved `N2C_BP_*.json`) with the plugin's reader
     (`UN2CPythonBridge::ReadN2CJson`); returns its source version, counts (`data_edges`, `exec_edges`) and the document
     as current (2.0.0) N2C JSON; exec flows are "N1.P2->N3.P4" pin pairs, and a 1.x file keeps its "N1->N2" node pairs;
@@ -357,7 +361,7 @@ Bridge class exposing NodeToCode functionality to Python via `unreal.N2CPythonBr
 *   **UFunction Category**: `NodeToCode|Python`
 *   **Functions**: every public `UFUNCTION` in the header, and each has a `nodetocode` wrapper (call the wrapper,
     which parses the JSON and checks arguments): `GetFocusedBlueprintJson`, `GetBlueprintN2CJson`,
-    `ListBlueprintGraphs`, `ReadN2CJson`, `CompileFocusedBlueprint`,
+    `ListBlueprintGraphs`, `GetBlueprintDependencies`, `ReadN2CJson`, `CompileFocusedBlueprint`,
     `SaveFocusedBlueprint` (`blueprint.py`); `TagFocusedGraph`, `ListTags`, `RemoveTag`, `GetLLMProviders`,
     `GetActiveProvider`, `OpenBlueprint`, `OpenBlueprintFunction` (`bridge.py`); `SearchBlueprintNodes`,
     `AddNodeToGraph`, `ConnectPins`, `SetPinValue`, `DeleteNodes`, `FindNodesInGraph`, `CreateCommentNode`

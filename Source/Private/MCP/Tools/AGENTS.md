@@ -33,11 +33,12 @@ Source/Private/MCP/Tools/         - This directory
     ├── Translation/              - Code translation tools
     ├── FileSystem/               - File and directory reads
     ├── ContentBrowser/           - Content Browser navigation and asset operations
+    ├── Dependencies/             - The dependency index for agents (get-blueprint-dependencies)
     └── Python/                   - run-python and the script library tools
 ```
 
-`Blueprint/`, each of its subfolders, `Translation/`, `FileSystem/` and `ContentBrowser/` have their own `AGENTS.md`;
-`Python/` is described in `Context/python-scripting/AGENTS-python-scripting.md`. The toolsets are declared in
+`Blueprint/`, each of its subfolders, `Translation/`, `FileSystem/`, `ContentBrowser/` and `Dependencies/` have their own
+`AGENTS.md`; `Python/` is described in `Context/python-scripting/AGENTS-python-scripting.md`. The toolsets are declared in
 `Source/Public/MCP/Tools/N2CMcpToolsets.h` and the tool-search meta-tools live in `N2CMcpToolManager.cpp` (below).
 
 ## Framework Overview
@@ -161,7 +162,7 @@ changes it, every client sees the same list, and the server never sends `notific
   also has goes in that table and in `wiki/developers/NodeToCode-and-Epic-Tool-Mapping.md` (pytest
   `test_epic_overlap_mapping.py` compares them); `NodeToCode.MCP.EpicOverlap` checks the table names registered tools.
 - **Checked by:** `build.ps1 -Smoke` starts one editor per mode with Python execution allowed and compares
-  `tools/list` with `Tests/smoke/expected.json` (`default` 68, `tool_search` 3, `python_only` 7). The `tool_search`
+  `tools/list` with `Tests/smoke/expected.json` (`default` 69, `tool_search` 3, `python_only` 7). The `tool_search`
   mode is set with the old `bEnableDynamicToolDiscovery=True` key, so it also checks the migration, and it calls every
   meta-tool and checks `tools/list` is unchanged. `NodeToCode.MCP.Toolsets` and `NodeToCode.Registry` cover the same
   in specs. A card that adds or removes a tool updates those counts and the tables in this file.
@@ -178,7 +179,7 @@ like Epic's toolset classes on UE 5.8 (`BlueprintTools`, `MaterialTools`); a 5.8
 
 | Toolset | Tools | Folder |
 |---|---|---|
-| `BlueprintDiscoveryTools` | `get-focused-blueprint`, `get-blueprint-n2cjson`, `list-blueprint-graphs`, `export-n2cjson-batch`, `get-open-blueprint-editors`, `get-editor-context`, `list-blueprint-functions`, `list-overridable-functions`, `search-blueprint-nodes` | `Blueprint/Analysis/`, `Blueprint/Graph/` |
+| `BlueprintDiscoveryTools` | `get-focused-blueprint`, `get-blueprint-n2cjson`, `list-blueprint-graphs`, `export-n2cjson-batch`, `get-blueprint-dependencies`, `get-open-blueprint-editors`, `get-editor-context`, `list-blueprint-functions`, `list-overridable-functions`, `search-blueprint-nodes` | `Blueprint/Analysis/`, `Blueprint/Graph/`, `Dependencies/` |
 | `BlueprintGraphTools` | `add-bp-node-to-active-graph`, `connect-pins`, `create-comment-node`, `delete-blueprint-node`, `set-input-pin-value`, `find-nodes-in-graph` | `Blueprint/Graph/` |
 | `BlueprintFunctionTools` | `create-blueprint-function`, `delete-blueprint-function`, `open-blueprint-function`, `add-function-input-pin`, `add-function-return-pin`, `remove-function-entry-pin`, `remove-function-return-pin` | `Blueprint/Functions/` |
 | `BlueprintVariableTools` | `create-variable`, `create-local-variable`, `search-variable-types`, `get-blueprint-member-variables`, `get-blueprint-function-local-variables`, `create-get-member-variable-node`, `create-set-member-variable-node`, `create-get-local-function-variable-node`, `create-set-local-function-variable-node`, `set-member-variable-default-value`, `set-local-function-variable-default-value` | `Blueprint/Variables/` |
@@ -191,7 +192,7 @@ like Epic's toolset classes on UE 5.8 (`BlueprintTools`, `MaterialTools`); a 5.8
 | `PythonTools` | `run-python`, `list-python-scripts`, `search-python-scripts`, `get-python-script`, `get-script-functions`, `save-python-script`, `delete-python-script` | `Python/` |
 | `TranslationTools` | `translate-focused-blueprint`, `translate-batch`, `get-available-llm-providers`, `get-available-translation-targets`, `get-translation-output-directory`, `place-cpp-translation` | `Translation/` |
 
-That is 68 tools in 12 toolsets. A new toolset is a new `inline constexpr FN2CMcpToolset` in `N2CMcpToolsets.h`, added
+That is 69 tools in 12 toolsets. A new toolset is a new `inline constexpr FN2CMcpToolset` in `N2CMcpToolsets.h`, added
 to `N2CMcpToolsets::All`; write its description for a model that sees nothing else of it (the domain and the kinds of
 operation, 1-3 sentences, no tool names). The Material graph cards (epic 0442) add `MaterialTools` there with their
 first tool.
