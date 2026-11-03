@@ -159,6 +159,13 @@ private:
     /** Records the captured Blueprint's member variables (UBlueprint::NewVariables) in N2CBlueprint.Variables */
     void CaptureMemberVariables();
 
+    /**
+     * Records an Actor Blueprint's components in N2CBlueprint.Components (card 0243): the ones it adds, parents first,
+     * then the inherited ones whose defaults it changes, each with its editable properties that differ from its
+     * archetype. Nothing for a Blueprint that is not an Actor's.
+     */
+    void CaptureComponents();
+
     /** Records a function graph's local variables (its FunctionEntry node's LocalVariables) in the current graph */
     void CaptureLocalVariables(const UEdGraph* Graph);
 

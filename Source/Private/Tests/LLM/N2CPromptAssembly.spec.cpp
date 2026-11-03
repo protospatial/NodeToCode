@@ -142,6 +142,7 @@ BEGIN_DEFINE_SPEC(FN2CPromptAssemblySpec, "NodeToCode.LLM.Prompts", N2C_TEST_FLA
 		Blueprint.Metadata.BlueprintClass = TEXT("BP_Prompt");
 		Blueprint.Metadata.ParentClass = TEXT("Actor");
 		Blueprint.Metadata.AssetClass = TEXT("Blueprint");
+		Blueprint.Metadata.Interfaces.Add(TEXT("GameplayTagAssetInterface")); // card 0243
 
 		FN2CPinDefinition Pin;
 		Pin.ID = TEXT("P1");
@@ -218,6 +219,17 @@ BEGIN_DEFINE_SPEC(FN2CPromptAssemblySpec, "NodeToCode.LLM.Prompts", N2C_TEST_FLA
 		Graph.LocalVariables.Add(Variable);
 		Blueprint.Variables.Add(Variable);
 		Blueprint.Graphs.Add(Graph);
+
+		// Card 0243: a component with every field set
+		FN2CComponent Component;
+		Component.Name = TEXT("Mesh");
+		Component.Class = TEXT("StaticMeshComponent");
+		Component.Parent = TEXT("Root");
+		Component.Socket = TEXT("Hand");
+		Component.bInherited = true;
+		Component.Properties.Add({ TEXT("StaticMesh"), TEXT("/Script/Engine.StaticMesh'/Engine/BasicShapes/Cube.Cube'") });
+		Component.bPropertiesTruncated = true;
+		Blueprint.Components.Add(Component);
 
 		FN2CStructMember Member;
 		Member.Name = TEXT("Items");

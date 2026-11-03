@@ -134,7 +134,7 @@ namespace N2CJsonContract
 	 * Variables (card 0242, from PR #8 by flashpoint493; additive): the Blueprint's member variables as the optional
 	 * top-level "variables" array after "enums", and a function graph's local variables as the optional per-graph
 	 * "local_variables" array after "comments". Written only by a capture that asks for them
-	 * (FN2CCaptureOptions::bIncludeVariables; on for a whole-Blueprint capture, off for a translation) and only when
+	 * (FN2CCaptureOptions::IncludeVariables; on for a whole-Blueprint capture, off for a translation) and only when
 	 * there are any. Each entry has "name" and the type in pin spellings ("type", "sub_type", "is_array", "is_set",
 	 * "is_map", "value_type", "value_sub_type"), then the optional "default_value", "category", "comment" and the flags
 	 * below, each written only when true; "rep_notify" names the RepNotify function.
@@ -150,6 +150,28 @@ namespace N2CJsonContract
 	inline constexpr const TCHAR* VariableRepNotifyField = TEXT("rep_notify");
 
 	/**
+	 * Components (card 0243, from PR #8 by flashpoint493; additive): an Actor Blueprint's components as the optional
+	 * top-level "components" array after "variables", written by the same captures as "variables"
+	 * (FN2CCaptureOptions::IncludeVariables) and only when there are any. First the components the Blueprint adds, in
+	 * hierarchy order (parents first), then the inherited ones (native, or added by a parent Blueprint) whose defaults it
+	 * changes, with "inherited": true. Each has "name" (its variable name) and "class", then the optional "parent" (the
+	 * component it is attached to, as the actor is built: an SCS node's parent, the parent it names, or the inherited
+	 * root), "socket", and "properties": an object of the editable (CPF_Edit) properties whose value differs from the
+	 * component's archetype (its class defaults, or the parent class's template for an inherited one), each as
+	 * exported text, at most MaxComponentProperties of them ("properties_truncated": true when more differ).
+	 */
+	inline constexpr const TCHAR* ComponentsField = TEXT("components");
+	inline constexpr const TCHAR* ComponentClassField = TEXT("class");
+	inline constexpr const TCHAR* ComponentParentField = TEXT("parent");
+	inline constexpr const TCHAR* ComponentSocketField = TEXT("socket");
+	inline constexpr const TCHAR* ComponentInheritedField = TEXT("inherited");
+	inline constexpr const TCHAR* ComponentPropertiesField = TEXT("properties");
+	inline constexpr const TCHAR* ComponentPropertiesTruncatedField = TEXT("properties_truncated");
+	/** The most edited properties one component lists, and the longest value text (longer values end in "...") */
+	inline constexpr int32 MaxComponentProperties = 16;
+	inline constexpr int32 MaxComponentPropertyValueLength = 256;
+
+	/**
 	 * Class metadata (card 0518, finding F4 of Context/translation-pipeline/graph-type-coverage.md; additive): the
 	 * optional "parent_class" and "asset_class" in "metadata", after "blueprint_class". "parent_class" is the class the
 	 * Blueprint derives from, named as "member_parent" names classes (a native class without its Unreal prefix, a
@@ -159,6 +181,12 @@ namespace N2CJsonContract
 	 */
 	inline constexpr const TCHAR* ParentClassField = TEXT("parent_class");
 	inline constexpr const TCHAR* AssetClassField = TEXT("asset_class");
+
+	/**
+	 * Implemented interfaces (card 0243; additive): the optional "interfaces" array in "metadata", after "asset_class":
+	 * the interfaces the Blueprint implements, named as "parent_class" is. Every capture writes it when there are any.
+	 */
+	inline constexpr const TCHAR* InterfacesField = TEXT("interfaces");
 
 	/**
 	 * Asset kind (card 0447, decision 0009 item 6; additive under 2.0.0): the optional "asset_kind" in "metadata", after
@@ -295,6 +323,8 @@ namespace N2CJsonContract
 		inline constexpr const TCHAR* SkippedComment = TEXT("SKIPPED_COMMENT");
 		/** A "variables" or "local_variables" entry that is not an object or has no "name" (card 0242); the rest is kept */
 		inline constexpr const TCHAR* SkippedVariable = TEXT("SKIPPED_VARIABLE");
+		/** A "components" entry that is not an object or has no "name" (card 0243); the rest is kept */
+		inline constexpr const TCHAR* SkippedComponent = TEXT("SKIPPED_COMPONENT");
 	}
 
 	/**

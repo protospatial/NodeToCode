@@ -11,6 +11,12 @@
 #include "EdGraphSchema_K2.h"
 #include "Engine/UserDefinedEnum.h"
 #include "Interfaces/IPluginManager.h"
+#include "Components/ActorComponent.h"
+#include "Components/SceneComponent.h"
+#include "Engine/InheritableComponentHandler.h"
+#include "Engine/SCS_Node.h"
+#include "GameFramework/Actor.h"
+#include "MCP/Utils/N2CMcpComponentUtils.h"
 #include "Misc/PackageName.h"
 #include "Misc/ScopeExit.h"
 #include "StructUtils/UserDefinedStruct.h"
@@ -275,6 +281,7 @@ bool FN2CCaptureContext::CaptureNodes(TConstArrayView<UK2Node*> InCollectedNodes
     if (bIncludeVariables)
     {
         CaptureMemberVariables();
+        CaptureComponents();
     }
 
     FString Context = FString::Printf(TEXT("Translated %d nodes in %d graphs"),
@@ -307,6 +314,17 @@ void FN2CCaptureContext::CaptureBlueprintMetadata(UK2Node* FirstNode)
             // the base class from the nodes. Empty (and left out of the JSON) when the parent class is missing.
             N2CBlueprint.Metadata.ParentClass = N2CStableNames::ClassName(Blueprint->ParentClass);
             N2CBlueprint.Metadata.AssetClass = Blueprint->GetClass()->GetName();
+
+            // The interfaces it implements (card 0243), in the order added; a missing interface class is left out
+            N2CBlueprint.Metadata.Interfaces.Reset();
+            for (const FBPInterfaceDescription& Interface : Blueprint->ImplementedInterfaces)
+            {
+                const FString InterfaceName = N2CStableNames::ClassName(Interface.Interface.Get());
+                if (!InterfaceName.IsEmpty())
+                {
+                    N2CBlueprint.Metadata.Interfaces.Add(InterfaceName);
+                }
+            }
 
             // Determine Blueprint type
             switch (Blueprint->BlueprintType)
@@ -427,6 +445,7 @@ bool FN2CCaptureContext::CaptureGraphs(TConstArrayView<UEdGraph*> Graphs)
     if (bIncludeVariables)
     {
         CaptureMemberVariables();
+        CaptureComponents();
     }
 
     FN2CLogger::Get().Log(TEXT("Graph capture complete"), EN2CLogSeverity::Info,
@@ -684,6 +703,138 @@ void FN2CCaptureContext::CaptureMemberVariables()
         N2CBlueprint.Variables.Add(DescribeVariable(Variable, DefaultValue, /*bMember*/ true));
         AddVariableRelatedTypes(Variable.VarType);
     }
+}
+
+namespace
+{
+    /**
+     * The editable properties of Template whose value differs from Archetype's (card 0243): CPF_Edit, and neither
+     * transient, deprecated, read-only (EditConst) nor hidden on templates, so internals such as
+     * UActorComponent::CreationMethod, which differ for every SCS template, never show. Each value is exported text,
+     * at most MaxComponentProperties of them.
+     */
+    void DiffEditableProperties(const UObject* Template, const UObject* Archetype, FN2CComponent& OutComponent)
+    {
+        if (!Template || !Archetype || Template == Archetype)
+        {
+            return;
+        }
+        const EPropertyFlags Skipped = CPF_Transient | CPF_Deprecated | CPF_EditConst | CPF_DisableEditOnTemplate;
+        for (TFieldIterator<FProperty> It(Template->GetClass()); It; ++It)
+        {
+            const FProperty* Property = *It;
+            if (!Property->HasAnyPropertyFlags(CPF_Edit) || Property->HasAnyPropertyFlags(Skipped)
+                || !Archetype->GetClass()->IsChildOf(Property->GetOwnerClass()))
+            {
+                continue;
+            }
+            for (int32 Index = 0; Index < Property->ArrayDim; ++Index)
+            {
+                if (Property->Identical_InContainer(Template, Archetype, Index, PPF_DeepCompareInstances))
+                {
+                    continue;
+                }
+                if (OutComponent.Properties.Num() >= N2CJsonContract::MaxComponentProperties)
+                {
+                    OutComponent.bPropertiesTruncated = true;
+                    return;
+                }
+                FN2CComponentProperty& Out = OutComponent.Properties.AddDefaulted_GetRef();
+                Out.Name = Property->ArrayDim > 1 ? FString::Printf(TEXT("%s[%d]"), *Property->GetName(), Index) : Property->GetName();
+                Property->ExportText_InContainer(Index, Out.Value, Template, nullptr, const_cast<UObject*>(Template), PPF_None);
+                if (Out.Value.Len() > N2CJsonContract::MaxComponentPropertyValueLength)
+                {
+                    Out.Value = Out.Value.Left(N2CJsonContract::MaxComponentPropertyValueLength) + TEXT("...");
+                }
+            }
+        }
+    }
+
+    /**
+     * What an inherited component's template is compared with: for an SCS component of a parent Blueprint, the
+     * template this Blueprint's override derives from (the parent's, or a grandparent's override); for a native
+     * component, the parent class's default subobject. Null when this Blueprint does not override it.
+     */
+    const UObject* InheritedArchetype(UBlueprint* Blueprint, const FN2CComponentEntry& Entry)
+    {
+        if (Entry.bNative)
+        {
+            return Entry.Template ? Entry.Template->GetArchetype() : nullptr;
+        }
+        const UInheritableComponentHandler* Handler = Blueprint->GetInheritableComponentHandler(false);
+        if (!Handler || !Entry.Node || Entry.Template == Entry.Node->ComponentTemplate)
+        {
+            return nullptr;
+        }
+        const FComponentKey Key(Entry.Node);
+        return Handler->FindBestArchetype(Key);
+    }
+}
+
+void FN2CCaptureContext::CaptureComponents()
+{
+    UBlueprint* Blueprint = CapturedBlueprint.Get();
+    if (!Blueprint || !Blueprint->GeneratedClass || !Blueprint->GeneratedClass->IsChildOf(AActor::StaticClass()))
+    {
+        return;
+    }
+    // The hierarchy as the actor is built (native, then parent Blueprints' SCS, then this one's), the same tree the
+    // component tools read: a root SCS node goes under the parent it names or the inherited root (card 0243 and PR #8,
+    // which read AttachParent off the templates and took the first node for the root)
+    FN2CComponentTree Tree;
+    FString Error;
+    if (!FN2CMcpComponentUtils::BuildComponentTree(Blueprint, Tree, Error))
+    {
+        return;
+    }
+    const auto Describe = [&Tree](const FN2CComponentEntry& Entry)
+    {
+        FN2CComponent Component;
+        Component.Name = Entry.Name.ToString();
+        Component.Class = N2CStableNames::ClassName(Entry.Class);
+        if (Tree.Entries.IsValidIndex(Entry.Parent))
+        {
+            Component.Parent = Tree.Entries[Entry.Parent].Name.ToString();
+            if (!Entry.SocketName.IsNone())
+            {
+                Component.Socket = Entry.SocketName.ToString();
+            }
+        }
+        Component.bInherited = Entry.bInherited;
+        return Component;
+    };
+
+    // Parents before children, in the tree's order
+    TArray<int32> Order;
+    for (const int32 Top : Tree.TopLevel)
+    {
+        Order.Add(Top);
+        Tree.GetDescendants(Top, Order);
+    }
+    TArray<FN2CComponent> Inherited;
+    for (const int32 Index : Order)
+    {
+        const FN2CComponentEntry& Entry = Tree.Entries[Index];
+        if (!Entry.bInherited)
+        {
+            FN2CComponent Component = Describe(Entry);
+            const UObject* Archetype = Entry.Template ? Entry.Template->GetArchetype() : nullptr;
+            if (!Archetype && Entry.Class)
+            {
+                Archetype = Entry.Class->GetDefaultObject();
+            }
+            DiffEditableProperties(Entry.Template, Archetype, Component);
+            N2CBlueprint.Components.Add(MoveTemp(Component));
+            continue;
+        }
+        FN2CComponent Component = Describe(Entry);
+        DiffEditableProperties(Entry.Template, InheritedArchetype(Blueprint, Entry), Component);
+        if (Component.Properties.Num() > 0)
+        {
+            Inherited.Add(MoveTemp(Component));
+        }
+    }
+    N2CBlueprint.Components.Append(MoveTemp(Inherited));
 }
 
 void FN2CCaptureContext::CaptureLocalVariables(const UEdGraph* Graph)

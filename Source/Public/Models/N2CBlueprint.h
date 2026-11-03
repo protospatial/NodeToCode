@@ -145,6 +145,14 @@ struct FN2CMetadata
     FString AssetClass;
 
     /**
+     * Optional "interfaces" (card 0243): the interfaces the Blueprint implements (UBlueprint::ImplementedInterfaces), in
+     * the order added, named as ParentClass is ("GameplayTagAssetInterface", a Blueprint interface by its name). Empty
+     * when it implements none; ToJson then leaves it out.
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    TArray<FString> Interfaces;
+
+    /**
      * "asset_kind" (card 0447, decision 0009): Blueprint, written only when it is not (a document without it is a
      * Blueprint, so every Blueprint document is unchanged). blueprint_type and blueprint_class describe Blueprints only:
      * a document of another kind may leave them out, and ToJson then writes blueprint_class only when set and
@@ -492,6 +500,64 @@ struct FN2CVariable
     bool HasValueType() const { return ValueType != EN2CPinType::Unknown || !UnknownValueType.IsEmpty(); }
 };
 
+/** One edited property of a component: its name and its value as the details panel's copy writes it */
+USTRUCT(BlueprintType)
+struct FN2CComponentProperty
+{
+    GENERATED_BODY()
+
+    /** The property's name (FProperty::GetName, e.g. "StaticMesh", "RelativeLocation", "BoxExtent") */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString Name;
+
+    /** The value as text (FProperty::ExportText, e.g. "(X=32.000000,Y=32.000000,Z=64.000000)") */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString Value;
+};
+
+/**
+ * @struct FN2CComponent
+ * @brief A component of an Actor Blueprint (card 0243, from PR #8 by flashpoint493): one it adds, or an inherited one
+ * whose defaults it changes
+ */
+USTRUCT(BlueprintType)
+struct FN2CComponent
+{
+    GENERATED_BODY()
+
+    /** The component's variable name (the SCS node's variable name, or a native component's property name) */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString Name;
+
+    /** The component class, named as member_parent names classes (N2CStableNames::ClassName: "StaticMeshComponent") */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString Class;
+
+    /** The component it is attached to (its own, an inherited or a native one), empty for the root and non-scene ones */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString Parent;
+
+    /** The socket of Parent it is attached to, if any */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString Socket;
+
+    /** Declared by a parent class (native or Blueprint): listed only because this Blueprint changes its defaults */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    bool bInherited = false;
+
+    /** The editable properties whose value differs from the component's archetype, in property order */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    TArray<FN2CComponentProperty> Properties;
+
+    /** More properties differ than capture lists (N2CJsonContract::MaxComponentProperties) */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    bool bPropertiesTruncated = false;
+
+    /** Fields of the component's JSON object this build does not know, as condensed JSON text, in the order read */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    TMap<FString, FString> UnknownFields;
+};
+
 /**
  * @enum EN2CGraphType
  * @brief Defines the type of Blueprint graph
@@ -647,6 +713,14 @@ struct FN2CBlueprint
      */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     TArray<FN2CVariable> Variables;
+
+    /**
+     * The Actor Blueprint's components (card 0243), when the capture asked for variables: the ones it adds, parents
+     * before children, then inherited ones whose defaults it changes. Written as the optional top-level "components",
+     * after "variables".
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    TArray<FN2CComponent> Components;
 
     /**
      * Top-level fields this build does not know (a later 2.x document), by name, each value as condensed JSON text, in
