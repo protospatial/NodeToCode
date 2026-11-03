@@ -103,8 +103,8 @@ $RequiredFiles = @(
 $ForbiddenPrefixes = @(
     '.git/', '.github/', '.agents/', '.claude/', '.vs/', '.idea/', 'BuildLogs/', 'Tests/', 'Intermediate/',
     'Saved/', 'DerivedDataCache/', 'Context/', 'wiki/', 'tools/', 'assets/', 'Scripts/', 'Documentation/',
-    'Content/Python/tests/', 'Content/Scripts/', 'Agents/sync_skills.py', 'AGENTS.md', 'README.md', 'CONTRIBUTING.md',
-    'SECURITY.md'
+    'Content/Python/tests/', 'Content/Python/nodetocode/toolsets/tests/', 'Content/Scripts/', 'Agents/sync_skills.py',
+    'AGENTS.md', 'README.md', 'CONTRIBUTING.md', 'SECURITY.md'
 )
 # File or folder names that must not appear anywhere. (Source/**/AGENTS.md, the MCP tool docs, ship with Source.)
 $ForbiddenSegments = @('__pycache__', '.git', '.env', 'secrets.json', 'CLAUDE.md', '.mcp.json',
