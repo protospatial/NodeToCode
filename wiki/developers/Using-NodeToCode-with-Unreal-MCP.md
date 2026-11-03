@@ -80,7 +80,7 @@ focused Blueprint editor and a provider key, as with any other client
 
 | Limit | What you see | What to do |
 |---|---|---|
-| One connection attempt, at editor start | If NodeToCode's server was off or elsewhere then, the log says `MCPClientToolset: failed to connect` and the toolset is missing until the next start. NodeToCode starts its server in the same startup phase; in our checks the connection succeeded on every start | Restart the editor |
+| One connection attempt, at editor start | If NodeToCode's server was off or on another port then, the log says `MCPClientToolset: failed to connect` and the toolset is missing until the next start. Before NodeToCode 2.0's early listener this also happened on the first start after installing or updating the plugin, when NodeToCode loads slowly; NodeToCode now starts its server earlier in startup, before MCPClientToolset connects, so a slow load no longer misses the handshake | Restart the editor; check that the Server Port matches the MCP Toolset Servers entry |
 | Tool list fixed at connect | Tools added later (settings changes, dynamic discovery) never appear | Keep dynamic discovery off; restart the editor after a NodeToCode tool setting change |
 | No new session after a server restart | Changing **Server Port** restarts NodeToCode's server; every later call fails with `tools/call failed: no response received` | Restart the editor |
 | Errors arrive as plain text | A NodeToCode tool error (`isError`) comes back as an ordinary result whose text holds the error, for example `"No active Blueprint Editor."`; a protocol error keeps only its message | Read the text, not only the error flag |

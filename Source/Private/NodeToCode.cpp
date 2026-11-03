@@ -21,6 +21,7 @@
 #include "Misc/CommandLine.h"
 #include "Misc/CoreDelegates.h"
 #include "Misc/Parse.h"
+#include "Runtime/Launch/Resources/Version.h"
 #include "Code Editor/Models/N2CCodeEditorStyle.h"
 #include "Code Editor/Syntax/N2CSyntaxDefinitionFactory.h"
 #include "Code Editor/Widgets/N2CCodeEditorWidgetFactory.h"
@@ -40,6 +41,24 @@ DEFINE_LOG_CATEGORY(LogNodeToCode);
 
 #define LOCTEXT_NAMESPACE "FNodeToCodeModule"
 
+// UE 5.8's MCPClientToolset (PostEngineInit) makes one startup handshake to the MCP servers it is configured for, and
+// loads before this plugin's PostEngineInit modules. The module loads in PostDefault and, on 5.8 and later, starts the
+// MCP server there; everything else waits for OnPostEngineInit (card 0536). 5.6 and 5.7 start it with the rest.
+#define N2C_START_MCP_EARLY (ENGINE_MAJOR_VERSION > 5 || (ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 8))
+
+namespace NodeToCodeModulePrivate
+{
+    /** FCoreDelegates' post-engine-init delegate (a function from UE 5.8, where the variable is deprecated) */
+    FSimpleMulticastDelegate& OnPostEngineInit()
+    {
+#if ENGINE_MAJOR_VERSION > 5 || (ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 8)
+        return FCoreDelegates::GetOnPostEngineInit();
+#else
+        return FCoreDelegates::OnPostEngineInit;
+#endif
+    }
+}
+
 void FNodeToCodeModule::StartupModule()
 {
     // Initialize logging
@@ -50,23 +69,6 @@ void FNodeToCodeModule::StartupModule()
     // LLM services and singletons still exist
     PreExitHandle = FCoreDelegates::OnPreExit.AddStatic(&FNodeToCodeModule::HandlePreExit);
     EnginePreExitHandle = FCoreDelegates::OnEnginePreExit.AddStatic(&FNodeToCodeModule::CancelAsyncTasks);
-
-    // HTTP timeouts are set per request by the LLM HTTP handler; nothing is written to project config.
-    // While a translation is in flight, keep the editor at full speed even when it is in the background, without
-    // changing the user's "Use Less CPU when in Background" preference.
-    if (GEditor)
-    {
-        UEditorEngine::FShouldDisableCPUThrottling ShouldDisable = UEditorEngine::FShouldDisableCPUThrottling::CreateLambda([]()
-        {
-            const UN2CLLMModule* LLMModule = UN2CLLMModule::Get();
-            const UN2CTranslationSubsystem* Translations = UN2CTranslationSubsystem::Get();
-            return (Translations && Translations->IsBusy())
-                || UN2CBatchTranslationOrchestrator::Get().IsBatchInProgress()
-                || (LLMModule && LLMModule->GetSystemStatus() == EN2CSystemStatus::Processing);
-        });
-        DisableThrottleHandle = ShouldDisable.GetHandle();
-        GEditor->ShouldDisableCPUThrottlingDelegates.Add(MoveTemp(ShouldDisable));
-    }
 
     // Load the API keys once, moving a project's Saved/NodeToCode/User/secrets.json to the per-user file
     FN2CSecretStore::Get();
@@ -97,6 +99,49 @@ void FNodeToCodeModule::StartupModule()
     }
 
     
+#if N2C_START_MCP_EARLY
+    // Before MCPClientToolset's one startup handshake (card 0536): the module is loaded in PostDefault, so the listener
+    // is up before any PostEngineInit module runs. HTTPServer answers on its first tick, after the rest has started.
+    StartMcpServer();
+#endif
+
+    // The editor (GEditor, its subsystems, tool menus, the asset editors) exists only from PostEngineInit on: the rest
+    // of the startup waits for it. A module loaded after that point (a commandlet, a hot reload) completes at once.
+    if (GEngine && GEngine->IsInitialized())
+    {
+        CompleteStartup();
+    }
+    else
+    {
+        PostEngineInitHandle = NodeToCodeModulePrivate::OnPostEngineInit().AddRaw(this, &FNodeToCodeModule::CompleteStartup);
+    }
+}
+
+void FNodeToCodeModule::CompleteStartup()
+{
+    if (PostEngineInitHandle.IsValid())
+    {
+        NodeToCodeModulePrivate::OnPostEngineInit().Remove(PostEngineInitHandle);
+        PostEngineInitHandle.Reset();
+    }
+
+    // HTTP timeouts are set per request by the LLM HTTP handler; nothing is written to project config.
+    // While a translation is in flight, keep the editor at full speed even when it is in the background, without
+    // changing the user's "Use Less CPU when in Background" preference.
+    if (GEditor)
+    {
+        UEditorEngine::FShouldDisableCPUThrottling ShouldDisable = UEditorEngine::FShouldDisableCPUThrottling::CreateLambda([]()
+        {
+            const UN2CLLMModule* LLMModule = UN2CLLMModule::Get();
+            const UN2CTranslationSubsystem* Translations = UN2CTranslationSubsystem::Get();
+            return (Translations && Translations->IsBusy())
+                || UN2CBatchTranslationOrchestrator::Get().IsBatchInProgress()
+                || (LLMModule && LLMModule->GetSystemStatus() == EN2CSystemStatus::Processing);
+        });
+        DisableThrottleHandle = ShouldDisable.GetHandle();
+        GEditor->ShouldDisableCPUThrottlingDelegates.Add(MoveTemp(ShouldDisable));
+    }
+
     // Initialize style system
     N2CStyle::Initialize();
     FN2CLogger::Get().Log(TEXT("Node to Code style initialized"), EN2CLogSeverity::Debug);
@@ -140,6 +185,13 @@ void FNodeToCodeModule::StartupModule()
         FN2CLogger::Get().Log(TEXT("Syntax definitions initialized successfully"), EN2CLogSeverity::Debug);
     }
 
+#if !N2C_START_MCP_EARLY
+    StartMcpServer();
+#endif
+}
+
+void FNodeToCodeModule::StartMcpServer()
+{
     // Start the MCP HTTP server on McpServerPort or the next free port
     const UN2CSettings* McpSettings = GetDefault<UN2CSettings>();
 
@@ -199,6 +251,11 @@ void FNodeToCodeModule::ShutdownStateManagers()
 
 void FNodeToCodeModule::ShutdownModule()
 {
+    if (PostEngineInitHandle.IsValid())
+    {
+        NodeToCodeModulePrivate::OnPostEngineInit().Remove(PostEngineInitHandle);
+        PostEngineInitHandle.Reset();
+    }
     FCoreDelegates::OnPreExit.Remove(PreExitHandle);
     PreExitHandle.Reset();
     FCoreDelegates::OnEnginePreExit.Remove(EnginePreExitHandle);
