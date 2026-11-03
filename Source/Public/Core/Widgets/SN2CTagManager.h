@@ -89,6 +89,17 @@ public:
 	FText GetExportJsonTooltip() const;
 	FText GetRemoveSelectedTooltip() const;
 
+	/**
+	 * Tag Dependencies (card 0319) applies the tag selected in the tree to everything the checked graphs' Blueprints
+	 * depend on: enabled while a graph is checked and a tag (not only a category) is selected
+	 */
+	bool IsTagDependenciesEnabled() const;
+	FText GetTagDependenciesTooltip() const;
+	FText GetReferenceViewerTooltip() const;
+
+	/** The Blueprints of the checked graphs, each once, in list order */
+	TArray<FString> GetSelectedBlueprintPaths() const;
+
 	/** Get whether minify JSON is enabled */
 	bool IsMinifyJsonEnabled() const;
 
@@ -152,6 +163,12 @@ private:
 
 	/** Prune Missing: removes the graph state of Blueprints that were deleted (after a confirmation) */
 	FReply HandlePruneMissingClicked();
+
+	/** Tag Dependencies: FN2CDependencyActions::TagDependencies with the selected tag, then a notification of the result */
+	FReply HandleTagDependenciesClicked();
+
+	/** Reference Viewer: UE's Reference Viewer on the checked graphs' Blueprints */
+	FReply HandleReferenceViewerClicked();
 
 	/** Handle browse button click */
 	FReply HandleBrowseClicked();
