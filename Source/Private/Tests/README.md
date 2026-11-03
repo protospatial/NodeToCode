@@ -304,7 +304,8 @@ card 0305).
   an hour ago (an aborted or killed run in any checkout). Never write a credential outside `NodeToCodeTest/`.
 - `NodeToCode.Settings.Migration` (`Core/N2CSettingsMigration.spec.cpp`) upgrades `Fixtures/Settings/Legacy12x`, a
   1.2.x project: `DefaultNodeToCode.ini` with every config key of main's `UN2CSettings`, the `DefaultEngine.ini`
-  1.2.x wrote, and a 1.2.x project `secrets.json`. Every key has a fate in the spec's table (kept, migrated, model ID,
+  1.2.x wrote, and a 1.2.x project `secrets.json` (checked in as `secrets.legacy12x.json`, so the release
+  package's forbidden-name check stays strict; card 0527). Every key has a fate in the spec's table (kept, migrated, model ID,
   pricing, theme); each value is checked after the upgrade and again after a restart, and every key lands in the
   per-user store. A key added to the fixture without a fate fails the spec.
 - `NodeToCode.StructUtils` (`Core/N2CStructUtils.spec.cpp`) calls `UN2CStructUtilsLibrary` with bad package paths and
