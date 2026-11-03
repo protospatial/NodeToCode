@@ -1,0 +1,196 @@
+{
+	"case": "SubstrateSlab",
+	"description": "A Substrate Slab BSDF into the material's FrontMaterial: captured like any expression, with no fallback warning",
+	"depth": 0,
+	"warnings": [],
+	"capture":
+	{
+		"version": "2.0.0",
+		"metadata":
+		{
+			"name": "M_N2CGolden_SubstrateSlab",
+			"asset_class": "Material",
+			"asset_kind": "Material",
+			"material":
+			{
+				"domain": "Surface",
+				"blend_mode": "Opaque",
+				"shading_models": [
+					"DefaultLit"
+				]
+			}
+		},
+		"graphs": [
+			{
+				"name": "M_N2CGolden_SubstrateSlab",
+				"graph_type": "Material",
+				"nodes": [
+					{
+						"id": "N1",
+						"type": "MaterialExpression",
+						"class": "MaterialExpressionConstant3Vector",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P1",
+								"name": "RGB",
+								"type": "Wildcard",
+								"connected": true
+							},
+							{
+								"id": "P2",
+								"name": "R",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P3",
+								"name": "G",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P4",
+								"name": "B",
+								"type": "Wildcard"
+							}
+						],
+						"properties":
+						{
+							"Constant": "(R=0.700000,G=0.600000,B=0.500000,A=1.000000)"
+						}
+					},
+					{
+						"id": "N2",
+						"type": "MaterialExpression",
+						"class": "MaterialExpressionSubstrateSlabBSDF",
+						"input_pins": [
+							{
+								"id": "P5",
+								"name": "DiffuseAlbedo",
+								"type": "Wildcard",
+								"connected": true
+							},
+							{
+								"id": "P6",
+								"name": "F0",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P7",
+								"name": "F90",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P8",
+								"name": "Roughness",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P9",
+								"name": "Anisotropy",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P10",
+								"name": "Normal",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P11",
+								"name": "Tangent",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P12",
+								"name": "SSSMFP",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P13",
+								"name": "SSSMFPScale",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P14",
+								"name": "SSSPhaseAnisotropy",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P15",
+								"name": "EmissiveColor",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P16",
+								"name": "SecondRoughness",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P17",
+								"name": "SecondRoughnessWeight",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P18",
+								"name": "FuzzRoughness",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P19",
+								"name": "FuzzAmount",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P20",
+								"name": "FuzzColor",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P21",
+								"name": "GlintValue",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P22",
+								"name": "GlintUV",
+								"type": "Wildcard"
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P23",
+								"name": "Output",
+								"type": "Wildcard",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N3",
+						"type": "MaterialOutput",
+						"class": "Material",
+						"input_pins": [
+							{
+								"id": "P24",
+								"name": "FrontMaterial",
+								"type": "Wildcard",
+								"connected": true
+							}
+						],
+						"output_pins": []
+					}
+				],
+				"flows":
+				{
+					"execution": [],
+					"data":
+					{
+						"N1.P1": "N2.P5",
+						"N2.P23": "N3.P24"
+					}
+				}
+			}
+		],
+		"structs": [],
+		"enums": []
+	}
+}

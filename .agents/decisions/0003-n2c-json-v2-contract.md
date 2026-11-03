@@ -171,6 +171,12 @@ Option 1, provisionally. The sub-choices of card 0117:
   Set Material Attributes' inputs and Get Material Attributes' outputs are named by attribute
   (`FMaterialAttributeDefinitionMap::GetAttributeName`), "MaterialAttributes" for the whole set; an enum property is
   written by its value's name.
+- Card 0451 (additive): a material's `metadata.material` may carry `substrate` (true when the project renders with
+  Substrate, `r.Substrate`). A Custom node's inputs are named by their input names; its Code, defines and include
+  paths, descriptions, parameter groups and comment text are captured verbatim as untrusted data (include files are
+  never read). Object references in `properties` are soft object paths. An input outside the class's properties is
+  `Input<i>` with an `UNMAPPED_PIN` warning, and a deprecated or material-layer expression is kept without its settings,
+  with `UNSUPPORTED_EXPRESSION`.
 - If the owner chooses option 2 or 3, a new record supersedes this one; the data-edge fix itself stays, since it only
   adds an array where 1.0.0 dropped edges.
 
