@@ -35,11 +35,12 @@ Source/Private/MCP/Tools/         - This directory
     ├── ContentBrowser/           - Content Browser navigation and asset operations
     ├── Dependencies/             - The dependency index for agents (get-blueprint-dependencies)
     ├── Migration/                - Migration plans from the dependency index (create-migration-plan)
+    ├── Material/                 - Material and Material Function reads (get-material-n2cjson)
     └── Python/                   - run-python
 ```
 
-`Blueprint/`, each of its subfolders, `Translation/`, `FileSystem/`, `ContentBrowser/`, `Dependencies/` and
-`Migration/` have their own `AGENTS.md`; `Python/` is described in `Context/python-scripting/AGENTS-python-scripting.md`. The toolsets are declared in
+`Blueprint/`, each of its subfolders, `Translation/`, `FileSystem/`, `ContentBrowser/`, `Dependencies/`, `Migration/`
+and `Material/` have their own `AGENTS.md`; `Python/` is described in `Context/python-scripting/AGENTS-python-scripting.md`. The toolsets are declared in
 `Source/Public/MCP/Tools/N2CMcpToolsets.h` and the tool-search meta-tools live in `N2CMcpToolManager.cpp` (below).
 
 ## Framework Overview
@@ -138,14 +139,14 @@ changes it, every client sees the same list, and the server never sends `notific
 
 | Profile | Exposure | `tools/list` | count |
 |---|---|---|---|
-| Default toolsets (the shipped default) | List every tool | every tool, `get-focused-blueprint` and `translate-focused-blueprint` included | 63 |
+| Default toolsets (the shipped default) | List every tool | every tool, `get-focused-blueprint` and `translate-focused-blueprint` included | 64 |
 | Default toolsets | Tool search | `call_tool`, `describe_toolset`, `list_toolsets` | 3 |
 | Python scripting only | List every tool | `run-python` | 1 |
 
 - **Python execution switch:** `FN2CMcpToolManager::RegisterTool` skips `run-python`
   (`UN2CUserSettings::IsPythonExecutionTool`) unless the per-user **Allow MCP Python Execution** is on
   (`UN2CUserSettings::IsMcpPythonExecutionAllowed()`, default off; only the user's own Saved/Config value counts, card
-  0423). With it off (the default) the counts are 62 and 0 instead of 63 and 1, and `call_tool` cannot reach it
+  0423). With it off (the default) the counts are 63 and 0 instead of 64 and 1, and `call_tool` cannot reach it
   either. (The six script-library tools PythonTools also held were retired with decision 0010, card 0305.)
 - **Restart required:** the settings are read only when the server starts (editor start, or the server restart a
   Server Port change causes); Project Settings shows a restart notice when one changes.
@@ -192,11 +193,11 @@ like Epic's toolset classes on UE 5.8 (`BlueprintTools`, `MaterialTools`); a 5.8
 | `FileSystemTools` | `read-path`, `read-file` | `FileSystem/` |
 | `PythonTools` | `run-python` | `Python/` |
 | `TranslationTools` | `translate-focused-blueprint`, `translate-batch`, `get-available-llm-providers`, `get-available-translation-targets`, `get-translation-output-directory`, `place-cpp-translation`, `create-migration-plan` | `Translation/`, `Migration/` |
+| `MaterialTools` | `get-material-n2cjson` | `Material/` |
 
-That is 64 tools in 12 toolsets. A new toolset is a new `inline constexpr FN2CMcpToolset` in `N2CMcpToolsets.h`, added
+That is 65 tools in 13 toolsets. A new toolset is a new `inline constexpr FN2CMcpToolset` in `N2CMcpToolsets.h`, added
 to `N2CMcpToolsets::All`; write its description for a model that sees nothing else of it (the domain and the kinds of
-operation, 1-3 sentences, no tool names). The Material graph cards (epic 0442) add `MaterialTools` there with their
-first tool.
+operation, 1-3 sentences, no tool names). `MaterialTools` came with the first Material graph tool (card 0453).
 
 ### Tool search: list_toolsets, describe_toolset, call_tool
 

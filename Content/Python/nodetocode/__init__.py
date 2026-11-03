@@ -61,6 +61,7 @@ Available Functions (the authoritative list is __all__ below):
     - get_blueprint_n2cjson(path, graph_name, graph_guid, depth, to_file) - Any Blueprint as N2C JSON by path
     - list_blueprint_graphs(path) - Every graph of a Blueprint by path
     - get_blueprint_dependencies(paths) - Dependency index: nodes, edges, order, cycle groups
+    - get_material_n2cjson(path) - A Material or Material Function as N2C JSON
     - read_n2c_json(text) - Read N2C JSON (1.x or 2.x) into the current version
     - compile_blueprint(path=None) - Compile the Blueprint at path, else the focused Blueprint
     - save_blueprint(path=None, only_if_dirty=True) - Save the Blueprint at path, else the focused Blueprint
@@ -121,6 +122,11 @@ from .blueprint import (
     load_blueprint,
 )
 
+# Materials (card 0453)
+from .material import (
+    get_material_n2cjson,
+)
+
 # NodeToCode-specific features (tagging, LLM info, navigation)
 from .bridge import (
     tag_graph,
@@ -176,6 +182,7 @@ __all__ = [
     'get_blueprint_n2cjson',
     'list_blueprint_graphs',
     'get_blueprint_dependencies',
+    'get_material_n2cjson',
     'read_n2c_json',
     'compile_blueprint',
     'save_blueprint',

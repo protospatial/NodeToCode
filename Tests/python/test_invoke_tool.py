@@ -93,6 +93,7 @@ WRAPPERS = [
     ('bridge', 'open_blueprint', ('/Game/BP',)),
     ('bridge', 'open_blueprint_function', ('Open',)),
     ('blueprint', 'get_blueprint_dependencies', ('/Game/AI',)),
+    ('material', 'get_material_n2cjson', ('/Game/M_Rock',)),
 ]
 
 

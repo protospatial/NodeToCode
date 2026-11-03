@@ -75,10 +75,14 @@ namespace N2CMcpToolsets
 		TEXT("Translate the focused Blueprint graph into C++, Python, C#, JavaScript, Swift or pseudocode with the LLM provider configured in Project Settings, read the available providers, target languages and output folder, place a C++ translation as a class in one of the project's modules, and write a reviewable plan for migrating many Blueprints to C++ in dependency order."),
 		true };
 
+	inline constexpr FN2CMcpToolset Material{ TEXT("MaterialTools"),
+		TEXT("Read Materials and Material Functions as N2C JSON by asset path, from the saved asset: their expressions, wiring, parameters and function calls. Read-only."),
+		true };
+
 	/** Every declared toolset, in the order list_toolsets shows them */
 	inline constexpr const FN2CMcpToolset* All[] = {
 		&BlueprintDiscovery, &BlueprintGraph, &BlueprintFunction, &BlueprintVariable, &BlueprintTag, &BlueprintCompile,
-		&BlueprintClass, &BlueprintComponent, &ContentBrowser, &FileSystem, &Python, &Translation };
+		&BlueprintClass, &BlueprintComponent, &ContentBrowser, &FileSystem, &Python, &Translation, &Material };
 
 	/** The declared toolset with this name (case-insensitive), or null */
 	NODETOCODE_API const FN2CMcpToolset* Find(const FString& Name);
