@@ -74,6 +74,35 @@ enum class EN2CAssetKind : uint8
 };
 
 /**
+ * @struct FN2CMaterialMetadata
+ * @brief A material's settings (card 0449, N2C JSON "metadata"."material"): written for a captured UMaterial only
+ */
+USTRUCT(BlueprintType)
+struct FN2CMaterialMetadata
+{
+    GENERATED_BODY()
+
+    /** True when the document has "material" */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    bool bSet = false;
+
+    /** EMaterialDomain without its prefix: "Surface", "DeferredDecal", "LightFunction", "Volume", "PostProcess", "UI" */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString Domain;
+
+    /** EBlendMode without its prefix: "Opaque", "Masked", "Translucent", "Additive", ... */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FString BlendMode;
+
+    /** EMaterialShadingModel values without their prefix, in enum order: "DefaultLit", "Unlit", ... */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    TArray<FString> ShadingModels;
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    bool bTwoSided = false;
+};
+
+/**
  * @struct FN2CMetadata
  * @brief Required metadata about the Blueprint
  */
@@ -123,6 +152,10 @@ struct FN2CMetadata
     /** The "asset_kind" text as read when AssetKind is Unknown; ToJson writes it in place of "Unknown" */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     FString UnknownAssetKind;
+
+    /** A material's settings ("material", card 0449); bSet only for a captured UMaterial */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    FN2CMaterialMetadata Material;
 
     /** The "blueprint_type" text as read when BlueprintType is Unknown (card 0445); ToJson writes it in place of "Unknown" */
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
@@ -474,6 +507,10 @@ enum class EN2CGraphType : uint8
     Construction    UMETA(DisplayName = "Construction Script"),
     /** An animation graph or an animation state machine graph (GT_Animation, GT_StateMachine) */
     Animation      UMETA(DisplayName = "Animation"),
+    /** A material's expression graph (card 0449; a document whose asset_kind is Material) */
+    Material       UMETA(DisplayName = "Material"),
+    /** A material function's expression graph (card 0449) */
+    MaterialFunction UMETA(DisplayName = "Material Function"),
     /** A struct definition */
     Struct         UMETA(DisplayName = "Struct"),
     /** An enum definition */

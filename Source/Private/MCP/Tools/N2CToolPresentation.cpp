@@ -152,6 +152,8 @@ namespace N2CToolPresentationPrivate
 			Write(TEXT("run-python"), TEXT("Run Python in the editor"), Destructive, Repeats, OpenWorld),
 
 			// Translation
+			// Writes only a new plan folder under Saved/NodeToCode/Migration
+			Write(TEXT("create-migration-plan"), TEXT("Plan a Blueprint-to-C++ migration"), Additive, Repeats),
 			Read(TEXT("get-available-llm-providers"), TEXT("List LLM providers")),
 			Read(TEXT("get-available-translation-targets"), TEXT("List translation languages")),
 			Read(TEXT("get-translation-output-directory"), TEXT("Show the translation output folder")),

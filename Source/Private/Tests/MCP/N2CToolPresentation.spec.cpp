@@ -51,6 +51,7 @@ namespace N2CToolPresentationSpecPrivate
 		{ TEXT("create-get-local-function-variable-node"), W, false, false, false },
 		{ TEXT("create-get-member-variable-node"), W, false, false, false },
 		{ TEXT("create-local-variable"), W, false, false, false },
+		{ TEXT("create-migration-plan"), W, false, false, false },
 		{ TEXT("create-set-local-function-variable-node"), W, false, false, false },
 		{ TEXT("create-set-member-variable-node"), W, false, false, false },
 		{ TEXT("create-variable"), W, false, false, false },

@@ -13,6 +13,7 @@
 
 class UMaterial;
 class UMaterialExpression;
+class UMaterialExpressionComment;
 class UMaterialFunction;
 class UMaterialGraph;
 class UPackage;
@@ -66,9 +67,13 @@ namespace N2CTest
 			return Cast<TExpression>(AddExpression(TExpression::StaticClass(), Function, X, Y));
 		}
 
+		/** A comment box in the material with Text, its top-left corner at (X, Y) and its size */
+		UMaterialExpressionComment* AddComment(const FString& Text, int32 X, int32 Y, int32 SizeX, int32 SizeY);
+
 		/**
 		 * Wires output OutputIndex of From into To's input named InputName: the FExpressionInput UPROPERTY of To's class
-		 * with that name (for example "A" and "B" on Add, "Coordinates" on Texture Sample), never a display name
+		 * with that name (for example "A" and "B" on Add, "Coordinates" on Texture Sample), never a display name; on a
+		 * material function call, the function input's name
 		 */
 		bool Connect(UMaterialExpression* From, int32 OutputIndex, UMaterialExpression* To, const FName InputName);
 

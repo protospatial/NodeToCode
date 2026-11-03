@@ -154,6 +154,19 @@ Option 1, provisionally. The sub-choices of card 0117:
   unknown kind is kept as `Unknown` with its text and an `UNKNOWN_ASSET_KIND` read warning, and the validator accepts it
   with an `UNKNOWN_KIND` warning. A node's `class` is now defined as the engine class of the node object (the UK2Node
   class in a Blueprint). A reader that predates it keeps `asset_kind` as an unknown field.
+- Card 0449 (additive, under 2.0.0 by decision [0009](0009-material-mvp.md); epic 0442): a Material document
+  (`asset_kind` `Material`, from `N2C::CaptureMaterial` or `CaptureMaterialFunction`, read from the saved asset) has
+  graphs of `graph_type` `Material` or `MaterialFunction`, nodes of `type` `MaterialExpression` (`class`: the expression
+  class), `MaterialFunctionCall` (`member_parent`: the function's package, `member_name`: its name) and one
+  `MaterialOutput` (an input pin per connected material property, named by its attribute name, e.g. `BaseColor`).
+  Input pins are named by their `FExpressionInput` property, outputs by their output name or `Output`; every pin's
+  `type` is `Wildcard`. A node may carry `properties` (`N2CJsonContract::NodePropertiesField`: the expression's settings
+  that differ from its class defaults, as Unreal exports them), and a material's `metadata` has `material` {`domain`,
+  `blend_mode`, `shading_models`, `two_sided`}. Reroutes are traced, not captured; the output node, `FunctionOutput`
+  and custom outputs are liveness boundaries and everything they do not read is `unused`; material function calls are
+  followed within the capture depth (so `/Engine/Functions` are described by name at depth 0). Capture warnings
+  `DUPLICATE_EXPRESSION_GUID` and `DANGLING_INPUT`. A reader that predates it keeps the new kinds as `Unknown` and the
+  two fields as unknown fields.
 - If the owner chooses option 2 or 3, a new record supersedes this one; the data-edge fix itself stays, since it only
   adds an array where 1.0.0 dropped edges.
 
@@ -187,5 +200,5 @@ rejected or lose nodes and pins in a 2.0 build and in Python, and could only shi
    `graphs`, or with no readable graph.
 
 Checked by `NodeToCode.Serializer.ForwardCompat` (a synthetic 2.1.0 material document,
-`Source/Private/Tests/Fixtures/Capture/ForwardCompat/UnknownKinds_2.1.json`, read with 15 warnings (16 before card 0447 made `asset_kind` a known field) and written back
+`Source/Private/Tests/Fixtures/Capture/ForwardCompat/UnknownKinds_2.1.json`, read with 14 warnings (16 before cards 0447 and 0449 made `asset_kind` and the `MaterialExpression` node type known) and written back
 byte for byte; the 1.x fixtures and every capture golden read with none) and `NodeToCode.Python.Bridge`.

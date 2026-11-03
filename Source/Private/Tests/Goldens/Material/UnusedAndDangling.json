@@ -1,0 +1,168 @@
+{
+	"case": "UnusedAndDangling",
+	"description": "An Add nothing reads (unused, with the constant it reads), an expression with no wires, and an input wired to an expression of another material (DANGLING_INPUT)",
+	"depth": 0,
+	"warnings": [
+		"DANGLING_INPUT graphs[0].nodes[4].input_pins[0]"
+	],
+	"capture":
+	{
+		"version": "2.0.0",
+		"metadata":
+		{
+			"name": "M_N2CGolden_UnusedAndDangling",
+			"asset_class": "Material",
+			"asset_kind": "Material",
+			"material":
+			{
+				"domain": "Surface",
+				"blend_mode": "Opaque",
+				"shading_models": [
+					"DefaultLit"
+				]
+			}
+		},
+		"graphs": [
+			{
+				"name": "M_N2CGolden_UnusedAndDangling",
+				"graph_type": "Material",
+				"nodes": [
+					{
+						"id": "N1",
+						"type": "MaterialExpression",
+						"class": "MaterialExpressionConstant",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P1",
+								"name": "Output",
+								"type": "Wildcard",
+								"connected": true
+							}
+						],
+						"properties":
+						{
+							"R": "0.700000"
+						}
+					},
+					{
+						"id": "N2",
+						"type": "MaterialExpression",
+						"class": "MaterialExpressionConstant",
+						"unused": true,
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P2",
+								"name": "Output",
+								"type": "Wildcard",
+								"connected": true
+							}
+						],
+						"properties":
+						{
+							"R": "3.000000"
+						}
+					},
+					{
+						"id": "N3",
+						"type": "MaterialExpression",
+						"class": "MaterialExpressionAdd",
+						"unused": true,
+						"input_pins": [
+							{
+								"id": "P3",
+								"name": "A",
+								"type": "Wildcard",
+								"connected": true
+							},
+							{
+								"id": "P4",
+								"name": "B",
+								"type": "Wildcard",
+								"default_value": "1.000000"
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P5",
+								"name": "Output",
+								"type": "Wildcard"
+							}
+						]
+					},
+					{
+						"id": "N4",
+						"type": "MaterialExpression",
+						"class": "MaterialExpressionConstant",
+						"unused": true,
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P6",
+								"name": "Output",
+								"type": "Wildcard"
+							}
+						],
+						"properties":
+						{
+							"R": "9.000000"
+						}
+					},
+					{
+						"id": "N5",
+						"type": "MaterialExpression",
+						"class": "MaterialExpressionOneMinus",
+						"input_pins": [
+							{
+								"id": "P7",
+								"name": "Input",
+								"type": "Wildcard"
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P8",
+								"name": "Output",
+								"type": "Wildcard",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N6",
+						"type": "MaterialOutput",
+						"class": "Material",
+						"input_pins": [
+							{
+								"id": "P9",
+								"name": "Metallic",
+								"type": "Wildcard",
+								"connected": true
+							},
+							{
+								"id": "P10",
+								"name": "Roughness",
+								"type": "Wildcard",
+								"connected": true
+							}
+						],
+						"output_pins": []
+					}
+				],
+				"flows":
+				{
+					"execution": [],
+					"data":
+					{
+						"N2.P2": "N3.P3",
+						"N5.P8": "N6.P9",
+						"N1.P1": "N6.P10"
+					}
+				}
+			}
+		],
+		"structs": [],
+		"enums": []
+	}
+}
