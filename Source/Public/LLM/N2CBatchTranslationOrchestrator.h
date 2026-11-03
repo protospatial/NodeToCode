@@ -166,10 +166,14 @@ public:
 	 * @param TagInfos Array of tagged graph information to export
 	 * @param Result Output result with paths and statistics
 	 * @param bMinifyJson If true, outputs minified JSON; if false, outputs pretty-printed JSON
-	 * @return True if export completed (check Result for individual failures)
+	 * @param OutputDirectory Folder the export's BatchJson_<time>_<id> folder is made in (the window's Output field);
+	 *        empty: the translation output directory (card 0258)
+	 * @return True if export completed (check Result for individual failures); false with Result.ErrorMessage when it
+	 *         did not run
 	 */
 	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Batch Export")
-	bool BatchExportJson(const TArray<FN2CTagInfo>& TagInfos, FN2CBatchJsonExportResult& Result, bool bMinifyJson = false);
+	bool BatchExportJson(const TArray<FN2CTagInfo>& TagInfos, FN2CBatchJsonExportResult& Result, bool bMinifyJson = false,
+		const FString& OutputDirectory = TEXT(""));
 
 	/** Delegate fired when batch JSON export completes */
 	UPROPERTY(BlueprintAssignable, Category = "NodeToCode|Batch Export")

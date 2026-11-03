@@ -1,6 +1,7 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
 #include "Core/Widgets/SN2CTagManager.h"
+#include "Core/N2CUserSettings.h"
 #include "Core/Widgets/SN2CTagCategoryTree.h"
 #include "Utils/N2CPathUtils.h"
 #include "Core/Widgets/SN2CTaggedGraphsList.h"
@@ -638,6 +639,11 @@ FReply SN2CTagManager::HandleBrowseClicked()
 			{
 				OutputPathBox->SetText(FText::FromString(OutputPath));
 			}
+			// The folder is the user's Custom Translation Output Directory: translations and Export JSON both go there
+			// (card 0258), and the choice is kept in their own settings, not the project's
+			UN2CUserSettings* UserSettings = GetMutableDefault<UN2CUserSettings>();
+			UserSettings->CustomTranslationOutputDirectory.Path = SelectedPath;
+			UserSettings->SaveToUserConfig({ GET_MEMBER_NAME_CHECKED(UN2CUserSettings, CustomTranslationOutputDirectory) });
 		}
 	}
 

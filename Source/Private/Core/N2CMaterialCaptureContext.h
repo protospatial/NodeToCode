@@ -49,9 +49,28 @@ struct FExpressionInput;
  * Material Editor's graph or editing library, or reads EMaterialValueType bits, so no ENGINE_MINOR_VERSION guard is
  * needed on UE 5.6-5.8.
  */
+/** How material capture handles an expression class (card 0452; the "Handling" column of material-classes.md) */
+enum class EN2CMaterialClassHandling : uint8
+{
+	/** A hand mapping in the capture (a mapped root or ancestor, or dynamic inputs) */
+	Mapped,
+	/** The reflection fallback: inputs by property, UNMAPPED_PIN for any other */
+	Generic,
+	/** Deprecated or part of the material layer system: kept without its settings, UNSUPPORTED_EXPRESSION */
+	Refused,
+	/** Abstract, never placed in a graph */
+	Base,
+};
+
 class FN2CMaterialCaptureContext
 {
 public:
+	/** The class's handling under the in-code table (the rules gen_material_classes.py applies to the engine sources) */
+	static EN2CMaterialClassHandling ClassHandling(const UClass* Class);
+
+	/** True for an expression the capture follows through instead of capturing: reroutes, composites, comments */
+	static bool IsTracedThrough(const UMaterialExpression& Expression);
+
 	explicit FN2CMaterialCaptureContext(const FN2CCaptureOptions& InOptions);
 
 	/** Captures a UMaterial (the caller checked the exact class) */

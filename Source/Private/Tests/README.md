@@ -22,6 +22,8 @@ Source/Private/Tests/
   N2C*Tests.cpp           older IMPLEMENT_SIMPLE_AUTOMATION_TEST regression tests (NodeToCode.Robustness.*,
                           NodeToCode.Security.PathUtils.*, NodeToCode.MCP.Transport.*); kept as they are
   Fixtures/<Area>/        checked-in inputs a spec reads (N2CTest::FixturesDir(Area))
+                          (Fixtures/Material/material-classes.json is material-classes.md's class table for the
+                          coverage spec; Tests/python/test_material_class_fixture.py --write regenerates it)
   Goldens/<Area>/         checked-in expected outputs a spec compares against (N2CTest::GoldensDir(Area))
   Perf/                   the perf fixture generator and NodeToCode.Perf.Fixtures (assets in Tests/NodeToCodeTestContent)
   Dependencies/           the dependency fixture generator and NodeToCode.Dependencies.Index (assets in Tests/NodeToCodeTestContent)

@@ -156,6 +156,9 @@ private:
 	/** Handle export JSON button click */
 	void HandleExportJsonRequested();
 
+	/** The notification after Export JSON: counts, the folder with an Open folder link, or why it did not run */
+	static void NotifyJsonExportResult(bool bRan, const FN2CBatchJsonExportResult& Result);
+
 	/** Handle remove selected button click */
 	void HandleRemoveSelectedRequested();
 
