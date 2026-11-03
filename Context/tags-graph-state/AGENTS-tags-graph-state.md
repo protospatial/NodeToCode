@@ -6,9 +6,23 @@ Blueprint library and the translation flow all go through it. User view: `wiki/U
 
 ## Owner: `UN2CGraphStateManager`
 
-`Source/Public/Core/N2CGraphStateManager.h`, `Source/Private/Core/N2CGraphStateManager.cpp`. A UObject singleton:
-`Get()`, `GetIfExists()`, `ShutdownInstance()` (called from `Source/Private/NodeToCode.cpp` on shutdown) and
-`CreateIsolated(StateDirectory)` for specs.
+`Source/Public/Core/N2CGraphStateManager.h`, `Source/Private/Core/N2CGraphStateManager.cpp`. The editor's store
+belongs to `UN2CGraphStateSubsystem` (`Source/Public/Subsystems/N2CGraphStateSubsystem.h`, an editor subsystem, card
+0346): its `Initialize` creates the manager (outer: the subsystem, not rooted) and loads the state file or migrates
+the legacy tags; its `Deinitialize` writes what is pending. `UN2CGraphStateManager::Get()` and `GetIfExists()` return
+that store; without an editor (a commandlet) `Get()` makes a stand-alone one, held by a strong pointer and released
+by `ShutdownInstance()`, which `Source/Private/NodeToCode.cpp` calls at editor exit (it also flushes the subsystem's
+store, since `OnPreExit` can come before `Deinitialize`). `CreateIsolated(StateDirectory)` makes a store for specs;
+`UN2CGraphStateSubsystem::SetManagerOverride` puts one in the editor store's place. From Python:
+`unreal.get_editor_subsystem(unreal.N2CGraphStateSubsystem)` (`save_now`, `has_unsaved_changes`,
+`get_state_file_path`, `get_tag_count`). `UN2CTagSubsystem` initializes after it (`InitializeDependency`).
+
+Writes: every mutator checks it runs on the game thread and calls `RequestSave`. With a save delay
+(`SetSaveDelay`; the editor's store uses `UN2CGraphStateSubsystem::EditorSaveDelaySeconds`, 1 s) the requests within
+that delay are written once by a core-ticker save; with none (`CreateIsolated`'s default) `RequestSave` saves at
+once. `SaveState` writes at once and drops the waiting save; `LoadState` and `Shutdown` write a waiting change first.
+Every write is atomic (`FN2CFileUtils::SaveStringAtomically`: a temporary file in the same folder moved over the
+old one, which is kept as `.bak`). Spec: `NodeToCode.Core.GraphStateSubsystem`.
 
 | Area | Functions |
 |---|---|
@@ -17,7 +31,7 @@ Blueprint library and the translation flow all go through it. User view: `wiki/U
 | Translations | `SetTranslationState`, `RecordArchivedTranslation`, `RecordSavedTranslation`, `ClearTranslationState`, `HasTranslation`, `LoadTranslation`, `LoadN2CJson` |
 | JSON export | `SetJsonExportState`, `HasJsonExport` |
 | Lifecycle | `GetOrCreateGraphState`, `RemoveGraphState`, `BeginBulkUpdate`/`EndBulkUpdate` (RAII: `FN2CGraphStateBulkUpdate`) |
-| Persistence | `SaveState`, `LoadState`, `IsSavingBlocked`, `GetQuarantinedFilePath`, `GetStateFilePath` |
+| Persistence | `SaveState`, `RequestSave`, `SetSaveDelay`, `HasPendingSave`, `LoadState`, `IsSavingBlocked`, `GetQuarantinedFilePath`, `GetStateFilePath`, `GetSaveCount` |
 | Asset Registry | `HandleBlueprintRenamed`, `HandleBlueprintRemoved`, `HandleBlueprintAdded`, `RefreshMissing`, `PruneMissing`, `IsFollowingAssetRegistry` |
 
 Events: `OnGraphStateChanged`, `OnGraphTagAdded`, `OnGraphTagRemoved`, `OnGraphTranslationUpdated`,

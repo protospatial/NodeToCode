@@ -8,6 +8,7 @@
 #include "Core/N2CTagTypes.h"
 #include "Models/N2CTranslation.h"
 #include "Code Editor/Models/N2CCodeLanguage.h"
+#include "Containers/Ticker.h"
 #include "N2CGraphStateManager.generated.h"
 
 struct FN2CArchivedEntry;
@@ -42,7 +43,11 @@ struct FN2CRemovedTag
 
 /**
  * @class UN2CGraphStateManager
- * @brief Singleton manager for unified Blueprint graph state tracking
+ * @brief The tag store: unified Blueprint graph state tracking
+ *
+ * Lifetime (card 0346): the editor's manager belongs to UN2CGraphStateSubsystem (an editor subsystem), which creates
+ * and initializes it and flushes it in Deinitialize; Get() returns it. There is no rooted singleton. Mutators run on
+ * the game thread only (checked).
  *
  * This class provides a single source of truth for tracking:
  * - Tags applied to Blueprint graphs
@@ -53,7 +58,9 @@ struct FN2CRemovedTag
  * the UI to accurately reflect graph state, including whether translations exist.
  *
  * Persistence: Saved/NodeToCode/BlueprintGraphState.json, written atomically (FN2CFileUtils::SaveStringAtomically,
- * keeping BlueprintGraphState.json.bak). A file that does not parse is renamed to
+ * keeping BlueprintGraphState.json.bak). Mutators request a save (RequestSave); with a save delay set (the editor's
+ * manager: UN2CGraphStateSubsystem::EditorSaveDelaySeconds) the requests within that delay are written once, and
+ * SaveState writes at once (an explicit save, Shutdown, LoadState with a save pending). A file that does not parse is renamed to
  * BlueprintGraphState.json.corrupt-<UTC timestamp>, the user is notified, and saving stays off until LoadState
  * (reload) or ClearAllState (reset), so the next change cannot overwrite the user's data.
  *
@@ -71,19 +78,22 @@ class NODETOCODE_API UN2CGraphStateManager : public UObject
 	GENERATED_BODY()
 
 public:
-	/** Get the singleton instance */
+	/**
+	 * The editor's manager: UN2CGraphStateSubsystem's (or the one a spec put in its place). Without an editor (a
+	 * commandlet) a stand-alone manager is made on first use and released by ShutdownInstance.
+	 */
 	static UN2CGraphStateManager& Get();
 
 	/** Initialize the manager (loads persisted state, migrates legacy tags) */
 	void Initialize();
 
-	/** Shutdown the manager (saves state if dirty) */
+	/** Shutdown the manager (writes a pending or unsaved change, stops following the Asset Registry) */
 	void Shutdown();
 
-	/** The singleton if Get() has created it, else nullptr (does not create it) */
-	static UN2CGraphStateManager* GetIfExists() { return Instance; }
+	/** The editor's manager if it exists, else nullptr (does not create one) */
+	static UN2CGraphStateManager* GetIfExists();
 
-	/** Shuts the singleton down if it exists (module shutdown); does not create it */
+	/** Flushes the editor's manager (editor exit) and shuts the stand-alone one down; creates nothing */
 	static void ShutdownInstance();
 
 	/**
@@ -426,8 +436,21 @@ public:
 	// Persistence
 	// ========================================================================
 
-	/** Save state to disk (deferred inside a bulk update; refused while a corrupt file blocks saving) */
+	/** Save state to disk now (deferred inside a bulk update; refused while a corrupt file blocks saving) */
 	bool SaveState();
+
+	/**
+	 * What a mutator calls: inside a bulk update, a save when it ends; with no save delay, SaveState now; otherwise one
+	 * SaveState SaveDelaySeconds later, however many requests come in meanwhile
+	 */
+	void RequestSave();
+
+	/** Seconds RequestSave waits before writing (0: at once, the default for CreateIsolated) */
+	void SetSaveDelay(float Seconds) { SaveDelaySeconds = FMath::Max(0.0f, Seconds); }
+	float GetSaveDelay() const { return SaveDelaySeconds; }
+
+	/** True while a delayed save is waiting */
+	bool HasPendingSave() const { return PendingSaveHandle.IsValid(); }
 
 	/**
 	 * Load state from disk. A file that does not parse is set aside as .corrupt-<timestamp> and saving is turned off;
@@ -557,8 +580,14 @@ private:
 	/** Logs and (unless isolated) shows a notification that the state file was set aside; Reason says what was wrong */
 	void ReportCorruptFile(const FString& FilePath, bool bMoved, const FString& Reason);
 
-	/** The singleton instance */
-	static UN2CGraphStateManager* Instance;
+	/** Removes the delayed save's ticker */
+	void CancelPendingSave();
+
+	/** RequestSave's delay; 0 writes at once */
+	float SaveDelaySeconds = 0.0f;
+
+	/** The delayed save's ticker while one waits */
+	FTSTicker::FDelegateHandle PendingSaveHandle;
 
 	/** The state file data */
 	UPROPERTY()

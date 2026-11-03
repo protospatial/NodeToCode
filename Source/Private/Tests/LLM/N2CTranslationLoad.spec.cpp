@@ -22,12 +22,20 @@
 #include "Models/N2CBlueprint.h"
 #include "Models/N2CTranslation.h"
 #include "Subsystems/N2CTranslationSubsystem.h"
+#include "Subsystems/N2CGraphStateSubsystem.h"
 #include "Tests/N2CTestHelpers.h"
 #include "UObject/StrongObjectPtr.h"
 #include "Utils/N2CPathUtils.h"
 
-// The graph state singleton, swapped for an isolated manager so the host project's BlueprintGraphState.json is untouched
-N2C_TEST_PRIVATE_MEMBER(FN2CLoadStateInstance, UN2CGraphStateManager**, &UN2CGraphStateManager::Instance)
+// The editor graph state store (UN2CGraphStateSubsystem), replaced by an isolated manager so the host project's BlueprintGraphState.json is untouched
+// Puts an isolated graph state manager in the editor subsystem's place (null: the subsystem's own again)
+static void N2CLoadSetState(UN2CGraphStateManager* Manager)
+{
+	if (UN2CGraphStateSubsystem* Subsystem = UN2CGraphStateSubsystem::Get())
+	{
+		Subsystem->SetManagerOverride(Manager);
+	}
+}
 
 // The batch writer, the archive run it starts and the folder it writes into
 N2C_TEST_PRIVATE_MEMBER(FN2CLoadSaveItemTranslation,
@@ -74,16 +82,13 @@ BEGIN_DEFINE_SPEC(FN2CTranslationLoadSpec, "NodeToCode.LLM.TranslationLoad", N2C
 	struct FScopedState
 	{
 		TStrongObjectPtr<UN2CGraphStateManager> Manager;
-		UN2CGraphStateManager* SavedInstance = nullptr;
 		EN2CCodeLanguage SavedLanguage;
 		FString SavedOutput;
 
 		FScopedState(const FString& StateDir, const FString& OutputDir)
 		{
-			UN2CGraphStateManager*& Instance = *N2CTest::GetPrivateMember(N2CTest::FN2CLoadStateInstance());
-			SavedInstance = Instance;
 			Manager.Reset(UN2CGraphStateManager::CreateIsolated(StateDir));
-			Instance = Manager.Get();
+			N2CLoadSetState(Manager.Get());
 
 			UN2CSettings* Settings = GetMutableDefault<UN2CSettings>();
 			SavedLanguage = Settings->TargetLanguage;
@@ -93,7 +98,7 @@ BEGIN_DEFINE_SPEC(FN2CTranslationLoadSpec, "NodeToCode.LLM.TranslationLoad", N2C
 
 		~FScopedState()
 		{
-			*N2CTest::GetPrivateMember(N2CTest::FN2CLoadStateInstance()) = SavedInstance;
+			N2CLoadSetState(nullptr);
 			UN2CSettings* Settings = GetMutableDefault<UN2CSettings>();
 			Settings->TargetLanguage = SavedLanguage;
 			GetMutableDefault<UN2CUserSettings>()->CustomTranslationOutputDirectory.Path = SavedOutput;
@@ -209,10 +214,10 @@ void FN2CTranslationLoadSpec::Define()
 			}
 
 			// The state file round-trips the id and the path
-			*N2CTest::GetPrivateMember(N2CTest::FN2CLoadStateInstance()) = nullptr;
+			N2CLoadSetState(nullptr);
 			Scoped.Manager->SaveState();
 			Scoped.Manager.Reset(UN2CGraphStateManager::CreateIsolated(StateDir.Path));
-			*N2CTest::GetPrivateMember(N2CTest::FN2CLoadStateInstance()) = Scoped.Manager.Get();
+			N2CLoadSetState(Scoped.Manager.Get());
 			for (int32 Index = 0; Index < Tags.Num(); ++Index)
 			{
 				TestEqual(FString::Printf(TEXT("reloaded %s id"), Languages()[Index].Id), RecordedLanguage(Tags[Index]), FString(Languages()[Index].Id));
