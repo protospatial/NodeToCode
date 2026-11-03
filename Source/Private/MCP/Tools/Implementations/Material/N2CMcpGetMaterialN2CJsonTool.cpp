@@ -5,6 +5,7 @@
 #include "Core/N2CBlueprintEditorTracker.h"
 #include "Core/N2CCapture.h"
 #include "Core/N2CMaterialCaptureContext.h"
+#include "Core/N2CSerializer.h"
 #include "MCP/Tools/N2CMcpOutputSchema.h"
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "MCP/Utils/N2CMcpBlueprintExport.h"
@@ -230,7 +231,10 @@ FMcpToolDefinition FN2CMcpGetMaterialN2CJsonTool::GetDefinition() const
 		TEXT("also has target {assetPath (the saved asset's path, also for a working copy), kind: material | ")
 		TEXT("material-function, resolvedBy: path | focus, workingCopy, workingCopyPath (focus only)}. Over ")
 		TEXT("about 20000 tokens, or with toFile, the document is written under Saved/NodeToCode/Exports and the result is ")
-		TEXT("{path, bytes, estimatedTokens, reason, nodeCount, target}. A Material Instance is read as its base material's ")
+		TEXT("{path, bytes, estimatedTokens, reason, nodeCount, target, warnings}. The document's warnings array (and the ")
+		TEXT("file result's) lists what the capture left out or approximated, each {code, path, message}: DEPTH_LIMIT for ")
+		TEXT("a function call not expanded, UNMAPPED_PIN, UNSUPPORTED_EXPRESSION, DUPLICATE_EXPRESSION_GUID; absent when ")
+		TEXT("there is nothing. A Material Instance is read as its base material's ")
 		TEXT("graph with metadata.material.instance {parents, scalars, vectors, textures, static_switches}: the parameters its ")
 		TEXT("chain sets. Function instances, material layers and layer blends are refused with UNSUPPORTED_ASSET_TYPE; read a ")
 		TEXT("Blueprint with get-blueprint-n2cjson."),
@@ -346,6 +350,12 @@ FMcpToolCallResult FN2CMcpGetMaterialN2CJsonTool::Execute(const TSharedPtr<FJson
 		FileResult->SetStringField(TEXT("reason"), bToFile ? TEXT("toFile") : TEXT("size"));
 		FileResult->SetNumberField(TEXT("nodeCount"), NodeCount);
 		FileResult->SetObjectField(TEXT("target"), Target);
+		// What the capture left out or approximated (DEPTH_LIMIT, UNMAPPED_PIN, ...), also when the document went to a file (card 0538)
+		const TArray<TSharedPtr<FJsonValue>> Warnings = FN2CSerializer::WarningsToJson(Captured);
+		if (Warnings.Num() > 0)
+		{
+			FileResult->SetArrayField(TEXT("warnings"), Warnings);
+		}
 		return FMcpToolCallResult::CreateTextResult(Serialize(FileResult, true));
 	}, 60.0f);
 }

@@ -3,6 +3,7 @@
 
 #include "MCP/Utils/N2CMcpBlueprintExport.h"
 #include "Core/N2CSerializer.h"
+#include "Models/N2CJsonContract.h"
 #include "Utils/N2CGraphUtils.h"
 #include "Utils/N2CLogger.h"
 #include "Utils/N2CPathUtils.h"
@@ -139,6 +140,11 @@ TSharedRef<FJsonObject> FN2CBlueprintReadResult::FileResultJson() const
 	Object->SetStringField(TEXT("reason"), FileReason);
 	Object->SetNumberField(TEXT("graphCount"), GraphCount);
 	Object->SetNumberField(TEXT("nodeCount"), NodeCount);
+	// What the capture left out or approximated, also when the document itself went to a file (card 0538)
+	if (Warnings.Num() > 0)
+	{
+		Object->SetArrayField(N2CJsonContract::WarningsField, Warnings);
+	}
 	return Object;
 }
 
@@ -413,6 +419,7 @@ FN2CBlueprintReadResult N2CMcpBlueprintExport::Read(const FN2CBlueprintReadReque
 		Result.NodeCount += CapturedGraph.Nodes.Num();
 	}
 	Result.Json = ToResultJson(Captured, Request.bCompact);
+	Result.Warnings = FN2CSerializer::WarningsToJson(Captured);
 	if (Result.Json.IsEmpty())
 	{
 		return Fail(Result, TEXT("CAPTURE_FAILED: the capture could not be serialized"));

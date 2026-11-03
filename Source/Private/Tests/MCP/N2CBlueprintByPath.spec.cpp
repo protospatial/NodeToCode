@@ -8,6 +8,8 @@
 #include "Tests/N2CTestHelpers.h"
 #include "Tests/N2CToolSpecHarness.h"
 #include "Tests/N2CTestBlueprintFactory.h"
+#include "Tests/Dependencies/N2CDependencyFixtures.h"
+#include "Models/N2CJsonContract.h"
 #include "Core/N2CBlueprintEditorTracker.h"
 #include "Core/N2CCapture.h"
 #include "Core/N2CEditorIntegration.h"
@@ -424,6 +426,41 @@ void FN2CBlueprintByPathSpec::Define()
 			SuccessText(TEXT("event graph"), N2CTest::RunToolUnmarked(TEXT("get-blueprint-n2cjson"), Args(Path(), TEXT("EventGraph"))));
 			TestEqual(TEXT("the function reads the same after other reads"), SuccessText(TEXT("again"),
 				N2CTest::RunToolUnmarked(TEXT("get-blueprint-n2cjson"), Args(Path(), Function->GetName()))), First);
+		});
+
+		It(TEXT("returns the capture's warnings, inline and in the file result (card 0538)"), [this]()
+		{
+			// BP_N2CDep_A's event graph calls BP_N2CDep_B's DoB: at depth 0 that call is not captured, a DEPTH_LIMIT warning
+			auto HasDepthLimit = [](const TSharedPtr<FJsonObject>& Json)
+			{
+				const TArray<TSharedPtr<FJsonValue>>* Warnings = nullptr;
+				if (!Json.IsValid() || !Json->TryGetArrayField(N2CJsonContract::WarningsField, Warnings))
+				{
+					return false;
+				}
+				for (const TSharedPtr<FJsonValue>& Warning : *Warnings)
+				{
+					const TSharedPtr<FJsonObject> Object = Warning->AsObject();
+					if (Object.IsValid() && Object->GetStringField(N2CJsonContract::WarningCodeField) == N2CJsonContract::Diagnostic::DepthLimit
+						&& !Object->GetStringField(N2CJsonContract::WarningMessageField).IsEmpty())
+					{
+						return true;
+					}
+				}
+				return false;
+			};
+			const TSharedPtr<FJsonObject> Arguments = Args(N2CTest::DependencyFixtures::ObjectPath(N2CTest::DependencyFixtures::AName), TEXT("EventGraph"));
+			Arguments->SetNumberField(TEXT("depth"), 0);
+			const FString Inline = SuccessText(TEXT("A at depth 0"), N2CTest::RunToolUnmarked(TEXT("get-blueprint-n2cjson"), Arguments));
+			TestTrue(TEXT("the document lists a DEPTH_LIMIT warning: ") + Inline.Right(600), HasDepthLimit(N2CTest::ParseJsonObject(Inline)));
+
+			N2CTest::FScratchDir Scratch(TEXT("N2CByPathWarnings"));
+			N2CMcpBlueprintExport::SetExportDirectoryForTests(Scratch.Path);
+			ON_SCOPE_EXIT { N2CMcpBlueprintExport::SetExportDirectoryForTests(FString()); };
+			Arguments->SetBoolField(TEXT("toFile"), true);
+			const TSharedPtr<FJsonObject> FileResult = N2CTest::ParseJsonObject(SuccessText(TEXT("A to a file"), N2CTest::RunToolUnmarked(TEXT("get-blueprint-n2cjson"), Arguments)));
+			TestTrue(TEXT("a file result"), FileResult.IsValid() && FileResult->HasField(TEXT("path")));
+			TestTrue(TEXT("the file result lists it too"), HasDepthLimit(FileResult));
 		});
 
 		It(TEXT("refuses bad arguments, unknown Blueprints and graphs, and an empty graph, with codes"), [this]()

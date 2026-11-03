@@ -34,7 +34,11 @@ which Epic's UE 5.8 MaterialTools lacks and which is the only route on UE 5.6 an
   estimated tokens, or with `toFile`, it is written to
   `<Project>/Saved/NodeToCode/Exports/<asset>__Material__<hash of path, depth and compact>.json` (a working copy:
   `__MaterialWorkingCopy__`) and the result is
-  {`path`, `bytes`, `estimatedTokens`, `maxInlineTokens`, `reason`: `size` | `toFile`, `nodeCount`, `target`}. Marked as
+  {`path`, `bytes`, `estimatedTokens`, `maxInlineTokens`, `reason`: `size` | `toFile`, `nodeCount`, `target`,
+  `warnings`}. The capture's `warnings` ({code, path, message}: DEPTH_LIMIT for a function call not expanded,
+  UNMAPPED_PIN, UNSUPPORTED_EXPRESSION, DUPLICATE_EXPRESSION_GUID) are in the document and, since card 0538, in the
+  file result too; absent when there are none (`NodeToCode.MCP.MaterialN2CJson`: WorldGridMaterial at depth 0 and 1).
+  Marked as
   untrusted data (card 0124): expression descriptions, parameter names and Custom node code come from the asset's author
 - **Errors**: `INVALID_ARGUMENT` (`materialPath` not a string; `depth` not a whole number from 0 to 5),
   `NO_FOCUSED_MATERIAL` (no `materialPath` and no Material Editor open), `ASSET_NOT_FOUND`,
