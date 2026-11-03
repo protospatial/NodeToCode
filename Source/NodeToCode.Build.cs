@@ -61,6 +61,7 @@ public class NodeToCode : ModuleRules
 				"ContentBrowserData",     // For content browser data subsystem
 				"DesktopPlatform",        // For folder browser dialog in Tag Manager
 				"PythonScriptPlugin",     // For Python script execution in Code Mode
+				"MaterialEditor",         // IMaterialEditor: the focused Material Editor's working copy (card 0463)
 				"Sockets",                // MCP server port check before binding (N2CMcpHttpServerManager)
 				"SubobjectDataInterface", // USubobjectDataSubsystem for the component tools (card 0167)
 				"SourceControl"           // USourceControlHelpers::PackageFilename for move-asset's checked-out check (card 0284)

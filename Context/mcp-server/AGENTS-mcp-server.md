@@ -501,9 +501,10 @@ Headers in `Source/Public/MCP/Tools/`, implementations in `Source/Private/MCP/To
 *   `place-cpp-translation` - Turn a saved C++ translation run into a class in a project module (dry run by default; card 0314)
 
 **Material/** - Material reads (card 0453, decision 0009; toolset `MaterialTools`):
-*   `get-material-n2cjson` - A Material or Material Function as N2C JSON by asset path, from the saved asset
-    (`target.workingCopy` false); instances, layers and blends are `UNSUPPORTED_ASSET_TYPE`; a result over about 20000
-    tokens goes to a file under `Saved/NodeToCode/Exports`
+*   `get-material-n2cjson` - A Material or Material Function as N2C JSON: by asset path from the saved asset
+    (`target.workingCopy` false), or with no path the focused Material Editor's working copy with its unapplied edits
+    (`resolvedBy` focus, `workingCopy` true, card 0463; `NO_FOCUSED_MATERIAL` when none is open); instances, layers and
+    blends are `UNSUPPORTED_ASSET_TYPE`; a result over about 20000 tokens goes to a file under `Saved/NodeToCode/Exports`
 
 **Migration/** - Migration plans (card 0323):
 *   `create-migration-plan` - A reviewable Blueprint-to-C++ plan from the dependency index: steps in dependency order
