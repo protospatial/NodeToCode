@@ -14,17 +14,6 @@
 #include "Models/N2CBlueprint.h"
 
 /**
- * Delegate for when translation state changes globally
- */
-DECLARE_MULTICAST_DELEGATE_OneParam(FOnN2CTranslationStateChanged, bool /* bIsTranslating */);
-
-/**
- * Delegate for when a graph overlay requests translation
- * The main window can subscribe to show progress modal
- */
-DECLARE_MULTICAST_DELEGATE_ThreeParams(FOnN2COverlayTranslationRequested, const FGuid& /* GraphGuid */, const FString& /* GraphName */, const FString& /* BlueprintPath */);
-
-/**
  * Provider, model and language overrides for one translation, resolved against the IDs that
  * get-available-llm-providers and get-available-translation-targets offer (lowercase, matched case-insensitively).
  * An unset Provider or Language means "use the settings default".
@@ -44,9 +33,9 @@ struct FN2CTranslationOverrides
  * @brief The editor module's wiring and the entry points the overlay, the main window and the MCP tools share
  *
  * Initialize and Shutdown start and stop the N2C tab spawner, the focused-editor tracker (FN2CBlueprintEditorTracker)
- * and the graph overlay injector (FN2CGraphOverlayInjector). The rest is the focused-graph capture and translation
- * entry points (moving to the capture module and UN2CTranslationSubsystem, cards 0010 and 0254) and the global
- * translation state.
+ * and the graph overlay injector (FN2CGraphOverlayInjector). The rest is the focused-graph capture and the MCP tools'
+ * translation entry points (moving to the capture module and UN2CTranslationSubsystem, cards 0010 and 0256). The
+ * editor's own translations and the "a translation is running" state are UN2CTranslationSubsystem's (card 0254).
  */
 class FN2CEditorIntegration
 {
@@ -154,46 +143,7 @@ public:
     /** Language IDs a translation accepts (lowercase, as get-available-translation-targets returns them) */
     static TArray<FString> GetTranslationLanguageIds();
 
-    // ==================== Global Translation State ====================
-
-    /**
-     * Check if any translation is currently in progress
-     * This includes both single graph translations and batch translations
-     */
-    bool IsAnyTranslationInProgress() const { return bIsAnyTranslationInProgress; }
-
-    /**
-     * Set the global translation state
-     * Called by overlays, main window, etc. when starting/completing translations
-     */
-    void SetTranslationInProgress(bool bInProgress);
-
-    /**
-     * Requests a translation from a graph overlay (the N2C bar's Translate): broadcasts OnOverlayTranslationRequested,
-     * which the Node to Code window (SN2CMainWindow) handles by translating and showing the result. With the window
-     * closed nothing listens, so the window is opened first (OpenWindowForOverlayTranslation, card 0521); if it still
-     * does not listen, a warning and a notification say so.
-     * @return true when a listener received the request
-     */
-    bool RequestOverlayTranslation(const FGuid& GraphGuid, const FString& GraphName, const FString& BlueprintPath);
-
-    /**
-     * Opens the Node to Code window, whose SN2CMainWindow subscribes to OnOverlayTranslationRequested while it exists.
-     * Unset: invokes the NodeToCodeEditor nomad tab (SN2CEditorWindow::TabId). Specs replace it.
-     */
-    TFunction<void()> OpenWindowForOverlayTranslation;
-
-    /** Delegate fired when global translation state changes */
-    FOnN2CTranslationStateChanged OnTranslationStateChanged;
-
-    /** Delegate fired when a graph overlay requests translation */
-    FOnN2COverlayTranslationRequested OnOverlayTranslationRequested;
-
 private:
     /** Constructor */
     FN2CEditorIntegration() = default;
-
-    /** Global flag tracking if any translation is in progress */
-    bool bIsAnyTranslationInProgress = false;
-
 };

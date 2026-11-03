@@ -344,12 +344,15 @@ def main():
             seg = s.log_text()[gc_mark:]
             # Timeline of the toolbar request inside the GC segment: GC ticks before, during and after
             gc_pos = [m.start() for m in re.finditer(r'N2C0377 GC \d+', seg)]
-            # The graph overlay's Translate button (the editor's toolbar translation) logs RequestOverlayTranslation;
-            # the older Collect path logged ExecuteCollectNodesForEditor
-            starts = [p for p in (seg.find('RequestOverlayTranslation'), seg.find('ExecuteCollectNodesForEditor called'),
+            # The graph overlay's Translate button (the editor's toolbar translation) logs "Translation session ... started
+            # (Overlay)" since card 0254 (RequestOverlayTranslation before); the older Collect path logged
+            # ExecuteCollectNodesForEditor
+            starts = [p for p in (seg.find('started (Overlay)'), seg.find('RequestOverlayTranslation'),
+                                  seg.find('ExecuteCollectNodesForEditor called'),
                                   seg.find('Node to Code window shown')) if p >= 0]
             start_pos = min(starts) if starts else -1
-            parsed_pos = seg.find('Successfully parsed LLM response')
+            parsed = [p for p in (seg.find('Successfully parsed LLM response'), seg.find(': Succeeded')) if p >= 0]
+            parsed_pos = min(parsed) if parsed else -1
             c3['gc_lines'] = len(gc_pos)
             c3['toolbar_started'] = start_pos >= 0
             c3['response_parsed'] = parsed_pos >= 0
@@ -358,6 +361,7 @@ def main():
             c3['crash_lines'] = len(CRASH_RE.findall(seg))
             c3['toolbar_lines'] = [l[:120] for l in seg.splitlines()
                                    if 'ExecuteCollectNodesForEditor called' in l or 'RequestOverlayTranslation' in l
+                                   or 'started (Overlay)' in l or ': Succeeded' in l
                                    or 'Successfully parsed LLM response' in l][:4]
             checks['3_toolbar_translation_parsed'] = c3['toolbar_started'] and c3['response_parsed'] and c3['parse_failed_lines'] == 0
             checks['3_gc_ran_during_request'] = c3['gc_during_request'] >= 1

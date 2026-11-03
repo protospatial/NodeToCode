@@ -6,6 +6,7 @@
 #include "HttpModule.h"
 #include "Models/N2CLogging.h"
 #include "Core/N2CEditorIntegration.h"
+#include "Subsystems/N2CTranslationSubsystem.h"
 #include "Core/N2CGraphStateManager.h"
 #include "Core/N2CSecretStore.h"
 #include "Core/N2CSettings.h"
@@ -58,7 +59,8 @@ void FNodeToCodeModule::StartupModule()
         UEditorEngine::FShouldDisableCPUThrottling ShouldDisable = UEditorEngine::FShouldDisableCPUThrottling::CreateLambda([]()
         {
             const UN2CLLMModule* LLMModule = UN2CLLMModule::Get();
-            return FN2CEditorIntegration::Get().IsAnyTranslationInProgress()
+            const UN2CTranslationSubsystem* Translations = UN2CTranslationSubsystem::Get();
+            return (Translations && Translations->IsBusy())
                 || UN2CBatchTranslationOrchestrator::Get().IsBatchInProgress()
                 || (LLMModule && LLMModule->GetSystemStatus() == EN2CSystemStatus::Processing);
         });

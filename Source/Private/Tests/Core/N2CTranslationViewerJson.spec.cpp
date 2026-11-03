@@ -21,19 +21,18 @@
 #include "Misc/Paths.h"
 #include "Models/N2CBlueprint.h"
 #include "Models/N2CTranslation.h"
+#include "Subsystems/N2CTranslationSubsystem.h"
 #include "Tests/N2CTestHelpers.h"
 #include "UObject/StrongObjectPtr.h"
 
 // The graph state singleton, swapped for an isolated manager so the host project's BlueprintGraphState.json is untouched
 N2C_TEST_PRIVATE_MEMBER(FN2CViewerJsonStateInstance, UN2CGraphStateManager**, &UN2CGraphStateManager::Instance)
 
-// The main window's single-translate state and completion, and the viewer it shows
+// The main window's handler of translation sessions, and the viewer it shows
 N2C_TEST_PRIVATE_MEMBER(FN2CViewerJsonWindowViewer, TSharedPtr<SN2CTranslationViewer> SN2CMainWindow::*,
 	&SN2CMainWindow::TranslationViewer)
-N2C_TEST_PRIVATE_MEMBER(FN2CViewerJsonPendingGraph, FN2CTagInfo SN2CMainWindow::*, &SN2CMainWindow::PendingSingleTranslateGraph)
-N2C_TEST_PRIVATE_MEMBER(FN2CViewerJsonPendingJson, FString SN2CMainWindow::*, &SN2CMainWindow::PendingSingleTranslateJson)
-N2C_TEST_PRIVATE_MEMBER(FN2CViewerJsonComplete, void (SN2CMainWindow::*)(const FN2CTranslationResponse&, bool, const FN2CArchivedResponse&),
-	&SN2CMainWindow::OnSingleTranslationComplete)
+N2C_TEST_PRIVATE_MEMBER(FN2CViewerJsonSessionChanged, void (SN2CMainWindow::*)(const FN2CTranslationSession&),
+	&SN2CMainWindow::HandleSessionChanged)
 N2C_TEST_PRIVATE_MEMBER(FN2CViewerJsonContent, FString SN2CTranslationViewer::*, &SN2CTranslationViewer::CurrentJsonContent)
 
 /**
@@ -42,9 +41,9 @@ N2C_TEST_PRIVATE_MEMBER(FN2CViewerJsonContent, FString SN2CTranslationViewer::*,
  * recorded single translation (Tag Manager "View translation") looked for <graph folder>/<graph>.json and
  * <graph folder>/N2C_BP_<graph folder>.json, while the single translate writes the capture as N2C_BP_<run>.json in
  * the run folder, one folder above the entry folder the main window records (card 0252's archive layout).
- * Checks, with the real writer (SN2CMainWindow::SaveSingleTranslation, through FN2CTranslationArchive) into a scratch
- * output folder: UN2CGraphStateManager::LoadN2CJson returns the saved capture, also when the LLM named the graph
- * differently; and on a headless SN2CMainWindow, the single translate's completion shows the sent JSON and reopening
+ * Checks, with the real writer (UN2CTranslationSubsystem::SaveSingleTranslation, through FN2CTranslationArchive) into a
+ * scratch output folder: UN2CGraphStateManager::LoadN2CJson returns the saved capture, also when the LLM named the graph
+ * differently; and on a headless SN2CMainWindow, a succeeded translation session shows the sent JSON and reopening
  * the recorded translation shows the saved capture. The batch layout is NodeToCode.Core.GraphState's.
  */
 BEGIN_DEFINE_SPEC(FN2CTranslationViewerJsonSpec, "NodeToCode.UI.TranslationViewerJson", N2C_TEST_FLAGS)
@@ -149,7 +148,7 @@ void FN2CTranslationViewerJsonSpec::Define()
 			{
 				return;
 			}
-			if (!TestTrue(What + TEXT(": saved and recorded"), SN2CMainWindow::SaveSingleTranslation(Tag, Response, Blueprint)))
+			if (!TestTrue(What + TEXT(": saved and recorded"), UN2CTranslationSubsystem::SaveSingleTranslation(Tag, Response, Blueprint)))
 			{
 				continue;
 			}
@@ -193,10 +192,10 @@ void FN2CTranslationViewerJsonSpec::Define()
 		{
 			return;
 		}
-		// What HandleOverlayTranslationRequest sends, and what its completion saves and records when the response arrives
+		// What a translation session sends, and what it saves and records when the response arrives
 		const FString Sent = FN2CSerializer::ToJson(Blueprint, EN2CJsonStyle::Condensed);
 		FN2CArchivedResponse Saved;
-		if (!TestTrue(TEXT("saved"), SN2CMainWindow::SaveSingleTranslation(Tag, Response, Blueprint, nullptr, &Saved)))
+		if (!TestTrue(TEXT("saved"), UN2CTranslationSubsystem::SaveSingleTranslation(Tag, Response, Blueprint, nullptr, &Saved)))
 		{
 			return;
 		}
@@ -207,15 +206,22 @@ void FN2CTranslationViewerJsonSpec::Define()
 		{
 			return;
 		}
-		Window.Get().*N2CTest::GetPrivateMember(N2CTest::FN2CViewerJsonPendingGraph()) = Tag;
-		Window.Get().*N2CTest::GetPrivateMember(N2CTest::FN2CViewerJsonPendingJson()) = Sent;
-		(Window.Get().*N2CTest::GetPrivateMember(N2CTest::FN2CViewerJsonComplete()))(Response, true, Saved);
+		// The session as the subsystem broadcasts it when it succeeded
+		FN2CTranslationSession Session;
+		Session.Info.SessionId = FGuid::NewGuid();
+		Session.Info.Source = EN2CTranslationSource::Row;
+		Session.Info.State = EN2CTranslationSessionState::Succeeded;
+		Session.Info.GraphName = Tag.GraphName;
+		Session.Info.BlueprintPath = Tag.BlueprintPath;
+		Session.Info.GraphGuid = Tag.GraphGuid;
+		Session.Json = Sent;
+		Session.Response = Response;
+		Session.Saved = Saved;
+		(Window.Get().*N2CTest::GetPrivateMember(N2CTest::FN2CViewerJsonSessionChanged()))(Session);
 
 		TestTrue(TEXT("after the translate: the viewer is shown"), Window->IsTranslationViewerVisible());
 		TestEqual(TEXT("after the translate: the JSON tab holds the JSON sent"),
 			Viewer.Get()->*N2CTest::GetPrivateMember(N2CTest::FN2CViewerJsonContent()), Sent);
-		TestTrue(TEXT("after the translate: the pending JSON is cleared"),
-			(Window.Get().*N2CTest::GetPrivateMember(N2CTest::FN2CViewerJsonPendingJson())).IsEmpty());
 
 		// The Tag Manager's "View translation": the recorded translation, loaded from disk
 		Window->HideTranslationViewer();

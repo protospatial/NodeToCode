@@ -30,6 +30,7 @@
 #include "Misc/ScopeExit.h"
 #include "Models/N2CBlueprint.h"
 #include "Tests/N2CTestBlueprintFactory.h"
+#include "Subsystems/N2CTranslationSubsystem.h"
 #include "Tests/N2CTestHelpers.h"
 #include "Tests/N2CTestHttpStub.h"
 
@@ -39,7 +40,7 @@
  * second translation) and anything the caller does with its own copy afterwards must not change the saved folder or
  * its N2C_BP_*.json: they name and describe the Blueprint that was translated. Since card 0133 every capture is its
  * own value (N2C::CaptureNodes). Since card 0252 ProcessN2CJson saves nothing: the caller keeps a copy of its capture
- * when it sends (the main window does) and writes the parsed result with SN2CMainWindow::SaveSingleTranslation (the
+ * when it sends (a translation session does) and writes the parsed result with UN2CTranslationSubsystem::SaveSingleTranslation (the
  * translation archive). Checks that nothing is written before the caller saves, and that the run then names A.
  */
 BEGIN_DEFINE_SPEC(FN2CTranslationSaveSpec, "NodeToCode.LLM.TranslationSave", N2C_TEST_FLAGS)
@@ -211,7 +212,7 @@ BEGIN_DEFINE_SPEC(FN2CTranslationSaveSpec, "NodeToCode.LLM.TranslationSave", N2C
 	 * Initializes the module with Ollama at a stub, captures BP_N2CSaveA, sends it through Send (which starts the
 	 * request), captures BP_N2CSaveB while the request is in flight, into the very variable that held A's capture when
 	 * bReuseCapture is set, then waits for the reply, checks nothing was written, saves the parsed result with the
-	 * copy taken at send time (as the main window does) and checks the save.
+	 * copy taken at send time (as a translation session does) and checks the save.
 	 */
 	void RunScenario(bool bReuseCapture,
 		TFunctionRef<void(const FString& JsonA, const FOnLLMResponseReceived& OnComplete, const FOnN2CTranslationParsed& OnParsed)> Send)
@@ -274,7 +275,7 @@ BEGIN_DEFINE_SPEC(FN2CTranslationSaveSpec, "NodeToCode.LLM.TranslationSave", N2C
 			FN2CTagInfo Graph;
 			Graph.GraphName = TEXT("EventGraph");
 			FN2CArchivedResponse Saved;
-			SN2CMainWindow::SaveSingleTranslation(Graph, *Parsed, *SentCapture, nullptr, &Saved);
+			UN2CTranslationSubsystem::SaveSingleTranslation(Graph, *Parsed, *SentCapture, nullptr, &Saved);
 			TestNotNull(TEXT("the caller saves the translation"), Saved.GetRoot());
 			ExpectSavedAs(Output.Path, TEXT("BP_N2CSaveA"), TEXT("BP_N2CSaveB"));
 		}

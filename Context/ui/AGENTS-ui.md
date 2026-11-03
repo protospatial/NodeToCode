@@ -24,7 +24,7 @@ has its own page: [code editor](../code-editor/AGENTS-code-editor.md). Styling i
 |---|---|
 | `SN2CMainWindow` | The main window: the Get Started card above the Tag Manager, with the Translation Viewer and batch progress overlays |
 | `SN2CGetStartedCard` | First run (card 0269): provider, API key (`UN2CSettings::SetApiKey`), connection test (`FN2CConnectionTest`, `Core/Services`), target language, the N2C bar picture (`NodeToCode.GetStarted.Overlay`, `Resources/get_started_overlay.png`, a copy of the docs shot `translate-entry/graph-overlay.png`). Shows while `UN2CUserSettings::bShowGetStartedCard` is on and `GetGraphsWithTranslation()` is empty. Spec `NodeToCode.UI.GetStarted` (also the tree and viewer empty states and the disabled selection buttons) |
-| `SN2CGraphOverlay` | The N2C bar, injected at the bottom left of a graph editor (`HAlign_Left`, `VAlign_Bottom` in `FN2CGraphOverlayInjector::InjectOverlay`): translate, tag, open the window |
+| `SN2CGraphOverlay` | The N2C bar, injected at the bottom left of a graph editor (`HAlign_Left`, `VAlign_Bottom` in `FN2CGraphOverlayInjector::InjectOverlay`): translate (an Overlay session of `UN2CTranslationSubsystem`, which works with the window closed: a notification shows it, card 0254), tag, open the window. Its Translate greys out on the subsystem's `OnBusyChanged` |
 | `SN2CTranslationViewer` | A translation: generated files in `SN2CCodeEditor`, the N2C JSON, the header bar |
 | `SN2CTagManager`, `SN2CTagCategoryTree`, `SN2CTaggedGraphsList`, `SN2CGraphListRow` | The Tag Manager ([tags and graph state](../tags-graph-state/AGENTS-tags-graph-state.md)) |
 | `SN2CBatchProgressModal` | Progress of a batch translation |
