@@ -277,7 +277,9 @@ bool FN2CMcpLongRunningCallTest::RunTest(const FString& Parameters)
 		LastTask.Reset();
 	}
 
-	// 3. text/event-stream accepted but no progressToken: also one JSON response at the end
+	// 3. text/event-stream accepted but no progressToken (UE 5.8's MCPClientToolset, card 0437): nothing is written
+	//    while the task runs (no progress without a token; the keep-alive beat is NodeToCode.MCP.Core's), then on 5.8
+	//    the response as one SSE message event on a stream that closes, and on 5.6/5.7 one JSON response
 	{
 		bCompleteInExecute = false;
 		Capture->Responses.Reset();
@@ -289,9 +291,34 @@ bool FN2CMcpLongRunningCallTest::RunTest(const FString& Parameters)
 		}
 		if (TestEqual(TEXT("no token: one response"), Capture->Responses.Num(), 1))
 		{
-			TestTrue(TEXT("no token: application/json"),
-				HeaderValue(*Capture->Responses[0], TEXT("Content-Type")).StartsWith(TEXT("application/json")));
-			CheckCallToolResult(TEXT("no token"), BodyText(*Capture->Responses[0]), TEXT("stub translation"), false);
+			FHttpServerResponse& Response = *Capture->Responses[0];
+#if ENGINE_MAJOR_VERSION > 5 || (ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 8)
+			const bool bStreams = FN2CMcpHttpServerManager::CanStreamToolProgress();
+#else
+			const bool bStreams = false;
+#endif
+			if (bStreams)
+			{
+#if ENGINE_MAJOR_VERSION > 5 || (ENGINE_MAJOR_VERSION == 5 && ENGINE_MINOR_VERSION >= 8)
+				TestTrue(TEXT("no token: text/event-stream"), HeaderValue(Response, TEXT("Content-Type")).StartsWith(TEXT("text/event-stream")));
+				TestTrue(TEXT("no token: the stream is complete"), Response.StreamingBodyComplete.IsValid() && Response.StreamingBodyComplete->Load());
+				FString Stream;
+				TArray<uint8> Chunk;
+				while (Response.StreamingBodyQueue.IsValid() && Response.StreamingBodyQueue->Dequeue(Chunk))
+				{
+					Stream += Utf8Text(Chunk);
+				}
+				const TCHAR* EventStart = TEXT("event: message\r\ndata: ");
+				TestTrue(TEXT("no token: one message event"), Stream.StartsWith(EventStart) && Stream.EndsWith(TEXT("\r\n\r\n")));
+				TestFalse(TEXT("no token: no progress notification"), Stream.Contains(TEXT("notifications/progress")));
+				CheckCallToolResult(TEXT("no token"), Stream.Mid(FCString::Strlen(EventStart)).TrimEnd(), TEXT("stub translation"), false);
+#endif
+			}
+			else
+			{
+				TestTrue(TEXT("no token: application/json"), HeaderValue(Response, TEXT("Content-Type")).StartsWith(TEXT("application/json")));
+				CheckCallToolResult(TEXT("no token"), BodyText(Response), TEXT("stub translation"), false);
+			}
 		}
 		LastTask.Reset();
 	}

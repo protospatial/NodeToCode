@@ -121,10 +121,12 @@ The MCP server speaks MCP Streamable HTTP (2025-11-25) and JSON-RPC 2.0 on one e
     `[HTTPServer.Listeners]` in the project's engine config says otherwise). Server Port defaults to 27000; when it
     is taken the server takes the next free port in Port Fallback Range and writes the URL to the discovery files
     (see "Ports and shutdown" below). `GET /mcp/health` is a plain health check, not an MCP route
-*   **Long-running tools**: answered on the `tools/call` POST itself: `text/event-stream` with progress then the
-    result on UE 5.8 (when Accept lists it and a progressToken is sent), else one held `application/json` response
-    (always on UE 5.6/5.7, which cannot stream a response body; decision 0085, still open, in
-    `FN2CMcpHttpServerManager::CanStreamToolProgress()`)
+*   **Long-running tools**: answered on the `tools/call` POST itself: on UE 5.8, when Accept lists
+    `text/event-stream`, a stream of `: keep-alive` comments every 2 s, progress (only with a progressToken) and then
+    the result; else one held `application/json` response (always on UE 5.6/5.7, which cannot stream a response
+    body; decision 0013, in `FN2CMcpHttpServerManager::CanStreamToolProgress()`). A call without a token streams too
+    (card 0437), so a client with an HTTP activity timeout (Epic's MCPClientToolset, 30 s) keeps receiving bytes, and
+    every stream is watched: a client that closed it cancels the call
 *   **One listener**: only the engine HTTPServer on the MCP port. The port+1 notification server (cpp-httplib,
     `/mcp/events` and `/mcp/notifications`) was removed in card 0113, so the server sends no unsolicited
     notifications (`tools.listChanged` is false)
@@ -243,7 +245,8 @@ basic/versioning page), in `Source/Private/MCP/Server/N2CMcpProtocolModern.cpp`.
     running long-running call with that JSON-RPC id (string and number ids are distinct) in the same session, through
     its call context (`FN2CToolAsyncTaskManager::CancelTaskByRequestId`). No response is sent for that request,
     whatever the tool still reports: a streamed call's `text/event-stream` closes without the response event, a held
-    call (UE 5.6/5.7, or no progressToken) ends with **202** and no body. Unknown ids, finished calls, other
+    call (UE 5.6/5.7, or Accept without `text/event-stream`) ends with **202** and no body (a streamed call cancelled
+    before its first keep-alive ends the same way). Unknown ids, finished calls, other
     sessions' calls and malformed notifications are ignored (the notification itself gets 202). Calls answered at
     once (every tool that is not long-running) cannot be cancelled.
 *   **A client that goes away** (card 0512). Claude Code (2.1.316, 2026-07-28) sends no `notifications/cancelled`
@@ -284,8 +287,10 @@ basic/versioning page), in `Source/Private/MCP/Server/N2CMcpProtocolModern.cpp`.
     *   Parses the body once (`ParseBody`), classifies JSON-RPC messages (a non-string method or a null, boolean or
         object id is -32600), answers batches and dispatches methods to the catalogs given at construction
         (`FN2CMcpCatalogs`: tool, resource and prompt managers and the long-running call manager)
-    *   Owns the long-running `tools/call` branch (streamed when the responder can stream, the client accepts
-        `text/event-stream` and sent a progressToken; else one reply when the call finishes) and the per-client
+    *   Owns the long-running `tools/call` branch (streamed when the responder can stream and the client accepts
+        `text/event-stream`, with or without a progressToken, card 0437; else one reply when the call finishes) and
+        the stream watch (`TickStreams`: a keep-alive every `StreamKeepAliveSeconds`, a closed stream cancels the call;
+        a held reply's client is looked up in the TCP table, card 0512), and the per-client
         session table (`FN2CMcpSession`, see Sessions and versions)
     *   Server notifications (`notifications/tools/list_changed`, from `FN2CMcpToolManager::OnToolListChanged`) go
         to the sink set with `SetBroadcastSink`; tools never call the transport. No transport sets one today
@@ -723,8 +728,9 @@ Engine source: `Engine/Plugins/Experimental/Toolsets/MCPClientToolset/` (`FMCPCl
     Python Execution, all in the first `tools/list` (one page, no cursor).
 *   **What the client sends** (all accepted, live): `initialize` at `2024-11-05` (negotiated 2024-11-05), ids from 0,
     `Accept: application/json, text/event-stream`, `Mcp-Session-Id` from the first response on every later POST,
-    no `MCP-Protocol-Version` header, `tools/list` without params, no `_meta.progressToken`. Without a token the
-    5.8 transport does not stream, so every call is one held `application/json` response. Host `127.0.0.1:<port>`
+    no `MCP-Protocol-Version` header, `tools/list` without params, no `_meta.progressToken`. A quick tool answers
+    with one `application/json` response; a long-running call streams (card 0437): `: keep-alive` comments every 2 s,
+    which its SSE parser skips, then the response event, which it matches by id. Host `127.0.0.1:<port>`
     passes the Host check; no Origin; bodies are far below the 8 MiB cap. No logging capability is used.
 *   **Startup**: the subsystem makes one `Create()` per entry when it initializes (PostEngineInit, like NodeToCode);
     a failure is one `failed to connect` warning and no retry. The handshake is logged before NodeToCode's
@@ -733,10 +739,12 @@ Engine source: `Engine/Plugins/Experimental/Toolsets/MCPClientToolset/` (`FMCPCl
     is kept forever, so a NodeToCode server restart (Server Port change) or session eviction (64 sessions) makes
     every call fail until the editor restarts; port fallback moves NodeToCode off the configured URL; `isError`
     and non-text content are dropped and the text is wrapped as `{"text": "..."}`; a JSON-RPC error keeps only its
-    message; the engine HTTP activity timeout (`[HTTP] HttpActivityTimeout`, 30 s) applies to each call. With it at
-    3 s a translate failed with `tools/call failed: no response received`, NodeToCode kept translating (provider
-    billed) and logged `socket_send_failure` writing the late reply. Live: claude-haiku-5-5 on the probe Blueprint
-    took 8 to 12 s, direct and through Epic's `call_tool`.
+    message; the engine HTTP activity timeout (`[HTTP] HttpActivityTimeout`, 30 s) applies to each call, counted
+    from the last byte received. Before card 0437 a token-less translate was one held reply: with the timeout at 3 s
+    it failed with `tools/call failed: no response received` while NodeToCode kept translating (provider billed) and
+    logged `socket_send_failure` writing the late reply. Since 0437 the keep-alives reset that timer:
+    `Tests/mcp_probe/live_mcpclienttoolset.py --activity-timeout 3` gets the translation through Epic's `call_tool`
+    (claude-haiku-5-5, about 8 s; first bytes after 2 s).
 
 ## Editor Integration Updates
 
@@ -814,8 +822,9 @@ curl -X POST http://127.0.0.1:27000/mcp \
   -d '[{"jsonrpc": "2.0", "method": "ping", "id": 1}, {"jsonrpc": "2.0", "method": "tools/list", "id": 2}]'
 
 # Long-running tool with progress. UE 5.8: 200 text/event-stream, "event: message" / "data: <notifications/progress>"
-# events, then the tools/call response, then the connection closes (-N shows events as they arrive). UE 5.6/5.7, or
-# Accept without text/event-stream, or no progressToken: one held application/json response when the call ends.
+# events, then the tools/call response, then the connection closes (-N shows events as they arrive); ": keep-alive"
+# comments arrive every 2 s, and without a progressToken they are all there is until the response (card 0437).
+# UE 5.6/5.7, or Accept without text/event-stream: one held application/json response when the call ends.
 curl -N -X POST http://127.0.0.1:27000/mcp \
   -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
   -H "Mcp-Session-Id: $SID" -H "MCP-Protocol-Version: 2025-11-25" \

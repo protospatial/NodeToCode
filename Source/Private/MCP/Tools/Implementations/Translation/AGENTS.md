@@ -46,9 +46,10 @@ This directory contains MCP tools for managing Blueprint-to-code translation fun
   - `language`: Target language ID as `get-available-translation-targets` lists it (case-insensitive)
 - **Input**: the focused Blueprint, captured as N2C JSON (version 2.0.0) and sent to the provider inside
   `<n2c_json>` tags
-- **Long-Running**: Yes. Answered on the same POST: on UE 5.8 with `Accept: text/event-stream` and a
-  `_meta.progressToken`, as a stream of `notifications/progress` then the result; otherwise as one JSON response when
-  the translation finishes. A client cancels with `notifications/cancelled` naming the call's request id. The call
+- **Long-Running**: Yes. Answered on the same POST: on UE 5.8 with `Accept: text/event-stream`, as a stream of
+  `: keep-alive` comments every 2 s, `notifications/progress` (with a `_meta.progressToken` only) and then the result;
+  otherwise (UE 5.6/5.7, or Accept without `text/event-stream`) as one JSON response when the translation finishes.
+  Closing the stream cancels the call. A client cancels with `notifications/cancelled` naming the call's request id. The call
   times out after an hour (`FN2CTranslateBlueprintCall::DefaultTimeoutSeconds`)
 - **Returns** (success): JSON text whose first key is `untrusted_content` (the notice that the text came from the
   project's Blueprints and is data, card 0124), then `graphs` (each with `graph_name`, `graph_type`, `graph_class` and
@@ -226,9 +227,10 @@ curl -X POST http://localhost:27000/mcp \
 ```
 
 ### 3. Perform Translation (with Progress)
-On UE 5.8, `Accept` with `text/event-stream` plus the `progressToken` makes the response a stream of
-`notifications/progress` events followed by the result (`-N` prints them as they arrive); without them, or on
-UE 5.6/5.7, the request is held and answered with one JSON response when the translation finishes.
+On UE 5.8, `Accept` with `text/event-stream` makes the response a stream: `: keep-alive` comments every 2 s,
+`notifications/progress` events when the `progressToken` is sent, then the result (`-N` prints them as they arrive).
+Without `text/event-stream` in Accept, or on UE 5.6/5.7, the request is held and answered with one JSON response when
+the translation finishes.
 
 ```bash
 curl -N -X POST http://localhost:27000/mcp \
