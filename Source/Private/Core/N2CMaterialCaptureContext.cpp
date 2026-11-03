@@ -10,6 +10,10 @@
 #include "Materials/MaterialAttributeDefinitionMap.h"
 #include "Materials/MaterialExpression.h"
 #include "Materials/MaterialExpressionComment.h"
+#include "Materials/MaterialExpressionComposite.h"
+#include "Materials/MaterialExpressionGetMaterialAttributes.h"
+#include "Materials/MaterialExpressionPinBase.h"
+#include "Materials/MaterialExpressionSetMaterialAttributes.h"
 #include "Materials/MaterialExpressionFunctionInput.h"
 #include "Materials/MaterialExpressionFunctionOutput.h"
 #include "Materials/MaterialExpressionMaterialFunctionCall.h"
@@ -154,16 +158,74 @@ namespace N2CMaterialCapture
 		return false;
 	}
 
+	/**
+	 * A node the capture traces through rather than captures: reroutes, named reroutes and, card 0450, a composite
+	 * (collapsed nodes; organisation only) with its entry and exit pin bases
+	 */
 	bool IsReroute(const UMaterialExpression& Expression)
 	{
 		return Expression.IsA<UMaterialExpressionReroute>() || Expression.IsA<UMaterialExpressionNamedRerouteDeclaration>()
-			|| Expression.IsA<UMaterialExpressionNamedRerouteUsage>();
+			|| Expression.IsA<UMaterialExpressionNamedRerouteUsage>() || Expression.IsA<UMaterialExpressionComposite>()
+			|| Expression.IsA<UMaterialExpressionPinBase>();
+	}
+
+	/** The reroute behind output OutputIndex of a composite's pin base, or null */
+	const UMaterialExpressionReroute* PinBaseReroute(const UMaterialExpressionPinBase* PinBase, int32 OutputIndex)
+	{
+		return PinBase && PinBase->ReroutePins.IsValidIndex(OutputIndex) ? PinBase->ReroutePins[OutputIndex].Expression.Get() : nullptr;
+	}
+
+	/**
+	 * A material-attributes pin by its attribute (card 0450): Set Material Attributes' Inputs[0] is "MaterialAttributes"
+	 * and Inputs[i] the attribute of AttributeSetTypes[i - 1]; Get Material Attributes' output i the attribute of
+	 * AttributeGetTypes[i - 1]. FMaterialAttributeDefinitionMap::GetAttributeName names it ("BaseColor"), never the
+	 * display caption. Empty when the pin is not one of these.
+	 */
+	FString AttributePinName(const UMaterialExpression& Expression, int32 Index, bool bOutput)
+	{
+		if (const UMaterialExpressionSetMaterialAttributes* Set = Cast<UMaterialExpressionSetMaterialAttributes>(&Expression))
+		{
+			if (!bOutput)
+			{
+				return Index == 0 ? FString(TEXT("MaterialAttributes")) : Set->AttributeSetTypes.IsValidIndex(Index - 1)
+					? FMaterialAttributeDefinitionMap::GetAttributeName(Set->AttributeSetTypes[Index - 1]) : FString();
+			}
+		}
+		else if (const UMaterialExpressionGetMaterialAttributes* Get = Cast<UMaterialExpressionGetMaterialAttributes>(&Expression))
+		{
+			if (bOutput)
+			{
+				return Index == 0 ? FString(TEXT("MaterialAttributes")) : Get->AttributeGetTypes.IsValidIndex(Index - 1)
+					? FMaterialAttributeDefinitionMap::GetAttributeName(Get->AttributeGetTypes[Index - 1]) : FString();
+			}
+		}
+		return FString();
 	}
 
 	/** A liveness boundary: what the material or function outputs */
 	bool IsOutput(const UMaterialExpression& Expression)
 	{
 		return Expression.IsA<UMaterialExpressionFunctionOutput>() || IsA(Expression, TEXT("MaterialExpressionCustomOutput"));
+	}
+
+	/**
+	 * A property's value as text: an enum by its value's name (ExportText leaves a byte enum's first value empty, card
+	 * 0450: FunctionInput_Scalar came out as ""), anything else as Unreal exports it
+	 */
+	FString ExportValue(const FProperty* Property, const void* Container)
+	{
+		if (const FByteProperty* Byte = CastField<FByteProperty>(Property); Byte && Byte->Enum)
+		{
+			return Byte->Enum->GetNameStringByValue(*Byte->ContainerPtrToValuePtr<uint8>(Container));
+		}
+		if (const FEnumProperty* Enum = CastField<FEnumProperty>(Property); Enum && Enum->GetEnum() && Enum->GetUnderlyingProperty())
+		{
+			return Enum->GetEnum()->GetNameStringByValue(
+				Enum->GetUnderlyingProperty()->GetSignedIntPropertyValue(Enum->ContainerPtrToValuePtr<void>(Container)));
+		}
+		FString Value;
+		Property->ExportText_InContainer(0, Value, Container, nullptr, nullptr, PPF_None);
+		return Value;
 	}
 
 	FString PinRef(const FString& NodeID, const FString& PinID)
@@ -292,6 +354,20 @@ UMaterialExpression* FN2CMaterialCaptureContext::TraceSource(const FExpressionIn
 		{
 			Next = Usage->Declaration ? &Usage->Declaration->Input : nullptr;
 		}
+		// Composites pass through (card 0450). Wiring a composite or a pin base (their ConnectExpression) wires the reroute
+		// behind the pin, so inputs normally read those reroutes; an input that names the composite or pin base itself
+		// is read through the same reroute: a composite's output i is its exit pin base's reroute i, an entry pin base's
+		// output i its reroute i, whose input is wired outside
+		else if (const UMaterialExpressionComposite* Composite = Cast<UMaterialExpressionComposite>(Source))
+		{
+			const UMaterialExpressionReroute* ExitPin = N2CMaterialCapture::PinBaseReroute(Composite->OutputExpressions, OutOutputIndex);
+			Next = ExitPin ? &ExitPin->Input : nullptr;
+		}
+		else if (const UMaterialExpressionPinBase* PinBase = Cast<UMaterialExpressionPinBase>(Source))
+		{
+			const UMaterialExpressionReroute* EntryPin = N2CMaterialCapture::PinBaseReroute(PinBase, OutOutputIndex);
+			Next = EntryPin ? &EntryPin->Input : nullptr;
+		}
 		else
 		{
 			return Source;
@@ -344,18 +420,22 @@ void FN2CMaterialCaptureContext::CaptureGraph(const FString& Name, EN2CGraphType
 		// GetInput, not GetInputsView (deprecated on UE 5.8); a function call overrides both with its function's inputs
 		for (int32 Index = 0; const FExpressionInput* Input = Expression->GetInput(Index); ++Index)
 		{
-			FString PinName;
-			if (Call && Call->FunctionInputs.IsValidIndex(Index) && !Call->FunctionInputs[Index].Input.InputName.IsNone())
+			// By attribute (material attributes), the function input's name (a call), or the input property
+			FString PinName = AttributePinName(*Expression, Index, false);
+			if (PinName.IsEmpty())
 			{
-				PinName = Call->FunctionInputs[Index].Input.InputName.ToString();
-			}
-			else if (const FString* Found = PropertyNames.Find(Input))
-			{
-				PinName = *Found;
-			}
-			else
-			{
-				PinName = FString::Printf(TEXT("Input%d"), Index);
+				if (Call && Call->FunctionInputs.IsValidIndex(Index) && !Call->FunctionInputs[Index].Input.InputName.IsNone())
+				{
+					PinName = Call->FunctionInputs[Index].Input.InputName.ToString();
+				}
+				else if (const FString* Found = PropertyNames.Find(Input))
+				{
+					PinName = *Found;
+				}
+				else
+				{
+					PinName = FString::Printf(TEXT("Input%d"), Index);
+				}
 			}
 			if (UsedNames.Contains(PinName))
 			{
@@ -372,7 +452,7 @@ void FN2CMaterialCaptureContext::CaptureGraph(const FString& Name, EN2CGraphType
 			{
 				if (const FProperty* Const = Expression->GetClass()->FindPropertyByName(FName(*(TEXT("Const") + PinName))))
 				{
-					Const->ExportText_InContainer(0, Pin.DefaultValue, Expression, nullptr, nullptr, PPF_None);
+					Pin.DefaultValue = ExportValue(Const, Expression);
 				}
 			}
 			Inputs.Add(Input);
@@ -391,10 +471,10 @@ void FN2CMaterialCaptureContext::CaptureGraph(const FString& Name, EN2CGraphType
 		for (int32 Index = 0; Index < Outputs.Num(); ++Index)
 		{
 			const FExpressionOutput& Output = Outputs[Index];
-			FString OutputName;
-			if (!Output.OutputName.IsNone())
+			FString OutputName = AttributePinName(*Expression, Index, true);
+			if (!OutputName.IsEmpty() || !Output.OutputName.IsNone())
 			{
-				OutputName = Output.OutputName.ToString();
+				OutputName = OutputName.IsEmpty() ? Output.OutputName.ToString() : OutputName;
 			}
 			else if (Output.Mask)
 			{
@@ -617,8 +697,6 @@ void FN2CMaterialCaptureContext::CaptureProperties(const UMaterialExpression& Ex
 		{
 			continue;
 		}
-		FString Value;
-		Property->ExportText_InContainer(0, Value, &Expression, nullptr, nullptr, PPF_None);
-		Node.Properties.Add(Property->GetName(), Value);
+		Node.Properties.Add(Property->GetName(), ExportValue(Property, &Expression));
 	}
 }

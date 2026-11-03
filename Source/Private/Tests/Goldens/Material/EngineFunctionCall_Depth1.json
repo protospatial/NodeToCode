@@ -1,0 +1,681 @@
+{
+	"case": "EngineFunctionCall_Depth1",
+	"description": "The same call at depth 1: CameraDepthFade's graph is expanded after the material's",
+	"depth": 1,
+	"warnings": [],
+	"capture":
+	{
+		"version": "2.0.0",
+		"metadata":
+		{
+			"name": "M_N2CGolden_EngineFunctionCall_Depth1",
+			"asset_class": "Material",
+			"asset_kind": "Material",
+			"material":
+			{
+				"domain": "Surface",
+				"blend_mode": "Translucent",
+				"shading_models": [
+					"DefaultLit"
+				]
+			}
+		},
+		"graphs": [
+			{
+				"name": "M_N2CGolden_EngineFunctionCall_Depth1",
+				"graph_type": "Material",
+				"nodes": [
+					{
+						"id": "N1",
+						"type": "MaterialFunctionCall",
+						"class": "MaterialExpressionMaterialFunctionCall",
+						"member_parent": "/Engine/Functions/Engine_MaterialFunctions01/Opacity/CameraDepthFade",
+						"member_name": "CameraDepthFade",
+						"input_pins": [
+							{
+								"id": "P1",
+								"name": "Fade Length",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P2",
+								"name": "Fade Offset",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P3",
+								"name": "For Vertex Shader",
+								"type": "Wildcard"
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P4",
+								"name": "Result",
+								"type": "Wildcard",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N2",
+						"type": "MaterialOutput",
+						"class": "Material",
+						"input_pins": [
+							{
+								"id": "P5",
+								"name": "Opacity",
+								"type": "Wildcard",
+								"connected": true
+							}
+						],
+						"output_pins": []
+					}
+				],
+				"flows":
+				{
+					"execution": [],
+					"data":
+					{
+						"N1.P4": "N2.P5"
+					}
+				}
+			},
+			{
+				"name": "CameraDepthFade",
+				"graph_type": "MaterialFunction",
+				"nodes": [
+					{
+						"id": "N3",
+						"type": "MaterialExpression",
+						"class": "MaterialExpressionFunctionOutput",
+						"member_name": "Result",
+						"input_pins": [
+							{
+								"id": "P6",
+								"name": "A",
+								"type": "Wildcard",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P7",
+								"name": "Output",
+								"type": "Wildcard"
+							}
+						]
+					},
+					{
+						"id": "N4",
+						"type": "MaterialExpression",
+						"class": "MaterialExpressionWorldPosition",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P8",
+								"name": "XYZ",
+								"type": "Wildcard",
+								"connected": true
+							},
+							{
+								"id": "P9",
+								"name": "XY",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P10",
+								"name": "Z",
+								"type": "Wildcard"
+							}
+						]
+					},
+					{
+						"id": "N5",
+						"type": "MaterialExpression",
+						"class": "MaterialExpressionCameraPositionWS",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P11",
+								"name": "Output",
+								"type": "Wildcard",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N6",
+						"type": "MaterialExpression",
+						"class": "MaterialExpressionPixelDepth",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P12",
+								"name": "R",
+								"type": "Wildcard",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N7",
+						"type": "MaterialExpression",
+						"class": "MaterialExpressionSubtract",
+						"input_pins": [
+							{
+								"id": "P13",
+								"name": "A",
+								"type": "Wildcard",
+								"connected": true
+							},
+							{
+								"id": "P14",
+								"name": "B",
+								"type": "Wildcard",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P15",
+								"name": "Output",
+								"type": "Wildcard",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N8",
+						"type": "MaterialExpression",
+						"class": "MaterialExpressionFunctionInput",
+						"member_name": "Fade Length",
+						"input_pins": [
+							{
+								"id": "P16",
+								"name": "Preview",
+								"type": "Wildcard"
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P17",
+								"name": "Output",
+								"type": "Wildcard",
+								"connected": true
+							}
+						],
+						"properties":
+						{
+							"Description": "How many units it takes to fade from 0 to 1",
+							"InputType": "FunctionInput_Scalar",
+							"PreviewValue": "(X=512.000000,Y=0.000000,Z=0.000000,W=1.000000)",
+							"bUsePreviewValueAsDefault": "True"
+						}
+					},
+					{
+						"id": "N9",
+						"type": "MaterialExpression",
+						"class": "MaterialExpressionFunctionInput",
+						"member_name": "Fade Offset",
+						"input_pins": [
+							{
+								"id": "P18",
+								"name": "Preview",
+								"type": "Wildcard"
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P19",
+								"name": "Output",
+								"type": "Wildcard",
+								"connected": true
+							}
+						],
+						"properties":
+						{
+							"Description": "Offsets the fade",
+							"InputType": "FunctionInput_Scalar",
+							"PreviewValue": "(X=24.000000,Y=0.000000,Z=0.000000,W=1.000000)",
+							"bUsePreviewValueAsDefault": "True",
+							"SortPriority": "1"
+						}
+					},
+					{
+						"id": "N10",
+						"type": "MaterialExpression",
+						"class": "MaterialExpressionDivide",
+						"input_pins": [
+							{
+								"id": "P20",
+								"name": "A",
+								"type": "Wildcard",
+								"connected": true
+							},
+							{
+								"id": "P21",
+								"name": "B",
+								"type": "Wildcard",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P22",
+								"name": "Output",
+								"type": "Wildcard",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N11",
+						"type": "MaterialExpression",
+						"class": "MaterialExpressionClamp",
+						"input_pins": [
+							{
+								"id": "P23",
+								"name": "Input",
+								"type": "Wildcard",
+								"connected": true
+							},
+							{
+								"id": "P24",
+								"name": "Min",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P25",
+								"name": "Max",
+								"type": "Wildcard"
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P26",
+								"name": "Output",
+								"type": "Wildcard",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N12",
+						"type": "MaterialExpression",
+						"class": "MaterialExpressionSubtract",
+						"input_pins": [
+							{
+								"id": "P27",
+								"name": "A",
+								"type": "Wildcard",
+								"connected": true
+							},
+							{
+								"id": "P28",
+								"name": "B",
+								"type": "Wildcard",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P29",
+								"name": "Output",
+								"type": "Wildcard",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N13",
+						"type": "MaterialExpression",
+						"class": "MaterialExpressionSubtract",
+						"input_pins": [
+							{
+								"id": "P30",
+								"name": "A",
+								"type": "Wildcard",
+								"connected": true
+							},
+							{
+								"id": "P31",
+								"name": "B",
+								"type": "Wildcard",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P32",
+								"name": "Output",
+								"type": "Wildcard",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N14",
+						"type": "MaterialExpression",
+						"class": "MaterialExpressionDivide",
+						"input_pins": [
+							{
+								"id": "P33",
+								"name": "A",
+								"type": "Wildcard",
+								"connected": true
+							},
+							{
+								"id": "P34",
+								"name": "B",
+								"type": "Wildcard",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P35",
+								"name": "Output",
+								"type": "Wildcard",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N15",
+						"type": "MaterialExpression",
+						"class": "MaterialExpressionCustom",
+						"input_pins": [
+							{
+								"id": "P36",
+								"name": "Inputs[0]",
+								"type": "Wildcard",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P37",
+								"name": "Output",
+								"type": "Wildcard",
+								"connected": true
+							}
+						],
+						"properties":
+						{
+							"Code": "length(x)"
+						}
+					},
+					{
+						"id": "N16",
+						"type": "MaterialExpression",
+						"class": "MaterialExpressionStaticSwitch",
+						"input_pins": [
+							{
+								"id": "P38",
+								"name": "A",
+								"type": "Wildcard",
+								"connected": true
+							},
+							{
+								"id": "P39",
+								"name": "B",
+								"type": "Wildcard",
+								"connected": true
+							},
+							{
+								"id": "P40",
+								"name": "Value",
+								"type": "Wildcard",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P41",
+								"name": "Output",
+								"type": "Wildcard",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N17",
+						"type": "MaterialExpression",
+						"class": "MaterialExpressionFunctionInput",
+						"member_name": "For Vertex Shader",
+						"input_pins": [
+							{
+								"id": "P42",
+								"name": "Preview",
+								"type": "Wildcard",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P43",
+								"name": "Output",
+								"type": "Wildcard",
+								"connected": true
+							}
+						],
+						"properties":
+						{
+							"Description": "Default = False. Computes depth using CameraPos instead of PixelDepth so that it is usable with WorldPositionOffset shaders",
+							"InputType": "FunctionInput_StaticBool",
+							"PreviewValue": "(X=64.000000,Y=0.000000,Z=0.000000,W=1.000000)",
+							"bUsePreviewValueAsDefault": "True",
+							"SortPriority": "2"
+						}
+					},
+					{
+						"id": "N18",
+						"type": "MaterialExpression",
+						"class": "MaterialExpressionStaticBool",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P44",
+								"name": "Output",
+								"type": "Wildcard",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N19",
+						"type": "MaterialExpression",
+						"class": "MaterialExpressionNormalize",
+						"input_pins": [
+							{
+								"id": "P45",
+								"name": "VectorInput",
+								"type": "Wildcard",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P46",
+								"name": "Output",
+								"type": "Wildcard",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N20",
+						"type": "MaterialExpression",
+						"class": "MaterialExpressionConstant3Vector",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P47",
+								"name": "RGB",
+								"type": "Wildcard",
+								"connected": true
+							},
+							{
+								"id": "P48",
+								"name": "R",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P49",
+								"name": "G",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P50",
+								"name": "B",
+								"type": "Wildcard"
+							}
+						],
+						"properties":
+						{
+							"Constant": "(R=0.000000,G=0.000000,B=-1.000000,A=0.000000)"
+						}
+					},
+					{
+						"id": "N21",
+						"type": "MaterialExpression",
+						"class": "MaterialExpressionTransform",
+						"input_pins": [
+							{
+								"id": "P51",
+								"name": "Input",
+								"type": "Wildcard",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P52",
+								"name": "Output",
+								"type": "Wildcard",
+								"connected": true
+							}
+						],
+						"properties":
+						{
+							"TransformSourceType": "TRANSFORMSOURCE_View"
+						}
+					},
+					{
+						"id": "N22",
+						"type": "MaterialExpression",
+						"class": "MaterialExpressionDotProduct",
+						"input_pins": [
+							{
+								"id": "P53",
+								"name": "A",
+								"type": "Wildcard",
+								"connected": true
+							},
+							{
+								"id": "P54",
+								"name": "B",
+								"type": "Wildcard",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P55",
+								"name": "Output",
+								"type": "Wildcard",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N23",
+						"type": "MaterialExpression",
+						"class": "MaterialExpressionMultiply",
+						"input_pins": [
+							{
+								"id": "P56",
+								"name": "A",
+								"type": "Wildcard",
+								"connected": true
+							},
+							{
+								"id": "P57",
+								"name": "B",
+								"type": "Wildcard",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P58",
+								"name": "Output",
+								"type": "Wildcard",
+								"connected": true
+							}
+						]
+					}
+				],
+				"flows":
+				{
+					"execution": [],
+					"data":
+					{
+						"N11.P26": "N3.P6",
+						"N6.P12": "N7.P13",
+						"N9.P19": [
+							"N7.P14",
+							"N13.P31"
+						],
+						"N7.P15": "N10.P20",
+						"N8.P17": [
+							"N10.P21",
+							"N14.P34"
+						],
+						"N16.P41": "N11.P23",
+						"N5.P11": "N12.P27",
+						"N4.P8": "N12.P28",
+						"N23.P58": "N13.P30",
+						"N13.P32": "N14.P33",
+						"N12.P29": [
+							"N15.P36",
+							"N19.P45"
+						],
+						"N14.P35": "N16.P38",
+						"N10.P22": "N16.P39",
+						"N17.P43": "N16.P40",
+						"N18.P44": "N17.P42",
+						"N20.P47": "N21.P51",
+						"N19.P46": "N22.P53",
+						"N21.P52": "N22.P54",
+						"N15.P37": "N23.P56",
+						"N22.P55": "N23.P57"
+					}
+				},
+				"comments": [
+					{
+						"text": "Vertex Shader Version",
+						"nodes": [
+							"N4",
+							"N5",
+							"N12",
+							"N15",
+							"N19"
+						]
+					},
+					{
+						"text": "Z Vector",
+						"nodes": [
+							"N20",
+							"N21",
+							"N22"
+						]
+					}
+				]
+			}
+		],
+		"structs": [],
+		"enums": []
+	}
+}

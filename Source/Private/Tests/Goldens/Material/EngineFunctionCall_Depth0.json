@@ -1,0 +1,90 @@
+{
+	"case": "EngineFunctionCall_Depth0",
+	"description": "A material calling the engine's CameraDepthFade at depth 0: described by name (decision 0009 item 4), DEPTH_LIMIT",
+	"depth": 0,
+	"warnings": [
+		"DEPTH_LIMIT graphs"
+	],
+	"capture":
+	{
+		"version": "2.0.0",
+		"metadata":
+		{
+			"name": "M_N2CGolden_EngineFunctionCall_Depth0",
+			"asset_class": "Material",
+			"asset_kind": "Material",
+			"material":
+			{
+				"domain": "Surface",
+				"blend_mode": "Translucent",
+				"shading_models": [
+					"DefaultLit"
+				]
+			}
+		},
+		"graphs": [
+			{
+				"name": "M_N2CGolden_EngineFunctionCall_Depth0",
+				"graph_type": "Material",
+				"nodes": [
+					{
+						"id": "N1",
+						"type": "MaterialFunctionCall",
+						"class": "MaterialExpressionMaterialFunctionCall",
+						"member_parent": "/Engine/Functions/Engine_MaterialFunctions01/Opacity/CameraDepthFade",
+						"member_name": "CameraDepthFade",
+						"input_pins": [
+							{
+								"id": "P1",
+								"name": "Fade Length",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P2",
+								"name": "Fade Offset",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P3",
+								"name": "For Vertex Shader",
+								"type": "Wildcard"
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P4",
+								"name": "Result",
+								"type": "Wildcard",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N2",
+						"type": "MaterialOutput",
+						"class": "Material",
+						"input_pins": [
+							{
+								"id": "P5",
+								"name": "Opacity",
+								"type": "Wildcard",
+								"connected": true
+							}
+						],
+						"output_pins": []
+					}
+				],
+				"flows":
+				{
+					"execution": [],
+					"data":
+					{
+						"N1.P4": "N2.P5"
+					}
+				}
+			}
+		],
+		"structs": [],
+		"enums": []
+	}
+}

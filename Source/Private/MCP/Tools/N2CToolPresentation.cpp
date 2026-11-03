@@ -149,13 +149,7 @@ namespace N2CToolPresentationPrivate
 			Read(TEXT("read-path"), TEXT("List a project directory")),
 
 			// Python
-			Write(TEXT("delete-python-script"), TEXT("Delete a library script"), Destructive, Idempotent),
-			Read(TEXT("get-python-script"), TEXT("Read a library script")),
-			Read(TEXT("get-script-functions"), TEXT("List a library script's functions")),
-			Read(TEXT("list-python-scripts"), TEXT("List library scripts")),
 			Write(TEXT("run-python"), TEXT("Run Python in the editor"), Destructive, Repeats, OpenWorld),
-			Write(TEXT("save-python-script"), TEXT("Save a library script"), Destructive, Idempotent),
-			Read(TEXT("search-python-scripts"), TEXT("Search library scripts")),
 
 			// Translation
 			// Writes only a new plan folder under Saved/NodeToCode/Migration

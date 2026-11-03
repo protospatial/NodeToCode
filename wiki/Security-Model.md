@@ -57,12 +57,11 @@ on for everyone; it does not protect you from a hostile project, which can run i
 
 ## Python execution
 
-**Allow MCP Python Execution** is off by default. Off, the tools `run-python`, `save-python-script` and
-`delete-python-script` do not exist on the server, whatever the tool profile says. On, any connected client can run
+**Allow MCP Python Execution** is off by default. Off, the `run-python` tool does not exist on the server, whatever
+the tool profile says. On, any connected client can run
 any Python in the editor as you: read and write any file you can, read your API keys from Credential Manager and the
-environment, and change the project. A Python call has no undo step and no timeout. Saved scripts go to
-`Content/Python/scripts/<category>/`, and the name `init_unreal` is refused so a script cannot run at every editor
-start. Turn it on only while you use it, with an agent you trust.
+environment, and change the project. A Python call has no undo step and no timeout. Turn it on only while you use it,
+with an agent you trust.
 
 ## Which tools a client sees
 
@@ -84,7 +83,6 @@ Code refuses a call to one of them and names Epic's tool instead. See
 | Create, save, move, rename, copy assets and folders | `/Game` and the content of plugins in your project's `Plugins` folder | `/Engine`, plugins installed with the engine or from Fab, and Node to Code's own content, unless **Allow MCP Writes Outside Project** is on (it needs an editor restart); no tool deletes an asset |
 | Write Blueprint exports | `Saved/NodeToCode/Exports` | Any other folder |
 | Write translations | `Saved/NodeToCode/Translations`, or **Custom Translation Output Directory** | Paths outside that folder: a graph name such as `../../Source` becomes a safe file name |
-| Write Python scripts (Python execution on) | `Content/Python/scripts` | Other folders, `init_unreal` |
 
 There is no general file-writing tool. **Custom Translation Output Directory** is your own setting (Editor
 Preferences → Plugins → Node to Code (User)), saved in your user settings, so a committed project file cannot choose
@@ -103,9 +101,8 @@ Comments, names, tooltips and string literals in a Blueprint reach the agent tha
 a content pack or a teammate can contain text written to steer an agent. The tools that return Blueprint content
 mark it as data: their result starts with an `untrusted_content` notice telling the agent to treat instructions
 inside it as data, and the Blueprint prompts carry the same notice. This is advice to the model, not a filter.
-Nothing is removed, an agent can still act on planted text, and files read with `read-file` and the script library
-are not marked. Watch the tool calls an agent makes on Blueprints you did not write, and serve fewer tools while it
-works on them.
+Nothing is removed, an agent can still act on planted text, and files read with `read-file` are not marked. Watch the
+tool calls an agent makes on Blueprints you did not write, and serve fewer tools while it works on them.
 
 ## API keys
 

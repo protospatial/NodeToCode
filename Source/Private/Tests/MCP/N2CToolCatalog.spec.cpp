@@ -575,13 +575,13 @@ void FN2CToolCatalogSpec::Define()
 			Filter.bReadOnlyOnly = true;
 
 			// These need nothing but the Blueprint, a folder or nothing at all, so they must succeed; the others need a
-			// focused editor, a saved script or a real file and answer with their own error (TOOL_FAILED)
+			// focused editor or a real file and answer with their own error (TOOL_FAILED)
 			const TSet<FString> MustSucceed = {
 				TEXT("get-blueprint-n2cjson"), TEXT("list-blueprint-graphs"), TEXT("list-blueprint-functions"),
 				TEXT("list-overridable-functions"), TEXT("list-components-in-actor"), TEXT("find-nodes-in-graph"),
 				TEXT("search-blueprint-nodes"), TEXT("list-blueprint-tags"), TEXT("get-available-llm-providers"),
 				TEXT("get-available-translation-targets"), TEXT("get-translation-output-directory"),
-				TEXT("get-open-blueprint-editors"), TEXT("get-editor-context"), TEXT("list-python-scripts"), TEXT("search-python-scripts"),
+				TEXT("get-open-blueprint-editors"), TEXT("get-editor-context"),
 				TEXT("search-content-browser"), TEXT("read-content-browser-path"), TEXT("read-path") };
 			int32 Succeeded = 0;
 			int32 Invoked = 0;

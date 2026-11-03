@@ -10,7 +10,14 @@
 #include "Core/N2CCapture.h"
 #include "Core/N2CSerializer.h"
 #include "MaterialEditor/PreviewMaterial.h"
+#include "Materials/MaterialExpressionBreakMaterialAttributes.h"
 #include "Materials/MaterialExpressionComment.h"
+#include "Materials/MaterialExpressionComposite.h"
+#include "Materials/MaterialExpressionMakeMaterialAttributes.h"
+#include "Materials/MaterialExpressionPinBase.h"
+#include "Materials/MaterialExpressionSetMaterialAttributes.h"
+#include "Materials/MaterialExpressionStaticSwitch.h"
+#include "Materials/MaterialAttributeDefinitionMap.h"
 #include "Materials/MaterialExpressionFunctionInput.h"
 #include "Materials/MaterialExpressionLinearInterpolate.h"
 #include "Materials/MaterialExpressionMaterialFunctionCall.h"
@@ -129,6 +136,27 @@ BEGIN_DEFINE_SPEC(FN2CMaterialCaptureSpec, "NodeToCode.Material.Capture", N2C_TE
 		Call->SetMaterialFunction(Function);
 		M.Connect(Colour, 0, Call, TEXT("In"));
 		M.ConnectToProperty(Call, 0, MP_BaseColor);
+		return M.GetMaterial();
+	}
+
+	/** The engine's CameraDepthFade material function (Engine_MaterialFunctions01/Opacity; the same asset on 5.6-5.8) */
+	static UMaterialFunction* LoadEngineCameraDepthFade()
+	{
+		return LoadObject<UMaterialFunction>(nullptr, TEXT("/Engine/Functions/Engine_MaterialFunctions01/Opacity/CameraDepthFade.CameraDepthFade"));
+	}
+
+	/** A translucent material whose Opacity is CameraDepthFade's first output */
+	static UObject* BuildEngineFunctionCall(N2CTest::FTestMaterial& M)
+	{
+		UMaterialFunction* Function = LoadEngineCameraDepthFade();
+		UMaterialExpressionMaterialFunctionCall* Call = M.Add<UMaterialExpressionMaterialFunctionCall>(nullptr, -200, 0);
+		if (!Function || !Call || !M.GetMaterial())
+		{
+			return nullptr;
+		}
+		M.GetMaterial()->BlendMode = BLEND_Translucent;
+		Call->SetMaterialFunction(Function);
+		M.ConnectToProperty(Call, 0, MP_Opacity);
 		return M.GetMaterial();
 	}
 
@@ -398,6 +426,94 @@ BEGIN_DEFINE_SPEC(FN2CMaterialCaptureSpec, "NodeToCode.Material.Capture", N2C_TE
 			[](N2CTest::FTestMaterial& M) -> UObject* { return BuildFunctionCall(M); }, 1 });
 		Cases.Add({ TEXT("MaterialFunction"), TEXT("A material function captured as the asset: graph_type MaterialFunction, FunctionOutput is the boundary"),
 			[](N2CTest::FTestMaterial& M) -> UObject* { return BuildHalfFunction(M); } });
+		// Card 0450
+		Cases.Add({ TEXT("MaterialAttributes"), TEXT("Make Material Attributes into Set Material Attributes (adding Metallic by attribute GUID) into Break Material Attributes, whose BaseColor and Metallic feed the material: attribute pins are named by attribute"),
+			[](N2CTest::FTestMaterial& M) -> UObject*
+			{
+				UMaterialExpressionConstant3Vector* Colour = M.Add<UMaterialExpressionConstant3Vector>(nullptr, -800, -100);
+				UMaterialExpressionConstant* Rough = M.Add<UMaterialExpressionConstant>(nullptr, -800, 0);
+				UMaterialExpressionMakeMaterialAttributes* Make = M.Add<UMaterialExpressionMakeMaterialAttributes>(nullptr, -600, 0);
+				UMaterialExpressionConstant* Metal = M.Add<UMaterialExpressionConstant>(nullptr, -600, 300);
+				UMaterialExpressionSetMaterialAttributes* Set = M.Add<UMaterialExpressionSetMaterialAttributes>(nullptr, -400, 0);
+				UMaterialExpressionBreakMaterialAttributes* Break = M.Add<UMaterialExpressionBreakMaterialAttributes>(nullptr, -200, 0);
+				if (!Colour || !Rough || !Make || !Metal || !Set || !Break)
+				{
+					return nullptr;
+				}
+				Colour->Constant = FLinearColor(0.5f, 0.5f, 0.5f);
+				Rough->R = 0.6f;
+				Metal->R = 1.0f;
+				M.Connect(Colour, 0, Make, TEXT("BaseColor"));
+				M.Connect(Rough, 0, Make, TEXT("Roughness"));
+				// One attribute added to Set Material Attributes, as its details panel adds it: a GUID and an input
+				Set->AttributeSetTypes.Add(FMaterialAttributeDefinitionMap::GetID(MP_Metallic));
+				Set->Inputs.AddDefaulted();
+				Make->ConnectExpression(&Set->Inputs[0], 0);
+				Metal->ConnectExpression(&Set->Inputs[1], 0);
+				Set->ConnectExpression(Break->GetInput(0), 0);
+				const int32 BaseColorOutput = Break->GetOutputs().IndexOfByPredicate([](const FExpressionOutput& Output) { return Output.OutputName == TEXT("BaseColor"); });
+				const int32 MetallicOutput = Break->GetOutputs().IndexOfByPredicate([](const FExpressionOutput& Output) { return Output.OutputName == TEXT("Metallic"); });
+				M.ConnectToProperty(Break, BaseColorOutput, MP_BaseColor);
+				M.ConnectToProperty(Break, MetallicOutput, MP_Metallic);
+				return M.GetMaterial();
+			} });
+		Cases.Add({ TEXT("Composite"), TEXT("A constant through a composite (collapsed nodes) whose inside inverts it, into BaseColor: the composite and its pin bases are traced, the One Minus inside is captured"),
+			[](N2CTest::FTestMaterial& M) -> UObject*
+			{
+				UMaterialExpressionConstant3Vector* Colour = M.Add<UMaterialExpressionConstant3Vector>(nullptr, -600, 0);
+				UMaterialExpressionComposite* Composite = M.Add<UMaterialExpressionComposite>(nullptr, -400, 0);
+				UMaterialExpressionPinBase* Entry = M.Add<UMaterialExpressionPinBase>(nullptr, -300, 0);
+				UMaterialExpressionPinBase* Exit = M.Add<UMaterialExpressionPinBase>(nullptr, 100, 0);
+				UMaterialExpressionReroute* In = M.Add<UMaterialExpressionReroute>(nullptr, -300, 50);
+				UMaterialExpressionReroute* Out = M.Add<UMaterialExpressionReroute>(nullptr, 100, 50);
+				UMaterialExpressionOneMinus* Invert = M.Add<UMaterialExpressionOneMinus>(nullptr, -100, 0);
+				if (!Colour || !Composite || !Entry || !Exit || !In || !Out || !Invert)
+				{
+					return nullptr;
+				}
+				Colour->Constant = FLinearColor(0.2f, 0.4f, 0.6f);
+				// As the Material Editor's Collapse Nodes builds it (MaterialEditor.cpp): the entry pin base outputs into
+				// the composite, the exit pin base takes its inputs, each pin a reroute in the expression list
+				Composite->SubgraphName = TEXT("Invert");
+				Composite->InputExpressions = Entry;
+				Composite->OutputExpressions = Exit;
+				Entry->PinDirection = EGPD_Output;
+				Exit->PinDirection = EGPD_Input;
+				Entry->ReroutePins.Add(FCompositeReroute(TEXT("Colour"), In));
+				Exit->ReroutePins.Add(FCompositeReroute(TEXT("Inverted"), Out));
+				for (UMaterialExpression* Inside : TArray<UMaterialExpression*>{ Entry, Exit, In, Out, Invert })
+				{
+					Inside->SubgraphExpression = Composite;
+				}
+				M.Connect(Colour, 0, In, TEXT("Input"));
+				M.Connect(Entry, 0, Invert, TEXT("Input"));
+				M.Connect(Invert, 0, Out, TEXT("Input"));
+				M.ConnectToProperty(Composite, 0, MP_BaseColor);
+				return M.GetMaterial();
+			} });
+		Cases.Add({ TEXT("StaticSwitchValue"), TEXT("A Static Switch (not a parameter) with its Value input unwired and Default Value true: both branches kept and live, the default in properties"),
+			[](N2CTest::FTestMaterial& M) -> UObject*
+			{
+				UMaterialExpressionConstant* One = M.Add<UMaterialExpressionConstant>(nullptr, -400, -100);
+				UMaterialExpressionConstant* Zero = M.Add<UMaterialExpressionConstant>(nullptr, -400, 100);
+				UMaterialExpressionStaticSwitch* Switch = M.Add<UMaterialExpressionStaticSwitch>(nullptr, -200, 0);
+				if (!One || !Zero || !Switch)
+				{
+					return nullptr;
+				}
+				One->R = 1.0f;
+				Switch->DefaultValue = true;
+				M.Connect(One, 0, Switch, TEXT("A"));
+				M.Connect(Zero, 0, Switch, TEXT("B"));
+				M.ConnectToProperty(Switch, 0, MP_Roughness);
+				return M.GetMaterial();
+			} });
+		Cases.Add({ TEXT("EngineCameraDepthFade"), TEXT("The engine's /Engine/Functions CameraDepthFade function captured as the asset (the same asset on UE 5.6, 5.7 and 5.8)"),
+			[](N2CTest::FTestMaterial&) -> UObject* { return LoadEngineCameraDepthFade(); } });
+		Cases.Add({ TEXT("EngineFunctionCall_Depth0"), TEXT("A material calling the engine's CameraDepthFade at depth 0: described by name (decision 0009 item 4), DEPTH_LIMIT"),
+			[](N2CTest::FTestMaterial& M) -> UObject* { return BuildEngineFunctionCall(M); }, 0 });
+		Cases.Add({ TEXT("EngineFunctionCall_Depth1"), TEXT("The same call at depth 1: CameraDepthFade's graph is expanded after the material's"),
+			[](N2CTest::FTestMaterial& M) -> UObject* { return BuildEngineFunctionCall(M); }, 1 });
 	}
 
 END_DEFINE_SPEC(FN2CMaterialCaptureSpec)
@@ -575,33 +691,65 @@ void FN2CMaterialCaptureSpec::Define()
 			TestTrue(TEXT("N1 is the first expression's GUID"), First && Expressions.Num() > 0 && *First == Expressions[0]->MaterialExpressionGuid);
 		});
 
-		It(TEXT("refuses a material subclass, a material layer, a function instance and a material instance with UNSUPPORTED_ASSET_TYPE naming the class"), [this]()
+		// One refusal case per material asset class decision 0009 leaves out (card 0450): each is UNSUPPORTED_ASSET_TYPE
+		// naming its class, whichever entry point it reaches
+		const TPair<UClass*, const TCHAR*> RefusedClasses[] = {
+			{ UPreviewMaterial::StaticClass(), TEXT("PreviewMaterial") },
+			{ UMaterialFunctionMaterialLayer::StaticClass(), TEXT("MaterialFunctionMaterialLayer") },
+			{ UMaterialFunctionMaterialLayerBlend::StaticClass(), TEXT("MaterialFunctionMaterialLayerBlend") },
+			{ UMaterialFunctionInstance::StaticClass(), TEXT("MaterialFunctionInstance") },
+			{ UMaterialFunctionMaterialLayerInstance::StaticClass(), TEXT("MaterialFunctionMaterialLayerInstance") },
+			{ UMaterialFunctionMaterialLayerBlendInstance::StaticClass(), TEXT("MaterialFunctionMaterialLayerBlendInstance") },
+			{ UMaterialInstanceConstant::StaticClass(), TEXT("MaterialInstanceConstant") },
+		};
+		for (const TPair<UClass*, const TCHAR*>& Refused : RefusedClasses)
 		{
-			N2CTest::FTestMaterial Holder(TEXT("M_N2CTest_Refused"));
-			UPackage* Package = Holder.GetPackage();
-			if (!TestNotNull(TEXT("a package"), Package))
+			UClass* const Class = Refused.Key;
+			const FString ClassName = Refused.Value;
+			It(FString::Printf(TEXT("refuses a %s with UNSUPPORTED_ASSET_TYPE naming the class"), *ClassName), [this, Class, ClassName]()
+			{
+				N2CTest::FTestMaterial Holder(TEXT("M_N2CTest_Refused"));
+				if (!TestNotNull(TEXT("a package"), Holder.GetPackage()))
+				{
+					return;
+				}
+				UObject* Asset = NewObject<UObject>(Holder.GetPackage(), Class, FName(TEXT("Refused_") + ClassName));
+				const TValueOrError<FN2CCapture, FString> Capture = N2C::CaptureMaterialAsset(*Asset);
+				TestTrue(TEXT("UNSUPPORTED_ASSET_TYPE naming the class (got: ") + (Capture.HasError() ? Capture.GetError() : FString()) + TEXT(")"),
+					Capture.HasError() && Capture.GetError().StartsWith(TEXT("UNSUPPORTED_ASSET_TYPE: ")) && Capture.GetError().Contains(TEXT("is a ") + ClassName));
+				// The typed entry points check the exact class too
+				if (UMaterial* Material = Cast<UMaterial>(Asset))
+				{
+					TestTrue(TEXT("CaptureMaterial refuses it"), N2C::CaptureMaterial(*Material).HasError());
+				}
+				if (UMaterialFunction* Function = Cast<UMaterialFunction>(Asset))
+				{
+					TestTrue(TEXT("CaptureMaterialFunction refuses it"), N2C::CaptureMaterialFunction(*Function).HasError());
+				}
+			});
+		}
+
+		It(TEXT("describes a call to a material layer by name and never follows it, whatever the depth"), [this]()
+		{
+			N2CTest::FTestMaterial Material(TEXT("M_N2CTest_CallsLayer"));
+			UMaterialFunctionMaterialLayer* Layer = NewObject<UMaterialFunctionMaterialLayer>(Material.GetPackage(), TEXT("ML_N2CTest_Layer"));
+			UMaterialExpressionMaterialFunctionCall* Call = Material.Add<UMaterialExpressionMaterialFunctionCall>();
+			if (!NoFactoryErrors(Material) || !Layer || !Call)
 			{
 				return;
 			}
-			const TPair<UClass*, const TCHAR*> Refused[] = {
-				{ UPreviewMaterial::StaticClass(), TEXT("PreviewMaterial") },
-				{ UMaterialFunctionMaterialLayer::StaticClass(), TEXT("MaterialFunctionMaterialLayer") },
-				{ UMaterialFunctionMaterialLayerBlend::StaticClass(), TEXT("MaterialFunctionMaterialLayerBlend") },
-				{ UMaterialFunctionInstance::StaticClass(), TEXT("MaterialFunctionInstance") },
-				{ UMaterialInstanceConstant::StaticClass(), TEXT("MaterialInstanceConstant") },
-			};
-			for (const TPair<UClass*, const TCHAR*>& Each : Refused)
+			Call->MaterialFunction = Layer;
+			FN2CCaptureOptions Options;
+			Options.Depth = 5;
+			const TValueOrError<FN2CCapture, FString> Capture = N2C::CaptureMaterial(*Material.GetMaterial(), Options);
+			if (TestTrue(TEXT("captured"), Capture.HasValue()))
 			{
-				UObject* Asset = NewObject<UObject>(Package, Each.Key, FName(FString(TEXT("Refused_")) + Each.Value));
-				const TValueOrError<FN2CCapture, FString> Capture = N2C::CaptureMaterialAsset(*Asset);
-				TestTrue(FString::Printf(TEXT("%s: UNSUPPORTED_ASSET_TYPE naming the class"), Each.Value), Capture.HasError()
-					&& Capture.GetError().StartsWith(TEXT("UNSUPPORTED_ASSET_TYPE: ")) && Capture.GetError().Contains(FString(TEXT("is a ")) + Each.Value));
+				const FN2CBlueprint& Document = Capture.GetValue().Blueprint;
+				TestEqual(TEXT("only the material's graph"), Document.Graphs.Num(), 1);
+				const FN2CNodeDefinition* CallNode = Document.Graphs.Num() > 0 ? Document.Graphs[0].Nodes.FindByPredicate(
+					[](const FN2CNodeDefinition& Node) { return Node.NodeType == EN2CNodeType::MaterialFunctionCall; }) : nullptr;
+				TestTrue(TEXT("the call names the layer"), CallNode && CallNode->MemberName == TEXT("ML_N2CTest_Layer"));
 			}
-			// The typed entry points check the exact class too
-			UMaterial* Preview = NewObject<UPreviewMaterial>(Package, TEXT("PreviewByType"));
-			TestTrue(TEXT("CaptureMaterial refuses a UPreviewMaterial"), N2C::CaptureMaterial(*Preview).HasError());
-			UMaterialFunction* Layer = NewObject<UMaterialFunctionMaterialLayer>(Package, TEXT("LayerByType"));
-			TestTrue(TEXT("CaptureMaterialFunction refuses a material layer"), N2C::CaptureMaterialFunction(*Layer).HasError());
 		});
 	});
 

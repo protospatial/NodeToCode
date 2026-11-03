@@ -50,7 +50,7 @@ namespace N2CMcpEpicOverlapSpec
 		TEXT("create-local-variable"), TEXT("search-variable-types"), TEXT("set-local-function-variable-default-value"),
 		TEXT("tag-blueprint-graph"), TEXT("list-blueprint-tags"), TEXT("remove-tag-from-graph"), TEXT("read-file"), TEXT("read-path"),
 		TEXT("translate-focused-blueprint"), TEXT("translate-batch"), TEXT("get-available-llm-providers"),
-		TEXT("get-available-translation-targets"), TEXT("get-translation-output-directory"), TEXT("list-python-scripts") };
+		TEXT("get-available-translation-targets"), TEXT("get-translation-output-directory") };
 
 	/** The toolsets whose every tool overlaps: list_toolsets drops them when the overlapping tools are left out */
 	const TArray<FString> WhollyOverlapping = {
@@ -293,6 +293,12 @@ void FN2CMcpEpicOverlapSpec::Define()
 			Configure(Manager, true, EN2CMcpToolExposure::ToolSearch);
 			TArray<FString> Expected = FN2CMcpToolConfig::ToolsetsForProfile(EN2CMcpToolProfile::DefaultToolsets, {});
 			Expected.RemoveAll([](const FString& Name) { return WhollyOverlapping.Contains(Name); });
+			// PythonTools holds run-python alone since card 0305: with Allow MCP Python Execution off it serves nothing
+			// and list_toolsets leaves it out
+			if (!UN2CUserSettings::IsMcpPythonExecutionAllowed())
+			{
+				Expected.Remove(N2CMcpToolsets::Python.Name);
+			}
 			ExpectNames(TEXT("list_toolsets"), ListedToolsets(Manager), Expected);
 
 			const TValueOrError<FString, FString> Described = Manager.DescribeToolset(TEXT("ContentBrowserTools"));

@@ -177,8 +177,7 @@ void FN2CPlaySessionGuardSpec::Define()
 			// Not read-only, but they leave Blueprints, assets and levels alone
 			const TSet<FString> MustAllow = {
 				TEXT("translate-batch"), TEXT("translate-focused-blueprint"), TEXT("open-blueprint-asset"),
-				TEXT("open-blueprint-function"), TEXT("open-content-browser-path"), TEXT("save-python-script"),
-				TEXT("delete-python-script"), TEXT("run-python"), TEXT("create-migration-plan") };
+				TEXT("open-blueprint-function"), TEXT("open-content-browser-path"), TEXT("run-python"), TEXT("create-migration-plan") };
 
 			TSet<FString> Seen;
 			for (const TSharedPtr<IN2CMcpTool>& Tool : FN2CMcpToolRegistry::Get().GetTools())

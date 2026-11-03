@@ -9,7 +9,7 @@ Three headless -N2CMcp editor sessions on the host:
   committed  the user's Saved/Config layer has no bAllowMcpPythonExecution, and the project's
              Config/DefaultEditorPerProjectUserSettings.ini (the file a teammate could commit) sets
              bAllowMcpPythonExecution=True and bEnableMcpServer=False. Expected: the server still starts,
-             tools/list has none of run-python, save-python-script, delete-python-script, and the log warns once
+             tools/list has no run-python, and the log warns once
              for each ignored value. Before the fix this listed the three tools (card 0090's live finding).
   user       the user's Saved/Config layer sets bAllowMcpPythonExecution=True, no project value. Expected: the three
              tools are listed.
@@ -28,7 +28,7 @@ from editor_session import EditorSession, free_port  # noqa: E402
 from e05_regressions import rpc  # noqa: E402
 
 SECTION = '[/Script/NodeToCode.N2CUserSettings]'
-PYTHON_TOOLS = ('run-python', 'save-python-script', 'delete-python-script')
+PYTHON_TOOLS = ('run-python',)  # save- and delete-python-script were retired by card 0305
 WARN_PYTHON = 'Ignored bAllowMcpPythonExecution=True from a project-shared config layer'
 WARN_SERVER = 'Ignored bEnableMcpServer=False from a project-shared config layer'
 
