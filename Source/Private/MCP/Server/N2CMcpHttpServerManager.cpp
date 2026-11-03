@@ -1,6 +1,9 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
 #include "MCP/Server/N2CMcpHttpServerManager.h"
+#include "Framework/Application/SlateApplication.h"
+#include "Misc/ScopeExit.h"
+#include "Templates/UnrealTemplate.h"
 #include "MCP/Resources/Implementations/N2CMcpPythonStubResource.h"
 #include "MCP/Server/N2CMcpProtocol.h"
 #include "MCP/Server/N2CMcpAuthToken.h"
@@ -365,6 +368,12 @@ bool FN2CMcpHttpServerManager::StartServer(int32 Port, int32 PortRange)
 
 	bIsServerRunning = true;
 
+	// Keep answering while a modal dialog pauses the core ticker (card 0209)
+	if (FSlateApplication::IsInitialized() && !ModalLoopTickHandle.IsValid())
+	{
+		ModalLoopTickHandle = FSlateApplication::Get().GetOnModalLoopTickEvent().AddRaw(this, &FN2CMcpHttpServerManager::TickDuringModalLoop);
+	}
+
 	FN2CLogger::Get().Log(FString::Printf(TEXT("MCP HTTP server started on port %d (HTTPServer listener; loopback unless [HTTPServer.Listeners] overrides it)"), ServerPort), EN2CLogSeverity::Info);
 	FN2CLogger::Get().Log(FString::Printf(TEXT("MCP endpoint available at: http://localhost:%d/mcp"), ServerPort), EN2CLogSeverity::Info);
 	FN2CLogger::Get().Log(FString::Printf(TEXT("Health check available at: http://localhost:%d/mcp/health"), ServerPort), EN2CLogSeverity::Info);
@@ -404,6 +413,15 @@ void FN2CMcpHttpServerManager::StopServer()
 
 	// 2026-07-28 subscriptions/listen streams end gracefully (their completion result), so clients know to reconnect
 	Protocol->CloseSubscriptions();
+
+	if (ModalLoopTickHandle.IsValid())
+	{
+		if (FSlateApplication::IsInitialized())
+		{
+			FSlateApplication::Get().GetOnModalLoopTickEvent().Remove(ModalLoopTickHandle);
+		}
+		ModalLoopTickHandle.Reset();
+	}
 
 	// Only this server's routes: HTTPServer's listeners are shared with other plugins (Remote Control, Unreal MCP)
 	UnbindRoutes();
@@ -795,8 +813,29 @@ FN2CMcpHttpServerManager::FN2CMcpHttpServerManager()
 
 FN2CMcpHttpServerManager::~FN2CMcpHttpServerManager() = default;
 
+void FN2CMcpHttpServerManager::TickDuringModalLoop(float DeltaTime)
+{
+	// Not while one of this server's handlers is on the stack (it opened the dialog: HTTPServer is mid-tick), and once
+	if (!bIsServerRunning || !HttpServerModule || HandlerDepth > 0 || bTickingDuringModal)
+	{
+		return;
+	}
+	TGuardValue<bool> Guard(bTickingDuringModal, true);
+	++ModalTickCount;
+	static_cast<FTSTickerObjectBase*>(HttpServerModule)->Tick(DeltaTime);
+	ModalStreamSeconds += DeltaTime;
+	if (ModalStreamSeconds >= FN2CMcpProtocol::StreamKeepAliveSeconds)
+	{
+		ModalStreamSeconds = 0.f;
+		Protocol->TickStreamsNow();
+	}
+}
+
 bool FN2CMcpHttpServerManager::HandleMcpRequest(const FHttpServerRequest& Request, const FHttpResultCallback& OnComplete)
 {
+	++HandlerDepth;
+	ON_SCOPE_EXIT { --HandlerDepth; };
+
 	// Body size cap (card 0425). HTTPServer gives a handler no chance to look at Content-Length before the body is
 	// read: it buffers the whole body (any Content-Length up to INT32_MAX) into Request.Body, 64 KB per tick, and only
 	// then routes the request. So the cap applies here, before the body is copied into Inbound, converted or parsed.
@@ -842,6 +881,9 @@ bool FN2CMcpHttpServerManager::CanStreamToolProgress()
 
 bool FN2CMcpHttpServerManager::HandleHealthRequest(const FHttpServerRequest& Request, const FHttpResultCallback& OnComplete)
 {
+	++HandlerDepth;
+	ON_SCOPE_EXIT { --HandlerDepth; };
+
 	// Create simple health check response
 	FString HealthResponse = TEXT("{\"status\":\"ok\",\"service\":\"NodeToCode MCP Server\"}");
 	

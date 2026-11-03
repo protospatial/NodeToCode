@@ -87,6 +87,13 @@ During Play In Editor or Simulate, the 33 tools that edit, tag, compile or save 
 module, or create, copy, move or rename an asset or folder answer `PIE_ACTIVE` until the session ends; every tool
 stays listed. Reading, translation, migration plans, opening editors and `run-python` keep working.
 
+## While a dialog is open
+
+While the editor shows a modal dialog (a save prompt, a message box, the Plugins restart prompt), NodeToCode still
+answers: connecting, listing tools and the health check work, and so do `read-file` and `read-path`. Every other tool
+answers at once with `MODAL_DIALOG_OPEN` instead of running inside the dialog. Close the dialog and retry. A request
+sent while the editor is still starting, or while a long editor task holds it, waits until the editor is free.
+
 ## Reading tool results
 
 Every result has the JSON as text. These tools also declare an `outputSchema` in `tools/list` and return the same

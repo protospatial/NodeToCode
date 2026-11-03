@@ -248,6 +248,22 @@ basic/versioning page), in `Source/Private/MCP/Server/N2CMcpProtocolModern.cpp`.
     argument are **-32602**; an unknown resource uri is **-32002** "Resource not found" with `data.uri`; a resource or
     prompt handler that timed out on the game thread is **-32603**. **-32601** is only for an unknown method. The
     managers report these through `FMcpResourceContents::ErrorCode` and `FMcpPromptResult::ErrorCode`.
+*   **Modal dialogs** (card 0209): HTTPServer ticks on the core ticker, which a modal dialog's loop
+    (`FSlateApplication::AddModalWindow`) does not run, so before 0209 nothing was answered while a dialog was open.
+    `FN2CMcpHttpServerManager::TickDuringModalLoop` (subscribed to `GetOnModalLoopTickEvent` while the server runs)
+    ticks HTTPServer from that loop, and the protocol's stream beat every `StreamKeepAliveSeconds`. It does nothing
+    while one of this server's handlers is on the stack (a tool that opened the dialog: HTTPServer is mid-tick), so
+    this server never ticks HTTPServer from inside its own tick. While a modal is open
+    (`FN2CMcpProtocol::IsModalDialogOpen`), requests that need the editor (`NeedsEditor`: `tools/call` of any tool but
+    `read-file`, `read-path`, `list_toolsets` and `describe_toolset`; `resources/read`; `prompts/get`) answer at once:
+    a tool call with an isError result `MODAL_DIALOG_OPEN: ...` (`_meta` error code `MODAL_DIALOG_OPEN`), the other
+    two with JSON-RPC **-32603** and that message; no long-running call starts. `initialize`, `ping`, the lists,
+    `completion/complete`, `server/discover`, notifications, DELETE and `/mcp/health` are served as usual.
+    Limits (decision 0013 keeps the engine HTTPServer, so requests still run on the game thread): nothing is answered
+    while the game thread itself is blocked (editor startup, a slow task, a long tool), and a modal opened by another
+    plugin's HTTP route handler on the same listener would make the modal tick re-enter HTTPServer (not guarded; no
+    such handler is known). The game-thread execution policy for tools (`ExecuteOnGameThread`, `RequiresGameThread`)
+    is card 0340's.
 *   **Cancellation** (basic/utilities/cancellation): `notifications/cancelled {requestId, reason?}` cancels the
     running long-running call with that JSON-RPC id (string and number ids are distinct) in the same session, through
     its call context (`FN2CToolAsyncTaskManager::CancelTaskByRequestId`). No response is sent for that request,
