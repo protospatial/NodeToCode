@@ -100,6 +100,10 @@ struct FN2CMaterialMetadata
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
     bool bTwoSided = false;
+
+    /** The project renders materials with Substrate (r.Substrate; card 0451). Written as "substrate", only when true */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Node to Code")
+    bool bSubstrate = false;
 };
 
 /**

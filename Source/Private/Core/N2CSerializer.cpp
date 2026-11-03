@@ -487,6 +487,10 @@ TSharedPtr<FJsonObject> FN2CSerializer::BlueprintToJsonObject(const FN2CBlueprin
         {
             MaterialObject->SetBoolField(N2CJsonContract::MaterialTwoSidedField, true);
         }
+        if (Material.bSubstrate)
+        {
+            MaterialObject->SetBoolField(N2CJsonContract::MaterialSubstrateField, true);
+        }
         MetadataObject->SetObjectField(N2CJsonContract::MaterialMetadataField, MaterialObject);
     }
     WriteUnknownFields(MetadataObject, Blueprint.Metadata.UnknownFields);
@@ -1043,6 +1047,7 @@ bool FN2CSerializer::ParseBlueprintFromJson(const TSharedPtr<FJsonObject>& JsonO
         (*MaterialObject)->TryGetStringField(N2CJsonContract::MaterialBlendModeField, Material.BlendMode);
         (*MaterialObject)->TryGetStringArrayField(N2CJsonContract::MaterialShadingModelsField, Material.ShadingModels);
         (*MaterialObject)->TryGetBoolField(N2CJsonContract::MaterialTwoSidedField, Material.bTwoSided);
+        (*MaterialObject)->TryGetBoolField(N2CJsonContract::MaterialSubstrateField, Material.bSubstrate);
     }
     KeepUnknownFields(*MetadataObject, MetadataFields, OutBlueprint.Metadata.UnknownFields, MetadataPath, Warnings);
 

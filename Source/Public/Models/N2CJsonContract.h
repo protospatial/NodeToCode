@@ -192,6 +192,8 @@ namespace N2CJsonContract
 	inline constexpr const TCHAR* MaterialBlendModeField = TEXT("blend_mode");
 	inline constexpr const TCHAR* MaterialShadingModelsField = TEXT("shading_models");
 	inline constexpr const TCHAR* MaterialTwoSidedField = TEXT("two_sided");
+	/** true when the project renders materials with Substrate (r.Substrate), written only then (card 0451) */
+	inline constexpr const TCHAR* MaterialSubstrateField = TEXT("substrate");
 
 	/**
 	 * The agent document (card 0505): get-focused-blueprint, get-blueprint-n2cjson and Python get_blueprint_n2c_json
@@ -350,6 +352,17 @@ namespace N2CJsonContract
 		inline constexpr const TCHAR* DuplicateExpressionGuid = TEXT("DUPLICATE_EXPRESSION_GUID");
 		/** A material input wired to an expression that is not in the material or function (card 0449); no flow is recorded */
 		inline constexpr const TCHAR* DanglingInput = TEXT("DANGLING_INPUT");
+		/**
+		 * A material expression input that is not a property capture knows (card 0451, the reflection fallback): the
+		 * class supplies it some other way, so it is named Input<i> by its index and the document stays usable
+		 */
+		inline constexpr const TCHAR* UnmappedPin = TEXT("UNMAPPED_PIN");
+		/**
+		 * A material expression NodeToCode does not read (card 0451): deprecated, or part of the material layer system
+		 * (decision 0009 refuses layers). It is kept as a node with its class and pins; its settings are not read and the
+		 * assets it references are not followed
+		 */
+		inline constexpr const TCHAR* UnsupportedExpression = TEXT("UNSUPPORTED_EXPRESSION");
 	}
 
 	/** True when FromJson reads this version (majors OldestReadableMajor..Major) */

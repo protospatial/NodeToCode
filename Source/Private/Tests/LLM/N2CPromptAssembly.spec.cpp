@@ -305,6 +305,7 @@ void FN2CPromptAssemblySpec::Define()
 			Material.Metadata.Material.BlendMode = TEXT("Opaque");
 			Material.Metadata.Material.ShadingModels = { TEXT("DefaultLit") };
 			Material.Metadata.Material.bTwoSided = true;
+			Material.Metadata.Material.bSubstrate = true;
 			const TSharedPtr<FJsonObject> MaterialDocument = ToJsonObject(Material);
 			if (TestTrue(TEXT("the material document serialized"), MaterialDocument.IsValid()))
 			{
