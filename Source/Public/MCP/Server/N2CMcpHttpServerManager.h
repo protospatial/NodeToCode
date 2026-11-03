@@ -123,6 +123,21 @@ public:
 	/** True on engines whose HTTPServer can stream a response (UE 5.8 and later); see the .cpp for 5.6 and 5.7 */
 	static bool CanStreamToolProgress();
 
+	/**
+	 * FSlateApplication's modal loop tick (card 0209). The engine pauses the core ticker, and with it HTTPServer, while a
+	 * modal dialog is open; this ticks HTTPServer (and the protocol's stream beat every StreamKeepAliveSeconds) from the
+	 * dialog's loop instead, so /mcp and /mcp/health keep answering and editor requests get MODAL_DIALOG_OPEN
+	 * (FN2CMcpProtocol::NeedsEditor). It does nothing while one of this server's handlers is on the stack (a tool that
+	 * opened the dialog), so HTTPServer is never ticked from inside its own tick by this server. Public for specs.
+	 */
+	void TickDuringModalLoop(float DeltaTime);
+
+	/** How many /mcp and /mcp/health handlers are on the stack (0 outside them) */
+	int32 GetHandlerDepth() const { return HandlerDepth; }
+
+	/** How many times TickDuringModalLoop has ticked HTTPServer (specs) */
+	int32 GetModalTickCount() const { return ModalTickCount; }
+
 private:
 	// Private constructor for singleton
 	FN2CMcpHttpServerManager();
@@ -223,4 +238,11 @@ private:
 
 	/** The protocol core every /mcp request goes to (sessions, dispatch, long-running calls) */
 	TSharedPtr<FN2CMcpProtocol> Protocol;
+
+	/** Modal loop ticking (card 0209): the subscription, the handlers on the stack, a re-entry guard, the beat */
+	FDelegateHandle ModalLoopTickHandle;
+	int32 HandlerDepth = 0;
+	bool bTickingDuringModal = false;
+	float ModalStreamSeconds = 0.f;
+	int32 ModalTickCount = 0;
 };

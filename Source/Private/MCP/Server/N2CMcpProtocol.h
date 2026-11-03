@@ -263,6 +263,29 @@ public:
 	/** Specs: runs the stream keep-alive and closed-client check now instead of on the next ticker beat */
 	void TickStreamsForTesting() { TickStreams(0.f); }
 
+	/** The stream beat, run by the transport while the core ticker is paused (a modal dialog's loop, card 0209) */
+	void TickStreamsNow() { TickStreams(0.f); }
+
+	/**
+	 * Whether a modal dialog is open in the editor (FSlateApplication's active modal window), card 0209. While it is,
+	 * the transport keeps answering from the modal loop, and requests that need the editor answer at once with
+	 * MODAL_DIALOG_OPEN instead of running inside the dialog (ModalBusyMessage).
+	 */
+	static bool IsModalDialogOpen();
+
+	/** Specs: makes IsModalDialogOpen answer Value (unset: the real check) */
+	static void SetModalDialogOpenForTests(TOptional<bool> Value);
+
+	/** "MODAL_DIALOG_OPEN: ..." */
+	static FString ModalBusyMessage();
+
+	/**
+	 * Whether a request needs the editor, and so is refused while a modal dialog is open: tools/call of any tool but
+	 * the editor-free ones (read-file, read-path, list_toolsets, describe_toolset), resources/read and prompts/get.
+	 * initialize, ping, the lists, completion, server/discover, notifications and DELETE never are.
+	 */
+	static bool NeedsEditor(const FString& Method, const TSharedPtr<FJsonValue>& Params);
+
 	/**
 	 * Seconds between keep-alive comments on every long-running call's stream and every subscriptions/listen stream
 	 * (also how soon a closed stream is noticed); well under UE 5.8 MCPClientToolset's 30 s activity timeout (card 0437)

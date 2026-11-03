@@ -170,4 +170,5 @@ NodeToCode when this page was written.
 | `Session not found` (404) after the editor restarted | A restarted editor forgets its sessions: reconnect the client (Claude Code: `/mcp`, **Reconnect**) |
 | Fewer tools than expected | See [Choosing a Tool Mode](Choosing-a-Tool-Mode); a tool mode change needs an editor restart and a reconnect |
 | A tool answers `PIE_ACTIVE` | Stop Play In Editor; editing tools wait until it ends |
+| A tool answers `MODAL_DIALOG_OPEN` | The editor shows a modal dialog: close it and retry ([While a dialog is open](Choosing-a-Tool-Mode#while-a-dialog-is-open)) |
 | You need to see what the client sent | The Output Log (`LogNodeToCode`) has one `MCP request:` line per request with its method, tool, status, `isError` and duration; see [Logging Configuration](Logging-Configuration#mcp-requests-in-the-log) |
