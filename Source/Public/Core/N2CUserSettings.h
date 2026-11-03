@@ -108,6 +108,9 @@ public:
 
 #if WITH_EDITOR
 	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
+
+	/** The text under the section's title in Editor Preferences (card 0487: not this class's doc comment) */
+	virtual FText GetSectionDescription() const override;
 #endif
 
 	/**
@@ -157,7 +160,8 @@ public:
 	FDirectoryPath CustomTranslationOutputDirectory;
 
 	/** Color palette of every NodeToCode window and widget. Widgets read it through N2C::UI::Colors(). */
-	UPROPERTY(Config, EditAnywhere, Category = "Theming", meta = (DisplayName = "UI Colors"))
+	UPROPERTY(Config, EditAnywhere, Category = "Theming", meta = (DisplayName = "UI Colors",
+		ToolTip = "The colors of the Node to Code window and of the N2C bar on each graph. A change shows at once. Yours only: saved in your user settings."))
 	FN2CUIColors UIColors;
 
 	/** The per-user fields that settings version 5 moved here from UN2CSettings (same key names in both sections) */
@@ -211,7 +215,8 @@ public:
 
 	/** Start the MCP server when the editor starts. Requires an editor restart. Read through IsMcpServerEnabled(). */
 	UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "MCP Server",
-		meta = (DisplayName = "Enable MCP Server", ConfigRestartRequired = true))
+		meta = (DisplayName = "Enable MCP Server", ConfigRestartRequired = true,
+			ToolTip = "Start the MCP server when the editor starts, so MCP clients (Claude Code, Cursor, VS Code) can reach this editor. Only your own setting counts: a value in the project's Config folder is ignored. Requires an editor restart."))
 	bool bEnableMcpServer = bDefaultEnableMcpServer;
 
 	/**
