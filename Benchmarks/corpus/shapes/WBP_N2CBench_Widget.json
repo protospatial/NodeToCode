@@ -1,0 +1,26 @@
+{
+  "asset_class": "WidgetBlueprint",
+  "calls":
+  {
+    "EventGraph": [
+      "KismetSystemLibrary.PrintString"
+    ]
+  },
+  "components": [],
+  "cpp_class": "UWBP_N2CBench_Widget",
+  "cpp_parent": "UUserWidget",
+  "dispatchers": [],
+  "events": [
+    {
+      "kind": "custom",
+      "name": "ShowScore"
+    }
+  ],
+  "functions": [],
+  "interfaces": [],
+  "macros": [],
+  "name": "WBP_N2CBench_Widget",
+  "parent": "UserWidget",
+  "properties": [],
+  "timelines": []
+}

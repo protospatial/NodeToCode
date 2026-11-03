@@ -1,0 +1,53 @@
+{
+  "asset_class": "Blueprint",
+  "calls":
+  {
+  },
+  "components": [],
+  "cpp_class": "ABP_N2CBench_Struct",
+  "cpp_parent": "AActor",
+  "dispatchers": [],
+  "events": [],
+  "functions": [
+    {
+      "inputs": [
+        {
+          "name": "Count",
+          "type": "Integer"
+        }
+      ],
+      "name": "MakeStats",
+      "outputs": [
+        {
+          "name": "Stats",
+          "sub_type": "S_N2CBench_Stats",
+          "type": "Struct"
+        }
+      ],
+      "pure": false
+    },
+    {
+      "inputs": [
+        {
+          "name": "Stats",
+          "sub_type": "S_N2CBench_Stats",
+          "type": "Struct"
+        }
+      ],
+      "name": "ReadStats",
+      "outputs": [
+        {
+          "name": "Alive",
+          "type": "Boolean"
+        }
+      ],
+      "pure": false
+    }
+  ],
+  "interfaces": [],
+  "macros": [],
+  "name": "BP_N2CBench_Struct",
+  "parent": "Actor",
+  "properties": [],
+  "timelines": []
+}

@@ -18,7 +18,7 @@ Source/Private/Tests/
                                   UnrealEd APIs only) for the material capture specs (epic 0442)
   N2CToolSpecHarness.h/.cpp       the MCP tool spec harness: scratch Blueprints, tool calls, results, graph invariants
   N2CTestContentFolder.h  N2CTest::DeleteContentFolder: removes a saved /Game/__N2CTest... scratch folder completely
-  Capture/  Core/  LLM/  MCP/  Material/  specs by area: <Area>/N2C<Thing>.spec.cpp
+  Benchmark/  Capture/  Core/  LLM/  MCP/  Material/  specs by area: <Area>/N2C<Thing>.spec.cpp
   N2C*Tests.cpp           older IMPLEMENT_SIMPLE_AUTOMATION_TEST regression tests (NodeToCode.Robustness.*,
                           NodeToCode.Security.PathUtils.*, NodeToCode.MCP.Transport.*); kept as they are
   Fixtures/<Area>/        checked-in inputs a spec reads (N2CTest::FixturesDir(Area))
@@ -550,6 +550,28 @@ by a balanced Add tree (2,000 live expressions) into a call of `MF_N2CBudget_Out
 (which also builds the editor graph), takes more than 2 s. Each run logs `N2C_MATERIAL_BUDGET engine=... nodes=...
 first_capture_ms=... capture_ms=... json_bytes=... tokens=...`. The document is far over get-material-n2cjson's
 inline limit, and the second test checks that the tool writes it to a file on its own (`"reason": "size"`).
+
+## Benchmark corpus
+
+`NodeToCode.Benchmark.Corpus` (`Benchmark/N2CBenchmarkCorpus.spec.cpp`, card 0364) checks the benchmark corpus. This is
+22 small Blueprints in `Tests/NodeToCodeTestContent/Content/Benchmark`, plus the enum, struct and interface they use.
+Each covers one shape: components with BeginPlay and Tick, functions with parameters, a pure function, local
+variables, ForEachLoop and WhileLoop, Branch and Switch on an enum, Delay, a timeline, an event dispatcher, an
+interface, a cast, Make and Break of a user struct, a macro, a collapsed graph, Enhanced Input, a Widget Blueprint, a
+component Blueprint and a child Blueprint.
+
+For each Blueprint the spec checks three things:
+- it loads and captures to N2C JSON with no error;
+- it has the shape recorded in `Benchmarks/corpus/shapes/<name>.json`: the C++ class and parent, interfaces,
+  components, members, functions and their parameters, events, dispatchers, and what each graph calls;
+- `Benchmarks/corpus/manifest.json` lists it, and card 0359's perf fixtures, with the graphs the assets have.
+
+`Tests/python/test_benchmark_corpus.py` validates the manifest against `Benchmarks/corpus/manifest.schema.json`. Lyra
+and Cropout are listed as external samples only: they are not installed here, and their content is never committed.
+
+The corpus is generated in C++ (`Benchmark/N2CBenchmarkCorpus.cpp`), which also writes the shapes and the manifest.
+Regenerate on UE 5.6 only: `$env:N2C_GENERATE_BENCHMARK_CORPUS = '1'; .uild.ps1 -UEVersion 5.6 -Test -TestFilter
+NodeToCode.Benchmark`. Then remove the variable and commit the `.uasset` files, the shapes and the manifest.
 
 ## Dependency fixtures
 

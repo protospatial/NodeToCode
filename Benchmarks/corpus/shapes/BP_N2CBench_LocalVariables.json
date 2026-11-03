@@ -1,0 +1,33 @@
+{
+  "asset_class": "Blueprint",
+  "calls":
+  {
+    "CountUp": [
+      "KismetMathLibrary.Add_IntInt"
+    ]
+  },
+  "components": [],
+  "cpp_class": "ABP_N2CBench_LocalVariables",
+  "cpp_parent": "AActor",
+  "dispatchers": [],
+  "events": [],
+  "functions": [
+    {
+      "inputs": [],
+      "name": "CountUp",
+      "outputs": [
+        {
+          "name": "Total",
+          "type": "Integer"
+        }
+      ],
+      "pure": false
+    }
+  ],
+  "interfaces": [],
+  "macros": [],
+  "name": "BP_N2CBench_LocalVariables",
+  "parent": "Actor",
+  "properties": [],
+  "timelines": []
+}
