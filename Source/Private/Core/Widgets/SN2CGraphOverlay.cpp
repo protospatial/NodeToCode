@@ -6,6 +6,7 @@
 #include "Core/Widgets/SN2CIconButton.h"
 #include "Core/Style/N2CDesignTokens.h"
 #include "Core/N2CEditorIntegration.h"
+#include "Subsystems/N2CTranslationSubsystem.h"
 #include "Core/N2CEditorWindow.h"
 #include "Core/N2CGraphStateManager.h"
 #include "Core/N2CGraphStateManager.h"
@@ -72,12 +73,12 @@ void SN2CGraphOverlay::Construct(const FArguments& InArgs)
 	OnTagRemovedHandle = UN2CGraphStateManager::Get().OnGraphTagRemoved.AddRaw(this, &SN2CGraphOverlay::OnTagRemoved);
 	OnTagsReloadedHandle = UN2CGraphStateManager::Get().OnGraphStatesReloaded.AddRaw(this, &SN2CGraphOverlay::RefreshTagCount);
 
-	// Subscribe to global translation state changes
-	OnTranslationStateChangedHandle = FN2CEditorIntegration::Get().OnTranslationStateChanged.AddRaw(
-		this, &SN2CGraphOverlay::OnGlobalTranslationStateChanged);
-
-	// Initialize local state from global state
-	bIsTranslating = FN2CEditorIntegration::Get().IsAnyTranslationInProgress();
+	// Every bar greys out its Translate while any translation runs (a session or a batch, card 0254)
+	if (UN2CTranslationSubsystem* Translations = UN2CTranslationSubsystem::Get())
+	{
+		OnTranslationStateChangedHandle = Translations->OnBusyChanged.AddRaw(this, &SN2CGraphOverlay::OnGlobalTranslationStateChanged);
+		bIsTranslating = Translations->IsBusy();
+	}
 
 	ChildSlot
 	[
@@ -337,10 +338,13 @@ SN2CGraphOverlay::~SN2CGraphOverlay()
 		TagStore->OnGraphTagRemoved.Remove(OnTagRemovedHandle);
 		TagStore->OnGraphStatesReloaded.Remove(OnTagsReloadedHandle);
 	}
-	// Unsubscribe from global translation state
+	// Unsubscribe from the translation state (the subsystem is gone when the editor exits)
 	if (OnTranslationStateChangedHandle.IsValid())
 	{
-		FN2CEditorIntegration::Get().OnTranslationStateChanged.Remove(OnTranslationStateChangedHandle);
+		if (UN2CTranslationSubsystem* Translations = UN2CTranslationSubsystem::Get())
+		{
+			Translations->OnBusyChanged.Remove(OnTranslationStateChangedHandle);
+		}
 	}
 	// Unsubscribe from token estimation service
 	if (OnModelChangedHandle.IsValid())
@@ -420,8 +424,8 @@ FReply SN2CGraphOverlay::OnCopyJsonClicked()
 
 FReply SN2CGraphOverlay::OnTranslateClicked()
 {
-	// Check global translation state
-	if (FN2CEditorIntegration::Get().IsAnyTranslationInProgress())
+	UN2CTranslationSubsystem* Translations = UN2CTranslationSubsystem::Get();
+	if (!Translations || Translations->IsBusy())
 	{
 		FN2CLogger::Get().Log(TEXT("Translation already in progress globally"),
 			EN2CLogSeverity::Warning, TEXT("SN2CGraphOverlay"));
@@ -440,9 +444,14 @@ FReply SN2CGraphOverlay::OnTranslateClicked()
 		return FReply::Handled();
 	}
 
-	// Request translation through the central system
-	// This broadcasts to the main window which will show the progress modal
-	FN2CEditorIntegration::Get().RequestOverlayTranslation(GraphGuid, GraphName, GetBlueprintPath());
+	// One session for this click, whether or not a Node to Code window is open (card 0254): an open window shows its
+	// progress and result, otherwise a notification does
+	FN2CTranslationRequest Request;
+	Request.BlueprintPath = GetBlueprintPath();
+	Request.GraphGuid = GraphGuid.ToString(EGuidFormats::DigitsWithHyphens);
+	Request.GraphName = GraphName;
+	Request.Source = EN2CTranslationSource::Overlay;
+	Translations->StartTranslation(Request);
 
 	return FReply::Handled();
 }

@@ -274,7 +274,7 @@ card 0305).
   - Checked graphs stay checked when the same view is refreshed.
   - The header names the view, and an empty list says why.
 - `NodeToCode.UI.TranslationViewerJson` (`Core/N2CTranslationViewerJson.spec.cpp`, card 0501) saves a single
-  translation with the real writer (`SN2CMainWindow::SaveSingleTranslation`, through `FN2CTranslationArchive`)
+  translation with the real writer (`UN2CTranslationSubsystem::SaveSingleTranslation`, through `FN2CTranslationArchive`)
   into a scratch output folder on an isolated graph state manager. `LoadN2CJson` returns the `N2C_BP_<run>.json`
   capture from the run folder, one folder above the recorded entry folder, also when the LLM renamed the graph.
 - `NodeToCode.Translation.Archive` (`LLM/N2CTranslationArchive.spec.cpp`, card 0252) writes a response with root,
