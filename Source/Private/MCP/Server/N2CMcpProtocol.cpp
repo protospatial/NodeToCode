@@ -532,12 +532,15 @@ void FN2CMcpProtocol::HandleLongRunningToolCall(const FN2CMcpInbound& Inbound, c
 
 	const FString ResponseSessionId = SessionId;
 
-	// Stream when the transport can stream, the client can read a stream (Accept lists text/event-stream) and wants
-	// progress (sent a token); otherwise answer with one JSON reply when the call finishes. A 2026-07-28 call streams
-	// whenever it can, token or not: closing that stream is how its client cancels it (basic/patterns/cancellation).
-	const bool bStream = Responder->CanStream() && Inbound.AcceptsEventStream() && (ClientProgressToken.IsValid() || bModern);
+	// Stream when the transport can stream (UE 5.8, decision 0013) and the client can read a stream (Accept lists
+	// text/event-stream); otherwise answer with one JSON reply when the call finishes. A call without a progressToken
+	// streams too (card 0437): no progress is sent, but the keep-alive comments below keep bytes flowing, so a client
+	// with an HTTP activity timeout (UE 5.8's MCPClientToolset: [HTTP] HttpActivityTimeout, 30 s, and no token) does
+	// not give up on a long translation, and a client that closes the stream cancels the call. For a 2026-07-28 client,
+	// closing the stream is also how it cancels (basic/patterns/cancellation).
+	const bool bStream = Responder->CanStream() && Inbound.AcceptsEventStream();
 
-	// 2026-07-28: the response gets resultType and serverInfo, and the stream is watched (keep-alive, closed by client)
+	// 2026-07-28: the response gets resultType and serverInfo
 	const TSharedRef<bool> bDone = MakeShared<bool>(false);
 	const TFunction<FString(const FString&)> Finish = [bModern, bDone](const FString& ResponseJson)
 	{
@@ -622,7 +625,9 @@ void FN2CMcpProtocol::HandleLongRunningToolCall(const FN2CMcpInbound& Inbound, c
 		return;
 	}
 
-	if (bModern && bStream && !*bDone)
+	// Every stream is watched: a keep-alive comment every StreamKeepAliveSeconds, and a client that closed it cancels
+	// the call (cards 0437, 0512)
+	if (bStream && !*bDone)
 	{
 		FWatchedStream Watched;
 		Watched.Responder = Responder;

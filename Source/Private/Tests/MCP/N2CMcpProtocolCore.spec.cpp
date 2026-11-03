@@ -702,6 +702,53 @@ void FN2CMcpProtocolCoreSpec::Define()
 			}
 		});
 
+		It(TEXT("streams a call without a progressToken too: keep-alives while it runs, then the response, no progress"), [this]()
+		{
+			// Card 0437: UE 5.8's MCPClientToolset sends no progressToken and gives up after 30 s without a byte
+			FN2CMcpProtocol Core;
+			const FString SessionId = Open(Core);
+			const TSharedRef<N2CTest::FN2CMcpMemoryResponder> Responder = SendIn(Core, SessionId, LongCall(10, FString()), /*bCanStream=*/true);
+			TestEqual(TEXT("tool invoked"), LongTool->Invocations, 1);
+			TestFalse(TEXT("not answered with one reply"), Responder->ReplyCount > 0);
+			LongTool->Progress(0.5f);
+			TestEqual(TEXT("no progress notification without a token"), Responder->Streamed.Num(), 0);
+			Core.TickStreamsForTesting();
+			Core.TickStreamsForTesting();
+			TestEqual(TEXT("a keep-alive on every beat while the call runs"), Responder->KeepAliveCount, 2);
+			TestFalse(TEXT("still running"), LongTool->LastContext.IsValid() && LongTool->LastContext->IsCancelled());
+			LongTool->Finish(TEXT("token-less done"));
+			TestEqual(TEXT("no single reply"), Responder->ReplyCount, 0);
+			TestEqual(TEXT("closed once"), Responder->CloseCount, 1);
+			if (TestEqual(TEXT("only the response streamed"), Responder->Streamed.Num(), 1))
+			{
+				TestEqual(TEXT("response text"), CallToolText(ParseObject(Responder->Streamed[0]), 10), FString(TEXT("token-less done")));
+			}
+			Core.TickStreamsForTesting();
+			TestEqual(TEXT("no keep-alive after the response"), Responder->KeepAliveCount, 2);
+		});
+
+		It(TEXT("cancels a streamed call, with or without a progressToken, when its client closes the stream"), [this]()
+		{
+			for (const TCHAR* Meta : { TEXT(""), TEXT(",\"_meta\":{\"progressToken\":\"tok-11\"}") })
+			{
+				FN2CMcpProtocol Core;
+				const FString SessionId = Open(Core);
+				const FString What = FCString::Strlen(Meta) == 0 ? TEXT("no token") : TEXT("with a token");
+				const TSharedRef<N2CTest::FN2CMcpMemoryResponder> Responder = SendIn(Core, SessionId, LongCall(11, Meta), /*bCanStream=*/true);
+				const FN2CToolCallContextPtr Context = LongTool->LastContext;
+				if (!TestTrue(What + TEXT(": the call runs"), Context.IsValid() && !Context->IsCancelled()))
+				{
+					continue;
+				}
+				Core.TickStreamsForTesting();
+				TestFalse(What + TEXT(": an open stream keeps the call"), Context->IsCancelled());
+				Responder->bClosedByClient = true;
+				Core.TickStreamsForTesting();
+				TestTrue(What + TEXT(": closing the stream cancelled the call"), Context->IsCancelled());
+				LongTool->Finish(TEXT("too late"));
+			}
+		});
+
 		It(TEXT("replies once instead of streaming when the client does not accept text/event-stream"), [this]()
 		{
 			FN2CMcpProtocol Core;

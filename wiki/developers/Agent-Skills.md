@@ -97,7 +97,7 @@ Blueprint is your step, in the Blueprint editor's **Class Settings > Parent Clas
 
 - The agent compiles C++ with your project's build. With the editor open, Live Coding covers changes inside `.cpp`
   files only; a new class or property needs the editor closed and a full build.
-- Through NodeToCode mounted by Epic's MCP Client Toolset, a translation longer than about 30 seconds is cut off
-  while it still finishes and is billed; with NodeToCodeTools on UE 5.8 the skill translates there instead.
+- Through NodeToCode mounted by Epic's MCP Client Toolset, a translation shows no progress until its result
+  arrives; with NodeToCodeTools on UE 5.8 the skill can translate there instead.
 - NodeToCode cannot list which levels and assets use a Blueprint. Check the editor's **Reference Viewer** before you
   reparent one.

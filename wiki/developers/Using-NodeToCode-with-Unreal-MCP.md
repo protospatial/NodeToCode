@@ -85,7 +85,7 @@ focused Blueprint editor and a provider key, as with any other client
 | No new session after a server restart | Changing **Server Port** restarts NodeToCode's server; every later call fails with `tools/call failed: no response received` | Restart the editor |
 | Errors arrive as plain text | A NodeToCode tool error (`isError`) comes back as an ordinary result whose text holds the error, for example `"No active Blueprint Editor."`; a protocol error keeps only its message | Read the text, not only the error flag |
 | Text only | Only text content is passed on; anything else in a result is dropped | |
-| About 30 s per call | Epic's client sends no progress token, so NodeToCode answers once, when the call ends, and the engine's HTTP activity timeout (`[HTTP] HttpActivityTimeout`, 30 s by default) ends a quiet call with `tools/call failed: no response received`. NodeToCode still finishes that translation (the provider is billed) and logs `socket_send_failure` when it answers. A small Blueprint with `claude-haiku-5-5` took 8 to 12 s | Translate small graphs, or raise `HttpActivityTimeout` under `[HTTP]` in the project's `Config/DefaultEngine.ini` (all engine HTTP requests use it; avoid 3600, which NodeToCode removes as a 1.2.x leftover) |
+| No progress | Epic's client sends no progress token, so a translation shows no progress through Epic's route. NodeToCode still streams the call: it writes a keep-alive line every 2 s and then the result, so the engine's HTTP activity timeout (`[HTTP] HttpActivityTimeout`, 30 s by default) no longer ends a long translation. | Wait for the result; it arrives when the translation ends |
 
 ## Without the second server
 

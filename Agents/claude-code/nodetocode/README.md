@@ -71,7 +71,7 @@ skills work the same over either route; through the bridge the tools are named `
 | `the editor's MCP server answers at <url>` | Nothing: the tools are ready |
 | `nothing at <url>, but <project> serves NodeToCode at <other url>` | Set `mcp_url` to the other URL (above) or use the stdio bridge |
 | `no editor is serving NodeToCode's MCP server` | Open the project in Unreal Editor with the MCP server on, then `/mcp reconnect` |
-| `Epic's Unreal MCP also answers at ...` | On UE 5.8, NodeToCode's tools are also reachable through Epic's Unreal MCP when the MCP Client Toolset mounts NodeToCode. Prefer this plugin's server: Epic's route cuts a call off after about 30 seconds |
+| `Epic's Unreal MCP also answers at ...` | On UE 5.8, NodeToCode's tools are also reachable through Epic's Unreal MCP when the MCP Client Toolset mounts NodeToCode. Prefer this plugin's server: Epic's route shows no translation progress |
 
 The check takes about a second, exits successfully either way and changes nothing. It runs in Git Bash on Windows
 (which Claude Code uses for hooks) and needs `curl`, which Windows 10 and later include. It reads the plugin's
