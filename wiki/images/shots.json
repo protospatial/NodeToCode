@@ -1,16 +1,16 @@
 {
   "shots": {
     "main-window/first-run.png": {
-      "commit": "ebb76b713bef9bb0b932af9c1a2766127cb93f05"
+      "commit": "d087f22a8cc034c0a27a198660d97cc69a602807"
     },
     "main-window/get-started.png": {
-      "commit": "ebb76b713bef9bb0b932af9c1a2766127cb93f05"
+      "commit": "d087f22a8cc034c0a27a198660d97cc69a602807"
     },
     "main-window/tag-manager.png": {
-      "commit": "ebb76b713bef9bb0b932af9c1a2766127cb93f05"
+      "commit": "d087f22a8cc034c0a27a198660d97cc69a602807"
     },
     "main-window/translation-viewer.png": {
-      "commit": "ebb76b713bef9bb0b932af9c1a2766127cb93f05"
+      "commit": "d087f22a8cc034c0a27a198660d97cc69a602807"
     },
     "settings/code-generation.png": {
       "commit": "85529cb0db7be70f9b27172b308b57be622498b2"
@@ -25,7 +25,7 @@
       "commit": "85529cb0db7be70f9b27172b308b57be622498b2"
     },
     "translate-entry/graph-overlay.png": {
-      "commit": "85529cb0db7be70f9b27172b308b57be622498b2"
+      "commit": "d087f22a8cc034c0a27a198660d97cc69a602807"
     }
   }
 }
