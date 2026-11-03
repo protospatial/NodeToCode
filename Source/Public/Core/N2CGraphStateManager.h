@@ -10,6 +10,8 @@
 #include "Code Editor/Models/N2CCodeLanguage.h"
 #include "N2CGraphStateManager.generated.h"
 
+struct FN2CArchivedEntry;
+
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnN2CGraphStateChanged, const FN2CGraphKey& /*Graph*/);
 /** A tag was added: the tag itself and the graph it was added to (card 0345: the added tag, not the graph's first) */
 DECLARE_MULTICAST_DELEGATE_TwoParams(FOnN2CGraphTagAdded, const FN2CTagEntry& /*Tag*/, const FN2CGraphRef& /*Graph*/);
@@ -293,6 +295,16 @@ public:
 		const FSoftObjectPath& Blueprint, const FString& GraphDirectory,
 		const FString& Provider, const FString& Model, EN2CCodeLanguage Language,
 		const FN2CTranslationSummary& Summary);
+
+	/**
+	 * RecordSavedTranslation for a translation the archive wrote (card 0253): also records the run (RunId, its
+	 * manifest.json under RunFolder), the root entry's exact files and the request's token usage, so LoadTranslation
+	 * reads the files the archive wrote instead of guessing their names. Both the single and the batch path call it.
+	 */
+	void RecordArchivedTranslation(const FGuid& GraphGuid, const FString& GraphName, const FSoftObjectPath& Blueprint,
+		const FN2CArchivedEntry& Root, const FString& RunFolder, const FString& RunId,
+		const FString& Provider, const FString& Model, EN2CCodeLanguage Language,
+		const FN2CTranslationSummary& Summary, int32 InputTokens, int32 OutputTokens);
 
 	/**
 	 * Clear the translation state for a graph

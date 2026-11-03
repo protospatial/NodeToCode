@@ -9,6 +9,8 @@
 #include "Core/N2CSettings.h"
 #include "Core/N2CUserSettings.h"
 #include "Core/N2CTargetLanguage.h"
+#include "LLM/N2CTranslationArchive.h"
+#include "Dom/JsonObject.h"
 #include "HAL/FileManager.h"
 #include "HAL/PlatformProcess.h"
 #include "Misc/FileHelper.h"
@@ -739,6 +741,67 @@ void FN2CGraphStateSpec::Define()
 				TestEqual(TEXT("the implementation"), Loaded.Code.GraphImplementation, FString(TEXT("def receive_begin_play(self): pass")));
 				TestEqual(TEXT("its notes"), Loaded.Code.ImplementationNotes, FString(TEXT("Python notes")));
 			}
+		});
+
+		It(TEXT("reads the files the archive recorded, with the run and the usage, after a reload (card 0253)"), [this]()
+		{
+			// A folder the name rules cannot read: two Python files, neither named after the graph
+			const FString RunFolder = Scratch->Path / TEXT("Translations/BP_Rec_20261103-120000-000_ab12");
+			const FString GraphDir = RunFolder / TEXT("ReceiveBeginPlay");
+			FFileHelper::SaveStringToFile(TEXT("def receive_begin_play(self): pass"), *(GraphDir / TEXT("ReceiveBeginPlay.py")));
+			FFileHelper::SaveStringToFile(TEXT("class Helper: pass"), *(GraphDir / TEXT("Helper.py")));
+			FFileHelper::SaveStringToFile(TEXT("Python notes"), *(GraphDir / TEXT("ReceiveBeginPlay_Notes.txt")));
+			FFileHelper::SaveStringToFile(TEXT("{}"), *(RunFolder / TEXT("manifest.json")));
+
+			FN2CArchivedEntry Root;
+			Root.GraphName = TEXT("ReceiveBeginPlay");
+			Root.Role = TEXT("root");
+			Root.Folder = GraphDir;
+			Root.ImplementationFile = GraphDir / TEXT("ReceiveBeginPlay.py");
+			Root.NotesFile = GraphDir / TEXT("ReceiveBeginPlay_Notes.txt");
+
+			const FN2CGraphKey Key(FSoftObjectPath(TEXT("/Game/BP_Rec.BP_Rec")), FGuid::NewGuid());
+			{
+				UN2CGraphStateManager* State = OpenManager();
+				State->RecordArchivedTranslation(Key.GraphGuid, TEXT("EventGraph"), Key.Blueprint, Root, RunFolder, TEXT("ab12"),
+					TEXT("Anthropic"), TEXT("claude-haiku-5-5"), EN2CCodeLanguage::Python, FN2CTranslationSummary(), 1200, 340);
+			}
+
+			// The next editor session reads the state file again
+			UN2CGraphStateManager* Reloaded = OpenManager();
+			const FN2CGraphState* Graph = Reloaded->FindGraphState(Key);
+			if (!TestNotNull(TEXT("the record survives a reload"), Graph)) { return; }
+			const FN2CTranslationState& Record = Graph->Translation;
+			TestEqual(TEXT("run id"), Record.RunId, FString(TEXT("ab12")));
+			TestEqual(TEXT("manifest"), FN2CPathUtils::ResolveTranslationRecordPath(Record.ManifestPath), FPaths::ConvertRelativePathToFull(RunFolder / TEXT("manifest.json")));
+			TestEqual(TEXT("input tokens"), Record.InputTokens, 1200);
+			TestEqual(TEXT("output tokens"), Record.OutputTokens, 340);
+			TestEqual(TEXT("provider"), Record.Provider, FString(TEXT("Anthropic")));
+			TestEqual(TEXT("model"), Record.Model, FString(TEXT("claude-haiku-5-5")));
+			TestEqual(TEXT("language id"), Record.Language, FN2CPathUtils::GetLanguageId(EN2CCodeLanguage::Python));
+			TestTrue(TEXT("no declaration file recorded for Python"), Record.DeclarationFile.IsEmpty());
+
+			FN2CGraphTranslation Loaded;
+			EN2CCodeLanguage Language = EN2CCodeLanguage::Cpp;
+			if (TestTrue(TEXT("LoadTranslation reads the recorded files"), Reloaded->LoadTranslation(Key, Loaded, Language)))
+			{
+				TestEqual(TEXT("the recorded implementation, not the other .py"), Loaded.Code.GraphImplementation, FString(TEXT("def receive_begin_play(self): pass")));
+				TestEqual(TEXT("its notes"), Loaded.Code.ImplementationNotes, FString(TEXT("Python notes")));
+				TestTrue(TEXT("Python"), Language == EN2CCodeLanguage::Python);
+			}
+
+			// A record from an older build (no files recorded) still loads by the name rules
+			FN2CTranslationState Legacy = Record;
+			Legacy.ImplementationFile.Reset();
+			Legacy.NotesFile.Reset();
+			Legacy.RunId.Reset();
+			Legacy.ManifestPath.Reset();
+			const TSharedPtr<FJsonObject> Json = Legacy.ToJson();
+			TestFalse(TEXT("an old-style record writes no files field"), Json->HasField(TEXT("files")));
+			TestFalse(TEXT("nor a run id"), Json->HasField(TEXT("runId")));
+			const FN2CTranslationState Parsed = FN2CTranslationState::FromJson(Json);
+			TestTrue(TEXT("it parses with no files"), Parsed.ImplementationFile.IsEmpty() && Parsed.RunId.IsEmpty());
+			TestEqual(TEXT("its usage still reads"), Parsed.InputTokens, 1200);
 		});
 	});
 

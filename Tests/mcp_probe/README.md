@@ -559,6 +559,23 @@ Observed on 2026-10-27 (dev-2.0 56fcbb8), every cell from a fresh editor:
   0464) need not be 5.8-only, but on 5.6 and 5.7 they must not run in a `-nullrhi` session without `-RenderOffScreen`,
   which is what `build.ps1 -Test` starts today.
 
+## Hand checks of API keys (card 0523)
+
+A windowed check of **Save Key** (Get Started card), the API Key fields or **Remove Saved <Provider> Key** must not touch
+the owner's `NodeToCode/*` Credential Manager entries. Start the editor (Development or DebugGame, never Shipping) with
+a test prefix:
+
+```
+UnrealEditor.exe <host>.uproject -N2CSecretPrefix=NodeToCodeTest/<guid>/
+```
+
+The Output Log then says `Secret store target prefix: NodeToCodeTest/<guid>/ (test override, -N2CSecretPrefix)`, and
+every API Key Status row names the test prefix, so a screenshot shows which entries were used. A prefix outside
+`NodeToCodeTest/` is ignored with a warning and the editor uses `NodeToCode/` (check the log before saving a key).
+Afterwards remove the entries: `cmdkey /list:NodeToCodeTest*` lists them and `cmdkey /delete:NodeToCodeTest/<guid>/<Provider>`
+deletes one; the automation specs' `N2CTest::SweepStaleTestCredentialsOnce()` also removes stale `NodeToCodeTest/`
+entries at the next `-Test` run.
+
 ## Migration check
 
 The 1.2.x to 2.0 migration check (card 0079) lives in `Tests/Migration/` and reuses `editor_session.py`,
