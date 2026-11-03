@@ -69,7 +69,7 @@ public:
 	 *         and "n2c_json": {...}, or with bToFile "path" and "bytes"}, "error"}; errors start with a code
 	 *         (ASSET_NOT_FOUND, GRAPH_NOT_FOUND, AMBIGUOUS_GRAPH_NAME, UNSUPPORTED_GRAPH_TYPE, EMPTY_GRAPH, INVALID_ARGUMENT)
 	 */
-	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python")
+	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python", meta = (DeprecatedFunction, DeprecationMessage = "Use unreal.get_editor_subsystem(unreal.N2CEditorSubsystem).get_blueprint_n2c_json, which returns a struct and raises on failure (card 0301)"))
 	static FString GetBlueprintN2CJson(const FString& BlueprintPath, const FString& GraphName = TEXT(""),
 		const FString& GraphGuid = TEXT(""), int32 Depth = -1, bool bToFile = false, bool bCompact = true);
 
@@ -80,7 +80,7 @@ public:
 	 * @return {"success", "data": {"blueprintPath", "blueprintName", "graphCount", "graphs": [{"name", "graphGuid",
 	 *         "kind", "nodeCount", "readOnly", "parentGraph" (collapsed graphs)}]}, "error"}
 	 */
-	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python")
+	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python", meta = (DeprecatedFunction, DeprecationMessage = "Use unreal.get_editor_subsystem(unreal.N2CEditorSubsystem).list_blueprint_graphs, which returns a struct and raises on failure (card 0301)"))
 	static FString ListBlueprintGraphs(const FString& BlueprintPath);
 
 	/**
@@ -122,7 +122,7 @@ public:
 	 * @return JSON string with compilation result.
 	 *         Format: {"success": true/false, "data": {"status": "..."}, "error": "..." or null}
 	 */
-	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python")
+	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python", meta = (DeprecatedFunction, DeprecationMessage = "Use unreal.get_editor_subsystem(unreal.N2CEditorSubsystem).compile_blueprint, which returns a struct and raises on failure (card 0301)"))
 	static FString CompileFocusedBlueprint(const FString& BlueprintPath = TEXT(""));
 
 	/**
@@ -133,7 +133,7 @@ public:
 	 * @return JSON string with save result.
 	 *         Format: {"success": true/false, "data": {"was_saved": true/false}, "error": "..." or null}
 	 */
-	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python")
+	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python", meta = (DeprecatedFunction, DeprecationMessage = "Use unreal.get_editor_subsystem(unreal.N2CEditorSubsystem).save_blueprint, which returns a struct and raises on failure (card 0301)"))
 	static FString SaveFocusedBlueprint(bool bOnlyIfDirty = true, const FString& BlueprintPath = TEXT(""));
 
 	// ========== Tagging System ==========
@@ -149,7 +149,7 @@ public:
 	 *        focused graph, or with BlueprintPath alone its focused graph, else its event graph
 	 * @return JSON string with tag info or error
 	 */
-	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python")
+	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python", meta = (DeprecatedFunction, DeprecationMessage = "Use unreal.get_editor_subsystem(unreal.N2CEditorSubsystem).tag_graph, which returns a struct and raises on failure (card 0301)"))
 	static FString TagFocusedGraph(const FString& Tag, const FString& Category = TEXT("Default"), const FString& Description = TEXT(""),
 		const FString& BlueprintPath = TEXT(""), const FString& Graph = TEXT(""));
 

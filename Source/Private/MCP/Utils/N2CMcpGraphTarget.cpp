@@ -75,6 +75,23 @@ FN2CGraphTargetArgs FN2CGraphTargetArgs::FromJson(const TSharedPtr<FJsonObject>&
 	return Args;
 }
 
+FN2CGraphTargetArgs FN2CGraphTargetArgs::FromPathAndGraph(const FString& BlueprintPath, const FString& Graph)
+{
+	FN2CGraphTargetArgs Args;
+	Args.BlueprintPath = BlueprintPath.TrimStartAndEnd();
+	const FString GraphText = Graph.TrimStartAndEnd();
+	FGuid GraphGuid;
+	if (FGuid::Parse(GraphText, GraphGuid))
+	{
+		Args.GraphGuid = GraphText;
+	}
+	else
+	{
+		Args.GraphName = GraphText;
+	}
+	return Args;
+}
+
 FString FN2CGraphTarget::ErrorCode() const
 {
 	FString Code;

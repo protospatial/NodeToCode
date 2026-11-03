@@ -175,6 +175,33 @@ def _parse_bridge_result(json_str: str) -> Dict[str, Any]:
     return result
 
 
+# ============== Editor subsystem (card 0301) ==============
+#
+# UN2CEditorSubsystem holds NodeToCode's typed, path-based Blueprint functions: each returns a struct and raises a
+# RuntimeError naming the path on failure. The nodetocode functions in SUBSYSTEM call it and keep returning
+# {success, data, error} dicts.
+
+# nodetocode function -> UN2CEditorSubsystem function it calls
+SUBSYSTEM = {
+    'get_blueprint_n2cjson': 'get_blueprint_n2c_json',
+    'list_blueprint_graphs': 'list_blueprint_graphs',
+}
+
+
+def editor_subsystem() -> Any:
+    """unreal.N2CEditorSubsystem, NodeToCode's typed Blueprint functions (card 0301)"""
+    return unreal.get_editor_subsystem(unreal.N2CEditorSubsystem)
+
+
+def _subsystem_error(error: Exception, path: str) -> str:
+    """The text of an UN2CEditorSubsystem error from its code on ("GRAPH_NOT_FOUND: ..."), without the function and
+    path it starts with ("<Function>: <path>: <code>: ...")"""
+    text = str(error)
+    marker = f'{path}: ' if path else ''
+    index = text.find(marker) if marker else -1
+    return text[index + len(marker):] if index >= 0 else text
+
+
 # ============== Tool catalog (card 0342) ==============
 #
 # The nodetocode functions below run NodeToCode's MCP tools through UN2CPythonBridge::InvokeTool, so Python gets
