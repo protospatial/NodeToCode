@@ -86,6 +86,21 @@ public:
 	/** Check if batch progress is visible */
 	bool IsBatchProgressVisible() const { return bShowBatchProgress; }
 
+	/**
+	 * Starts a batch session of the translation subsystem for these graphs and shows its progress (Batch Translate).
+	 * When it does not start, the dialog is not left up and a notification says why.
+	 */
+	void StartBatchTranslation(const TArray<FN2CTagInfo>& Graphs);
+
+	/**
+	 * The progress dialog's button and Escape: while a session or batch runs, cancels it through the translation
+	 * subsystem and shows "Cancelling..." until the cancelled completion arrives; once finished, closes the dialog
+	 */
+	void CancelOrCloseProgress();
+
+	/** The progress dialog (for tests) */
+	TSharedPtr<SN2CBatchProgressModal> GetBatchProgressModal() const { return BatchProgressModal; }
+
 private:
 	// External event delegates
 	FOnN2CBatchOperationComplete OnBatchCompleteDelegate;
@@ -102,6 +117,9 @@ private:
 
 	/** The translation session the progress modal shows (invalid when it shows none or a batch) */
 	FGuid ObservedSession;
+
+	/** The batch session the progress modal shows (invalid when it shows none or a single session) */
+	FGuid ObservedBatch;
 
 	/** Registered with the translation subsystem as a window that shows sessions itself */
 	bool bIsPresenter = false;
