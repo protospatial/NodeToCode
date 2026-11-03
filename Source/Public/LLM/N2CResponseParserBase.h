@@ -33,7 +33,7 @@ public:
      * object or a non-empty string in ErrorFieldName). It then fills OutResponse.Error (kind, HTTP status, the
      * provider's message, retryable) from the error and the "http_status" the HTTP handler adds, and logs it.
      */
-    bool HandleCommonErrorResponse(
+    static bool HandleCommonErrorResponse(
         const TSharedPtr<FJsonObject>& JsonObject,
         const FString& ErrorFieldName,
         FN2CTranslationResponse& OutResponse);
@@ -69,7 +69,7 @@ public:
      * names the finish reason. Reasoning fields (reasoning_content, reasoning) are logged, never used as the answer.
      * Returns false with OutResponse.Error set when there is no answer to parse.
      */
-    bool ExtractChatCompletionContent(
+    static bool ExtractChatCompletionContent(
         const TSharedPtr<FJsonObject>& JsonObject,
         const FString& SettingHint,
         FString& OutContent,

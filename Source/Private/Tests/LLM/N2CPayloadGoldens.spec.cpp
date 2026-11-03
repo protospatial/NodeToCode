@@ -16,9 +16,8 @@
 #include "LLM/N2CLLMModelRegistry.h"
 #include "LLM/N2CLLMPayloadBuilder.h"
 #include "LLM/Providers/N2CAnthropicService.h"
-#include "LLM/Providers/N2CDeepSeekService.h"
+#include "LLM/Providers/N2COpenAICompatibleService.h"
 #include "LLM/Providers/N2CGeminiService.h"
-#include "LLM/Providers/N2CLMStudioService.h"
 #include "LLM/Providers/N2COllamaService.h"
 #include "LLM/Providers/N2COpenAIService.h"
 #include "Misc/CommandLine.h"
@@ -132,9 +131,9 @@ BEGIN_DEFINE_SPEC(FN2CPayloadGoldensSpec, "NodeToCode.LLM.Payload.Golden", N2C_T
 		case EN2CLLMProvider::Anthropic: return NewObject<UN2CAnthropicService>(GetTransientPackage());
 		case EN2CLLMProvider::OpenAI: return NewObject<UN2COpenAIService>(GetTransientPackage());
 		case EN2CLLMProvider::Gemini: return NewObject<UN2CGeminiService>(GetTransientPackage());
-		case EN2CLLMProvider::DeepSeek: return NewObject<UN2CDeepSeekService>(GetTransientPackage());
+		case EN2CLLMProvider::DeepSeek: return NewObject<UN2COpenAICompatibleService>(GetTransientPackage());
 		case EN2CLLMProvider::Ollama: return NewObject<UN2COllamaService>(GetTransientPackage());
-		case EN2CLLMProvider::LMStudio: return NewObject<UN2CLMStudioService>(GetTransientPackage());
+		case EN2CLLMProvider::LMStudio: return NewObject<UN2COpenAICompatibleService>(GetTransientPackage());
 		default: return nullptr;
 		}
 	}

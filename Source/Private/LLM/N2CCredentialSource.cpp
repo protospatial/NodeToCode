@@ -51,6 +51,10 @@ bool FN2CCredential::GetHeader(FString& OutName, FString& OutValue) const
         OutName = TEXT("Authorization");
         OutValue = FString::Printf(TEXT("Bearer %s"), *Value);
         return true;
+    case EN2CAuthStyle::ApiKey:
+        OutName = TEXT("api-key");
+        OutValue = Value;
+        return true;
     default:
         return false;
     }
@@ -60,7 +64,18 @@ bool FN2CCredential::IsCredentialHeader(const FString& HeaderName)
 {
     return HeaderName.Equals(TEXT("Authorization"), ESearchCase::IgnoreCase)
         || HeaderName.Equals(TEXT("x-api-key"), ESearchCase::IgnoreCase)
-        || HeaderName.Equals(TEXT("x-goog-api-key"), ESearchCase::IgnoreCase);
+        || HeaderName.Equals(TEXT("x-goog-api-key"), ESearchCase::IgnoreCase)
+        || HeaderName.Equals(TEXT("api-key"), ESearchCase::IgnoreCase);
+}
+
+EN2CAuthStyle FN2CCredential::AuthStyleFromName(const FString& Name)
+{
+    const FString Style = Name.TrimStartAndEnd().ToLower();
+    if (Style == TEXT("bearer")) { return EN2CAuthStyle::Bearer; }
+    if (Style == TEXT("x-api-key")) { return EN2CAuthStyle::XApiKey; }
+    if (Style == TEXT("x-goog-api-key")) { return EN2CAuthStyle::XGoogApiKey; }
+    if (Style == TEXT("api-key")) { return EN2CAuthStyle::ApiKey; }
+    return EN2CAuthStyle::None;
 }
 
 bool IN2CCredentialSource::Has(EN2CLLMProvider Provider) const

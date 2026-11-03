@@ -42,6 +42,12 @@ namespace N2CModelCatalogData
 				return true;
 			}
 		}
+		// Presets of the OpenAI-compatible adapter share one enum value; no single row stands for it (card 0218)
+		if (Name == TEXT("OpenAICompatible"))
+		{
+			Out = EN2CLLMProvider::OpenAICompatible;
+			return true;
+		}
 		return false;
 	}
 
@@ -112,6 +118,39 @@ namespace N2CModelCatalogData
 			Make(EN2CLLMProvider::Ollama, TEXT("ollama"), TEXT("Ollama"), TEXT("ollama"), TEXT("http://localhost:11434"), TEXT("/api/chat"), TEXT("none"), true, TEXT("/api/tags")),
 			Make(EN2CLLMProvider::LMStudio, TEXT("lmstudio"), TEXT("LM Studio"), TEXT("openai_chat"), TEXT("http://localhost:1234"), TEXT("/v1/chat/completions"), TEXT("bearer"), true, TEXT("/v1/models")),
 		};
+	}
+
+	/** The adapter fields the DeepSeek and LM Studio rows carry in the shipped file, for the fallback rows (card 0218) */
+	void AddFallbackAdapterFields(TArray<FN2CProviderProfile>& Rows)
+	{
+		auto Thinking = [](const TCHAR* Type)
+		{
+			TSharedPtr<FJsonObject> Inner = MakeShared<FJsonObject>();
+			Inner->SetStringField(TEXT("type"), Type);
+			TSharedPtr<FJsonObject> Outer = MakeShared<FJsonObject>();
+			Outer->SetObjectField(TEXT("thinking"), Inner);
+			return Outer;
+		};
+		for (FN2CProviderProfile& Row : Rows)
+		{
+			if (Row.Id == FName(TEXT("deepseek")))
+			{
+				Row.Dialect = TEXT("openai_chat");
+				Row.StructuredOutput = EN2CStructuredOutputMode::JsonObject;
+				Row.ThinkingOn = Thinking(TEXT("enabled"));
+				Row.ThinkingOff = Thinking(TEXT("disabled"));
+				Row.ReasoningEffortField = TEXT("reasoning_effort");
+				Row.ReasoningFields = { TEXT("reasoning_content") };
+				Row.SecretId = TEXT("DeepSeek");
+				Row.ApiKeyEnvironmentVariables = { TEXT("DEEPSEEK_API_KEY"), TEXT("DEEPSEEK_API") };
+			}
+			else if (Row.Id == FName(TEXT("lmstudio")))
+			{
+				Row.ExtraBody = MakeShared<FJsonObject>();
+				Row.ExtraBody->SetBoolField(TEXT("stream"), false);
+				Row.ReasoningFields = { TEXT("reasoning_content"), TEXT("reasoning") };
+			}
+		}
 	}
 
 	/**
@@ -286,6 +325,10 @@ namespace N2CModelCatalogData
 			OutError = FString::Printf(TEXT("\"legacy_enum\" %s names no EN2CLLMProvider value"), *EnumName);
 			return false;
 		}
+		if (Out.Dialect == TEXT("openai_chat") && !FN2CProviderProfile::ReadAdapterFields(Row, Out, OutError))
+		{
+			return false;
+		}
 		Out.Id = FName(*Id);
 		return true;
 	}
@@ -443,7 +486,11 @@ bool FN2CModelCatalog::LoadFromFile(const FString& Path)
 		FN2CLogger::Get().LogError(FString::Printf(
 			TEXT("Model catalog %s could not be read; only each provider's default model is available. Reinstall the plugin to restore Content/Data/N2CModelCatalog.json."),
 			Path.IsEmpty() ? TEXT("(NodeToCode plugin not found)") : *Path), TEXT("ModelCatalog"));
-		Install(N2CModelCatalogData::FallbackProviders(), N2CModelCatalogData::FallbackModels(), FString(), true);
+		{
+			TArray<FN2CProviderProfile> Rows = N2CModelCatalogData::FallbackProviders();
+			N2CModelCatalogData::AddFallbackAdapterFields(Rows);
+			Install(MoveTemp(Rows), N2CModelCatalogData::FallbackModels(), FString(), true);
+		}
 		return false;
 	}
 	return LoadFromString(JsonText, Path);
@@ -459,7 +506,11 @@ bool FN2CModelCatalog::LoadFromString(const FString& JsonText, const FString& So
 		FN2CLogger::Get().LogError(FString::Printf(
 			TEXT("Model catalog %s is malformed (%s); only each provider's default model is available. Reinstall the plugin to restore Content/Data/N2CModelCatalog.json."),
 			*SourceLabel, *Error), TEXT("ModelCatalog"));
-		Install(N2CModelCatalogData::FallbackProviders(), N2CModelCatalogData::FallbackModels(), FString(), true);
+		{
+			TArray<FN2CProviderProfile> Rows = N2CModelCatalogData::FallbackProviders();
+			N2CModelCatalogData::AddFallbackAdapterFields(Rows);
+			Install(MoveTemp(Rows), N2CModelCatalogData::FallbackModels(), FString(), true);
+		}
 		return false;
 	}
 	Install(MoveTemp(ParsedProviders), MoveTemp(ParsedModels), SourceLabel, false);
@@ -695,4 +746,185 @@ const FN2CModelMetadata* FN2CModelCatalog::FindDefault(FName ProviderId) const
 	{
 		return Row.ProviderId == ProviderId && Row.bIsDefault;
 	});
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// OpenAI-compatible adapter fields (card 0218)
+
+FString FN2CProviderProfile::GetEndpoint() const
+{
+	FString Base = BaseUrl.TrimStartAndEnd();
+	while (Base.EndsWith(TEXT("/")))
+	{
+		Base.LeftChopInline(1);
+	}
+	FString RequestPath = Path.TrimStartAndEnd();
+	if (!RequestPath.IsEmpty() && !RequestPath.StartsWith(TEXT("/")))
+	{
+		RequestPath = TEXT("/") + RequestPath;
+	}
+	return Base + RequestPath;
+}
+
+FString FN2CProviderProfile::GetKeyHeaderName() const
+{
+	if (AuthStyle == TEXT("bearer")) { return TEXT("Authorization"); }
+	if (AuthStyle == TEXT("x-api-key")) { return TEXT("x-api-key"); }
+	if (AuthStyle == TEXT("x-goog-api-key")) { return TEXT("x-goog-api-key"); }
+	if (AuthStyle == TEXT("api-key")) { return TEXT("api-key"); }
+	return FString();
+}
+
+FString FN2CProviderProfile::StructuredOutputToString(EN2CStructuredOutputMode Mode)
+{
+	switch (Mode)
+	{
+	case EN2CStructuredOutputMode::JsonSchemaStrict: return TEXT("json_schema_strict");
+	case EN2CStructuredOutputMode::JsonSchema: return TEXT("json_schema");
+	case EN2CStructuredOutputMode::JsonObject: return TEXT("json_object");
+	case EN2CStructuredOutputMode::PromptOnly: return TEXT("prompt_only");
+	}
+	return TEXT("json_schema_strict");
+}
+
+bool FN2CProviderProfile::StructuredOutputFromString(const FString& Name, EN2CStructuredOutputMode& Out)
+{
+	for (const EN2CStructuredOutputMode Mode : { EN2CStructuredOutputMode::JsonSchemaStrict, EN2CStructuredOutputMode::JsonSchema,
+		EN2CStructuredOutputMode::JsonObject, EN2CStructuredOutputMode::PromptOnly })
+	{
+		if (Name.Equals(StructuredOutputToString(Mode), ESearchCase::IgnoreCase))
+		{
+			Out = Mode;
+			return true;
+		}
+	}
+	return false;
+}
+
+bool FN2CProviderProfile::ReadAdapterFields(const FJsonObject& Row, FN2CProviderProfile& InOut, FString& OutError)
+{
+	FString Text;
+	if (Row.TryGetStringField(TEXT("structured_output"), Text) && !StructuredOutputFromString(Text, InOut.StructuredOutput))
+	{
+		OutError = FString::Printf(TEXT("\"structured_output\" %s is not json_schema_strict, json_schema, json_object or prompt_only"), *Text);
+		return false;
+	}
+	if (Row.TryGetStringField(TEXT("max_tokens_field"), Text))
+	{
+		if (Text == TEXT("max_tokens"))
+		{
+			InOut.MaxTokensField = EN2CMaxTokensField::MaxTokens;
+		}
+		else if (Text == TEXT("max_completion_tokens"))
+		{
+			InOut.MaxTokensField = EN2CMaxTokensField::MaxCompletionTokens;
+		}
+		else
+		{
+			OutError = FString::Printf(TEXT("\"max_tokens_field\" %s is not max_tokens or max_completion_tokens"), *Text);
+			return false;
+		}
+	}
+	auto ReadObject = [&Row, &OutError](const TCHAR* Field, TSharedPtr<FJsonObject>& Out)
+	{
+		const TSharedPtr<FJsonValue> Value = Row.TryGetField(Field);
+		if (!Value.IsValid() || Value->Type == EJson::Null)
+		{
+			return true;
+		}
+		if (Value->Type != EJson::Object)
+		{
+			OutError = FString::Printf(TEXT("\"%s\" is not an object"), Field);
+			return false;
+		}
+		Out = Value->AsObject();
+		return true;
+	};
+	auto ReadStrings = [&Row, &OutError](const TCHAR* Field, TArray<FString>& Out)
+	{
+		const TArray<TSharedPtr<FJsonValue>>* Values = nullptr;
+		if (!Row.TryGetArrayField(Field, Values))
+		{
+			return true;
+		}
+		for (const TSharedPtr<FJsonValue>& Value : *Values)
+		{
+			if (!Value.IsValid() || Value->Type != EJson::String)
+			{
+				OutError = FString::Printf(TEXT("\"%s\" holds a value that is not a string"), Field);
+				return false;
+			}
+			Out.Add(Value->AsString());
+		}
+		return true;
+	};
+	if (!ReadObject(TEXT("thinking_on"), InOut.ThinkingOn) || !ReadObject(TEXT("thinking_off"), InOut.ThinkingOff)
+		|| !ReadObject(TEXT("extra_body"), InOut.ExtraBody) || !ReadStrings(TEXT("reasoning_fields"), InOut.ReasoningFields)
+		|| !ReadStrings(TEXT("api_key_env"), InOut.ApiKeyEnvironmentVariables))
+	{
+		return false;
+	}
+	TSharedPtr<FJsonObject> Headers;
+	if (!ReadObject(TEXT("extra_headers"), Headers))
+	{
+		return false;
+	}
+	if (Headers.IsValid())
+	{
+		for (const TPair<FString, TSharedPtr<FJsonValue>>& Header : Headers->Values)
+		{
+			if (!Header.Value.IsValid() || Header.Value->Type != EJson::String)
+			{
+				OutError = FString::Printf(TEXT("\"extra_headers\".%s is not a string"), *Header.Key);
+				return false;
+			}
+			InOut.ExtraHeaders.Emplace(Header.Key, Header.Value->AsString());
+		}
+	}
+	Row.TryGetStringField(TEXT("reasoning_effort_field"), InOut.ReasoningEffortField);
+	Row.TryGetStringField(TEXT("secret_id"), InOut.SecretId);
+	Row.TryGetStringField(TEXT("default_model"), InOut.DefaultModel);
+	Row.TryGetStringField(TEXT("context_discovery"), InOut.ContextDiscovery);
+	return true;
+}
+
+FN2CProviderProfile FN2CCustomProviderProfile::ToProfile() const
+{
+	FN2CProviderProfile Profile;
+	Profile.Id = FName(*Id.TrimStartAndEnd());
+	Profile.DisplayName = DisplayName.IsEmpty() ? Id : DisplayName;
+	Profile.Dialect = TEXT("openai_chat");
+	Profile.BaseUrl = BaseUrl;
+	Profile.Path = Path;
+	Profile.AuthStyle = AuthStyle.TrimStartAndEnd().ToLower();
+	Profile.bIsLocal = BaseUrl.Contains(TEXT("://localhost")) || BaseUrl.Contains(TEXT("://127.0.0.1"));
+	Profile.bNeedsKey = !ApiKeyEnvironmentVariable.TrimStartAndEnd().IsEmpty();
+	Profile.ModelsPath = TEXT("/models");
+	Profile.Provider = EN2CLLMProvider::OpenAICompatible;
+	Profile.StructuredOutput = StructuredOutput;
+	Profile.MaxTokensField = MaxTokensField;
+	Profile.DefaultModel = DefaultModel;
+	Profile.ReasoningFields = { TEXT("reasoning_content"), TEXT("reasoning") };
+	if (!ApiKeyEnvironmentVariable.TrimStartAndEnd().IsEmpty())
+	{
+		Profile.ApiKeyEnvironmentVariables.Add(ApiKeyEnvironmentVariable.TrimStartAndEnd());
+	}
+	for (const TPair<FString, FString>& Header : ExtraHeaders)
+	{
+		Profile.ExtraHeaders.Emplace(Header.Key, Header.Value);
+	}
+	return Profile;
+}
+
+TArray<const FN2CProviderProfile*> FN2CModelCatalog::OpenAICompatiblePresets() const
+{
+	TArray<const FN2CProviderProfile*> Presets;
+	for (const FN2CProviderProfile& Row : ProviderRows)
+	{
+		if (Row.Provider == EN2CLLMProvider::OpenAICompatible)
+		{
+			Presets.Add(&Row);
+		}
+	}
+	return Presets;
 }

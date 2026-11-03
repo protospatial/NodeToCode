@@ -241,7 +241,35 @@ struct NODETOCODE_API FN2CModelMetadata
 	}
 };
 
-/** One provider row of the model catalog: how to reach a provider. Cards that add providers read these rows. */
+/** How an OpenAI-compatible host is asked for JSON (the dialect writes response_format accordingly) */
+UENUM(BlueprintType)
+enum class EN2CStructuredOutputMode : uint8
+{
+	/** response_format json_schema with strict: true (vLLM, LM Studio, OpenRouter, Groq, ...) */
+	JsonSchemaStrict UMETA(DisplayName = "JSON Schema (strict)"),
+	/** response_format json_schema without strict */
+	JsonSchema UMETA(DisplayName = "JSON Schema"),
+	/** response_format json_object: JSON, no schema (DeepSeek) */
+	JsonObject UMETA(DisplayName = "JSON Object"),
+	/** No response_format: the prompt alone asks for JSON */
+	PromptOnly UMETA(DisplayName = "Prompt Only")
+};
+
+/** The field an OpenAI-compatible host takes the output budget in */
+UENUM(BlueprintType)
+enum class EN2CMaxTokensField : uint8
+{
+	MaxTokens UMETA(DisplayName = "max_tokens"),
+	MaxCompletionTokens UMETA(DisplayName = "max_completion_tokens")
+};
+
+/**
+ * One provider row of the model catalog: how to reach a provider. Cards that add providers read these rows.
+ *
+ * Rows whose dialect is openai_chat and whose Provider is OpenAICompatible, DeepSeek or LM Studio are presets of the
+ * one OpenAI-compatible adapter (FN2COpenAIChatDialect, card 0218): everything that differs between those hosts is
+ * data here (output format, budget field, thinking fragments, headers, key), not code.
+ */
 struct NODETOCODE_API FN2CProviderProfile
 {
 	/** Catalog provider ID ("openai", "anthropic", "gemini", "deepseek", "ollama", "lmstudio") */
@@ -260,6 +288,104 @@ struct NODETOCODE_API FN2CProviderProfile
 	FString ModelsPath;
 	/** The EN2CLLMProvider value whose service sends this provider's requests */
 	EN2CLLMProvider Provider = EN2CLLMProvider::OpenAI;
+
+	// OpenAI-compatible adapter fields (catalog: structured_output, max_tokens_field, thinking_on, thinking_off,
+	// reasoning_effort_field, reasoning_fields, extra_headers, extra_body, secret_id, api_key_env, default_model,
+	// context_discovery); every one is optional
+
+	EN2CStructuredOutputMode StructuredOutput = EN2CStructuredOutputMode::JsonSchemaStrict;
+	EN2CMaxTokensField MaxTokensField = EN2CMaxTokensField::MaxTokens;
+
+	/** Merged into the body when the request asks for thinking on or off (DeepSeek thinking, vLLM chat_template_kwargs, OpenRouter reasoning) */
+	TSharedPtr<FJsonObject> ThinkingOn;
+	TSharedPtr<FJsonObject> ThinkingOff;
+
+	/** Where a thinking level (low, high, max) goes when thinking is on, empty for none (DeepSeek: reasoning_effort) */
+	FString ReasoningEffortField;
+
+	/** Message fields that hold the model's reasoning (read and logged, never parsed as the answer) */
+	TArray<FString> ReasoningFields;
+
+	/** Sent with every request, in order (OpenRouter's attribution headers) */
+	TArray<TPair<FString, FString>> ExtraHeaders;
+
+	/** Merged into every body (LM Studio: stream false) */
+	TSharedPtr<FJsonObject> ExtraBody;
+
+	/** The secret store entry the key is read from (FN2CSecretStore id), empty for a host that takes none */
+	FString SecretId;
+
+	/** Environment variables read for the key when the store has none, first set wins */
+	TArray<FString> ApiKeyEnvironmentVariables;
+
+	/** The model sent when the settings name none (a host that serves one model, or a sensible first pick) */
+	FString DefaultModel;
+
+	/** How the context window is learnt: models (the /models list), none, ... (informational until card 0216) */
+	FString ContextDiscovery;
+
+	/** BaseUrl (trailing slash dropped) followed by Path */
+	FString GetEndpoint() const;
+
+	/** The header the key is sent in for AuthStyle: Authorization (bearer), x-api-key, x-goog-api-key, api-key; empty for none */
+	FString GetKeyHeaderName() const;
+
+	/** For openai_chat rows: reads the adapter fields above from a catalog or profile JSON row; false and OutError on a bad value */
+	static bool ReadAdapterFields(const FJsonObject& Row, FN2CProviderProfile& InOut, FString& OutError);
+
+	/** Lower-case names as the catalog writes them */
+	static FString StructuredOutputToString(EN2CStructuredOutputMode Mode);
+	static bool StructuredOutputFromString(const FString& Name, EN2CStructuredOutputMode& Out);
+};
+
+/**
+ * A profile of your own for an OpenAI-compatible host (Editor Preferences > Node to Code (User) > Custom Provider
+ * Profiles), kept per user. Becomes an FN2CProviderProfile with ToProfile.
+ */
+USTRUCT(BlueprintType)
+struct NODETOCODE_API FN2CCustomProviderProfile
+{
+	GENERATED_BODY()
+
+	/** What Provider Profile names this profile by (letters, digits, - and _); must not be a catalog row ID */
+	UPROPERTY(EditAnywhere, Category = "Profile")
+	FString Id;
+
+	UPROPERTY(EditAnywhere, Category = "Profile")
+	FString DisplayName;
+
+	/** Base URL up to and including the version, for example http://localhost:8000/v1 */
+	UPROPERTY(EditAnywhere, Category = "Profile")
+	FString BaseUrl = TEXT("http://localhost:8000/v1");
+
+	/** Request path after the base URL */
+	UPROPERTY(EditAnywhere, Category = "Profile")
+	FString Path = TEXT("/chat/completions");
+
+	/** How the key is sent: bearer (Authorization: Bearer), api-key (Azure), x-api-key, or none */
+	UPROPERTY(EditAnywhere, Category = "Profile", meta = (GetOptions = "N2CUserSettings.GetAuthStyleOptions"))
+	FString AuthStyle = TEXT("bearer");
+
+	/** Environment variable holding the key, for a host that needs one (the key is never stored in this profile) */
+	UPROPERTY(EditAnywhere, Category = "Profile")
+	FString ApiKeyEnvironmentVariable;
+
+	/** The model sent when Model is empty in the OpenAI-Compatible settings */
+	UPROPERTY(EditAnywhere, Category = "Profile")
+	FString DefaultModel;
+
+	UPROPERTY(EditAnywhere, Category = "Profile")
+	EN2CStructuredOutputMode StructuredOutput = EN2CStructuredOutputMode::JsonSchemaStrict;
+
+	UPROPERTY(EditAnywhere, Category = "Profile")
+	EN2CMaxTokensField MaxTokensField = EN2CMaxTokensField::MaxTokens;
+
+	/** Extra headers sent with every request (no keys here: use the environment variable) */
+	UPROPERTY(EditAnywhere, Category = "Profile")
+	TMap<FString, FString> ExtraHeaders;
+
+	/** As a provider row (Provider OpenAICompatible, dialect openai_chat) */
+	FN2CProviderProfile ToProfile() const;
 };
 
 /**
@@ -291,6 +417,9 @@ public:
 	TConstArrayView<FN2CProviderProfile> Providers() const { return ProviderRows; }
 
 	const FN2CProviderProfile* FindProvider(FName ProviderId) const;
+
+	/** The rows the OpenAI-Compatible provider offers (Provider OpenAICompatible), in catalog order */
+	TArray<const FN2CProviderProfile*> OpenAICompatiblePresets() const;
 
 	/** A provider's models in catalog order; retired rows only when asked for */
 	TArray<const FN2CModelMetadata*> List(FName ProviderId, bool bIncludeRetired = false) const;

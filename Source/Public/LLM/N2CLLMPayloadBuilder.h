@@ -89,13 +89,8 @@ public:
     void ConfigureForOpenAI();
     void ConfigureForAnthropic();
     void ConfigureForGemini();
-    /**
-     * DeepSeek chat completions. ReasoningEffort is the request's thinking control (FN2CLLMConfig::ReasoningEffort);
-     * empty uses the registry entry for the model. Writes thinking.type and, with thinking on, reasoning_effort.
-     */
-    void ConfigureForDeepSeek(const FString& ReasoningEffort = FString());
+    // DeepSeek and LM Studio requests are written by FN2COpenAIChatDialect from their catalog profiles (card 0218)
     void ConfigureForOllama(const struct FN2COllamaConfig& OllamaConfig);
-    void ConfigureForLMStudio();
     
     /** Generate final payload */
     FString Build();

@@ -18,6 +18,8 @@ enum class EN2CAuthStyle : uint8
     Bearer,
     /** x-goog-api-key: <key> (Gemini) */
     XGoogApiKey,
+    /** api-key: <key> (Azure OpenAI) */
+    ApiKey,
 };
 
 /**
@@ -44,13 +46,16 @@ struct NODETOCODE_API FN2CCredential
     /** The header Provider's key goes in (EN2CAuthStyle) */
     static EN2CAuthStyle GetAuthStyle(EN2CLLMProvider Provider);
 
+    /** The style a catalog auth_style names: bearer, x-api-key, x-goog-api-key, api-key; None for none or anything else */
+    static EN2CAuthStyle AuthStyleFromName(const FString& Name);
+
     /**
      * The header this credential is sent in.
      * @return false when there is none (no auth style, or an empty key)
      */
     bool GetHeader(FString& OutName, FString& OutValue) const;
 
-    /** True for a header name that carries a credential (Authorization, x-api-key or x-goog-api-key, any case) */
+    /** True for a header name that carries a credential (Authorization, x-api-key, x-goog-api-key or api-key, any case) */
     static bool IsCredentialHeader(const FString& HeaderName);
 };
 

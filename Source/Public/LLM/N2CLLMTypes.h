@@ -26,7 +26,9 @@ enum class EN2CLLMProvider : uint8
     Gemini      UMETA(DisplayName = "Gemini"),
     Ollama      UMETA(DisplayName = "Ollama"),
     DeepSeek    UMETA(DisplayName = "DeepSeek"),
-    LMStudio    UMETA(DisplayName = "LM Studio")
+    LMStudio    UMETA(DisplayName = "LM Studio"),
+    /** Any OpenAI-compatible Chat Completions host: a catalog preset (vLLM, llama.cpp, OpenRouter, Groq, ...) or a profile of your own, picked by Provider Profile */
+    OpenAICompatible UMETA(DisplayName = "OpenAI-Compatible")
 };
 
 /** Status of the Node to Code system */
@@ -56,6 +58,13 @@ struct FN2CLLMConfig
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Integration")
     FString ApiEndpoint;
+
+    /**
+     * The OpenAI-compatible profile this request goes through when Provider is OpenAI-Compatible: a catalog provider row
+     * ID (vllm, openrouter, ...) or the ID of one of your own profiles. Empty for the other providers.
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Integration")
+    FString ProviderProfile;
 
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Integration")
     float TimeoutSeconds = 3600.0f;

@@ -486,7 +486,7 @@ void FN2CPythonBridgeJsonSpec::Define()
 			ExpectString(TEXT("GetLLMProviders"), All, TEXT("current_provider"), TEXT("Ollama"));
 			if (All.IsValid())
 			{
-				TestEqual(TEXT("provider_count"), All->GetIntegerField(TEXT("provider_count")), 6);
+				TestEqual(TEXT("provider_count"), All->GetIntegerField(TEXT("provider_count")), 7); // OpenAICompatible since card 0218
 			}
 		});
 

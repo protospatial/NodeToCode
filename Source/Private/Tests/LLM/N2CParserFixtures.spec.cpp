@@ -10,9 +10,8 @@
 #include "HAL/PlatformMisc.h"
 #include "LLM/N2CResponseParserBase.h"
 #include "LLM/Providers/N2CAnthropicResponseParser.h"
-#include "LLM/Providers/N2CDeepSeekResponseParser.h"
+#include "LLM/Providers/N2COpenAICompatibleService.h"
 #include "LLM/Providers/N2CGeminiResponseParser.h"
-#include "LLM/Providers/N2CLMStudioResponseParser.h"
 #include "LLM/Providers/N2COllamaResponseParser.h"
 #include "LLM/Providers/N2COpenAIResponseParser.h"
 #include "Misc/FileHelper.h"
@@ -55,9 +54,9 @@ BEGIN_DEFINE_SPEC(FN2CParserFixturesSpec, "NodeToCode.LLM.Parse.Fixtures", N2C_T
 		if (Name == TEXT("anthropic")) { return NewObject<UN2CAnthropicResponseParser>(GetTransientPackage()); }
 		if (Name == TEXT("openai")) { return NewObject<UN2COpenAIResponseParser>(GetTransientPackage()); }
 		if (Name == TEXT("gemini")) { return NewObject<UN2CGeminiResponseParser>(GetTransientPackage()); }
-		if (Name == TEXT("deepseek")) { return NewObject<UN2CDeepSeekResponseParser>(GetTransientPackage()); }
+		if (Name == TEXT("deepseek")) { return UN2COpenAICompatibleResponseParser::MakeFor(EN2CLLMProvider::DeepSeek, GetTransientPackage()); }
 		if (Name == TEXT("ollama")) { return NewObject<UN2COllamaResponseParser>(GetTransientPackage()); }
-		if (Name == TEXT("lmstudio")) { return NewObject<UN2CLMStudioResponseParser>(GetTransientPackage()); }
+		if (Name == TEXT("lmstudio")) { return UN2COpenAICompatibleResponseParser::MakeFor(EN2CLLMProvider::LMStudio, GetTransientPackage()); }
 		return nullptr;
 	}
 

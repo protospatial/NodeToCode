@@ -12,9 +12,8 @@
 #include "LLM/N2CLLMModelRegistry.h"
 #include "LLM/N2CLLMPayloadBuilder.h"
 #include "LLM/Providers/N2CAnthropicService.h"
-#include "LLM/Providers/N2CDeepSeekService.h"
+#include "LLM/Providers/N2COpenAICompatibleService.h"
 #include "LLM/Providers/N2CGeminiService.h"
-#include "LLM/Providers/N2CLMStudioService.h"
 #include "LLM/Providers/N2COllamaService.h"
 #include "LLM/Providers/N2COpenAIService.h"
 #include "Dom/JsonObject.h"
@@ -76,7 +75,7 @@ BEGIN_DEFINE_SPEC(FN2CPayloadBuilderSpec, "NodeToCode.LLM.Payload",
 		FN2CLLMConfig Config;
 		Config.Provider = EN2CLLMProvider::DeepSeek;
 		Settings->ResolveRequestModel(EN2CLLMProvider::DeepSeek, ModelIdOverride, Config);
-		UN2CDeepSeekService* Service = NewObject<UN2CDeepSeekService>(GetTransientPackage());
+		UN2COpenAICompatibleService* Service = NewObject<UN2COpenAICompatibleService>(GetTransientPackage());
 		Service->Initialize(Config);
 		const FString Payload = Service->BuildRequestPayloadForTesting(TEXT("Translate this graph to JSON."), TEXT("You are a translator."));
 
@@ -477,7 +476,7 @@ const FString* HeaderKey = Headers.Find(TEXT("x-goog-api-key"));
 
 		It(TEXT("a bare deepseek-flash request gets the API default, thinking at high effort"), [this]()
 		{
-			const TSharedPtr<FJsonObject> Root = Parse(BuildPayload<UN2CDeepSeekService>(EN2CLLMProvider::DeepSeek, TEXT("deepseek-flash")));
+			const TSharedPtr<FJsonObject> Root = Parse(BuildPayload<UN2COpenAICompatibleService>(EN2CLLMProvider::DeepSeek, TEXT("deepseek-flash")));
 			if (!TestTrue(TEXT("payload parses"), Root.IsValid())) { return; }
 			TestDeepSeekThinking(TEXT("bare deepseek-flash"), Root, TEXT("enabled"), TEXT("high"));
 			TestNoSampling(TEXT("bare deepseek-flash root"), Root);
@@ -485,7 +484,7 @@ const FString* HeaderKey = Headers.Find(TEXT("x-goog-api-key"));
 
 		It(TEXT("an unregistered DeepSeek ID gets no thinking, sampling or response_format fields"), [this]()
 		{
-			const TSharedPtr<FJsonObject> Root = Parse(BuildPayload<UN2CDeepSeekService>(EN2CLLMProvider::DeepSeek, TEXT("deepseek-v9-unknown")));
+			const TSharedPtr<FJsonObject> Root = Parse(BuildPayload<UN2COpenAICompatibleService>(EN2CLLMProvider::DeepSeek, TEXT("deepseek-v9-unknown")));
 			if (!TestTrue(TEXT("payload parses"), Root.IsValid())) { return; }
 			TestFalse(TEXT("unregistered: no thinking"), Root->HasField(TEXT("thinking")));
 			TestFalse(TEXT("unregistered: no reasoning_effort"), Root->HasField(TEXT("reasoning_effort")));
@@ -656,7 +655,7 @@ const FString* HeaderKey = Headers.Find(TEXT("x-goog-api-key"));
 	{
 		It(TEXT("sends no temperature and still receives the full schema"), [this]()
 		{
-			const FString Payload = BuildPayload<UN2CLMStudioService>(EN2CLLMProvider::LMStudio, TEXT("qwen3-32b"));
+			const FString Payload = BuildPayload<UN2COpenAICompatibleService>(EN2CLLMProvider::LMStudio, TEXT("qwen3-32b"));
 			const TSharedPtr<FJsonObject> Root = Parse(Payload);
 			if (!TestTrue(TEXT("payload parses"), Root.IsValid())) { return; }
 			TestNoSampling(TEXT("LM Studio root"), Root);
@@ -716,22 +715,22 @@ const FString* HeaderKey = Headers.Find(TEXT("x-goog-api-key"));
 			TestFalse(TEXT("Gemini unregistered Auto sends no maxOutputTokens"), GeminiUnknown.IsValid() && GeminiUnknown->HasField(TEXT("maxOutputTokens")));
 
 			const FString DeepSeek = TEXT("deepseek-v4-pro");
-			TestEqual(TEXT("DeepSeek thinking Auto max_tokens is the 65536 reasoning ceiling"), NumberOr(Parse(BuildPayload<UN2CDeepSeekService>(EN2CLLMProvider::DeepSeek, DeepSeek)), TEXT("max_tokens")), static_cast<int64>(65536));
+			TestEqual(TEXT("DeepSeek thinking Auto max_tokens is the 65536 reasoning ceiling"), NumberOr(Parse(BuildPayload<UN2COpenAICompatibleService>(EN2CLLMProvider::DeepSeek, DeepSeek)), TEXT("max_tokens")), static_cast<int64>(65536));
 			TestEqual(TEXT("DeepSeek non-thinking Auto max_tokens is the 32000 ceiling"), NumberOr(BuildDeepSeek(EN2CDeepSeekModel::DeepSeek_V3), TEXT("max_tokens")), static_cast<int64>(32000));
-			TestEqual(TEXT("DeepSeek explicit 4096"), NumberOr(Parse(BuildPayload<UN2CDeepSeekService>(EN2CLLMProvider::DeepSeek, DeepSeek, 4096)), TEXT("max_tokens")), static_cast<int64>(4096));
+			TestEqual(TEXT("DeepSeek explicit 4096"), NumberOr(Parse(BuildPayload<UN2COpenAICompatibleService>(EN2CLLMProvider::DeepSeek, DeepSeek, 4096)), TEXT("max_tokens")), static_cast<int64>(4096));
 			TestEqual(TEXT("DeepSeek unregistered explicit 4096"),
-				NumberOr(Parse(BuildPayload<UN2CDeepSeekService>(EN2CLLMProvider::DeepSeek, TEXT("deepseek-v9-unknown"), 4096)), TEXT("max_tokens")), static_cast<int64>(4096));
+				NumberOr(Parse(BuildPayload<UN2COpenAICompatibleService>(EN2CLLMProvider::DeepSeek, TEXT("deepseek-v9-unknown"), 4096)), TEXT("max_tokens")), static_cast<int64>(4096));
 		});
 
 		It(TEXT("LM Studio: Auto sends no max_tokens, explicit 4096 gives 4096"), [this]()
 		{
-			const TSharedPtr<FJsonObject> Auto = Parse(BuildPayload<UN2CLMStudioService>(EN2CLLMProvider::LMStudio, TEXT("qwen3-32b")));
+			const TSharedPtr<FJsonObject> Auto = Parse(BuildPayload<UN2COpenAICompatibleService>(EN2CLLMProvider::LMStudio, TEXT("qwen3-32b")));
 			if (!TestTrue(TEXT("payload parses"), Auto.IsValid())) { return; }
 			TestFalse(TEXT("Auto has no max_tokens"), Auto->HasField(TEXT("max_tokens")));
 			TestFalse(TEXT("Auto has no max_completion_tokens"), Auto->HasField(TEXT("max_completion_tokens")));
-			TestEqual(TEXT("explicit 4096"), NumberOr(Parse(BuildPayload<UN2CLMStudioService>(EN2CLLMProvider::LMStudio, TEXT("qwen3-32b"), 4096)), TEXT("max_tokens")), static_cast<int64>(4096));
+			TestEqual(TEXT("explicit 4096"), NumberOr(Parse(BuildPayload<UN2COpenAICompatibleService>(EN2CLLMProvider::LMStudio, TEXT("qwen3-32b"), 4096)), TEXT("max_tokens")), static_cast<int64>(4096));
 			// No registry entry for a local model, so a large explicit value is not capped
-			TestEqual(TEXT("explicit 200000 sent as-is"), NumberOr(Parse(BuildPayload<UN2CLMStudioService>(EN2CLLMProvider::LMStudio, TEXT("qwen3-32b"), 200000)), TEXT("max_tokens")), static_cast<int64>(200000));
+			TestEqual(TEXT("explicit 200000 sent as-is"), NumberOr(Parse(BuildPayload<UN2COpenAICompatibleService>(EN2CLLMProvider::LMStudio, TEXT("qwen3-32b"), 200000)), TEXT("max_tokens")), static_cast<int64>(200000));
 		});
 
 		It(TEXT("Auto shrinks to the room the prompt leaves in the context window"), [this]()

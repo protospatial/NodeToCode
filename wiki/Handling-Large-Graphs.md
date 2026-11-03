@@ -29,7 +29,8 @@ The cost counts everything a request sends (the graph, the system prompt for the
 files) at the input price, plus the expected reply (about the graph's size) at the output price; the batch total
 shows the two parts. The context bars count the prompt with the graph, so a graph that only fits without it is not
 shown as safe. For a **Custom Model ID** it shows the ID, assumes a 128K context and costs nothing unless you add a
-price override.
+price override. The same 128K estimate, at no cost, applies to the **OpenAI-Compatible** provider (a vLLM, llama.cpp
+or hosted server), whose real context length NodeToCode does not know yet.
 
 The ring in a graph editor's overlay and the token counts in the Node to Code list estimate exactly what Translate
 sends: the graph and its nested graphs up to the [Translation Depth](Translation-Depth), each counted once, at about
