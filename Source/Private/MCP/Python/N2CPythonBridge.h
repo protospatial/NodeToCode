@@ -22,6 +22,24 @@ class NODETOCODE_API UN2CPythonBridge : public UBlueprintFunctionLibrary
 	GENERATED_BODY()
 
 public:
+	// ========== Tool catalog ==========
+
+	/**
+	 * Run one of NodeToCode's MCP tools by name through the tool catalog (card 0342), so Python gets the tool's own
+	 * behaviour: the same pin matching, compile reporting, Play In Editor rule, argument check and untrusted-data marking
+	 * an MCP client gets. Every registered tool is reachable, whatever the MCP server serves (its tool profile, the tools
+	 * left to Unreal MCP, or the server being off), except the PythonTools toolset (run Python directly). The tool runs
+	 * inline on the game thread; a long-running tool (translation) is refused with NOT_RUNNABLE_HERE.
+	 *
+	 * @param ToolName The tool's name, e.g. "connect-pins" (Context/mcp-server/tools.generated.md lists them)
+	 * @param ArgumentsJson The tool's arguments as a JSON object, e.g. {"nodeGuids": ["..."]}; empty means {}
+	 * @return {"success": true, "data": <the tool's value: its JSON object or array, else its text>, "error": null} or
+	 *         {"success": false, "data": null, "error": "<the tool's error text>", "code": "UNKNOWN_TOOL" |
+	 *         "INVALID_ARGUMENT" | "PIE_ACTIVE" | "NOT_RUNNABLE_HERE" | "TOOL_FAILED" | ..., "field": "<argument>"}
+	 */
+	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python")
+	static FString InvokeTool(const FString& ToolName, const FString& ArgumentsJson = TEXT("{}"));
+
 	/**
 	 * Get the currently focused Blueprint graph as N2CJSON format.
 	 *

@@ -32,7 +32,7 @@ from typing import Dict, Any, Optional
 
 import unreal
 
-from .utils import make_success_result, make_error_result, log_info, log_warning, log_error, _parse_bridge_result, _target_kwargs
+from .utils import make_success_result, make_error_result, log_info, log_warning, log_error, _invoke, _target_args, legacy_guid
 
 
 # ============== Function Input Pins ==============
@@ -71,9 +71,14 @@ def add_function_input_pin(
             data: {
                 pinName: str,       # Requested name
                 actualName: str,    # Actual name (may differ if made unique)
-                pinGuid: str,       # Unique pin identifier
+                displayName: str,
+                pinId: str,         # Unique pin identifier
+                typeInfo: {...},    # The resolved type
                 functionName: str,  # Name of the function
-                typeIdentifier: str # Resolved type
+                blueprintName: str,
+                message: str,
+                target: {...},
+                # 1.x keys, one release: pinGuid, typeIdentifier
             },
             error: str or None
         }
@@ -97,15 +102,10 @@ def add_function_input_pin(
         return make_error_result("type_identifier cannot be empty")
 
     try:
-        result = unreal.N2CPythonBridge.add_function_input_pin(
-            pin_name.strip(),
-            type_identifier.strip(),
-            default_value,
-            is_pass_by_reference,
-            tooltip,
-            **_target_kwargs(blueprint_path, graph)
-        )
-        return _parse_bridge_result(result)
+        return _invoke('add_function_input_pin', {
+            'pinName': pin_name.strip(), 'typeIdentifier': type_identifier.strip(), 'defaultValue': default_value or '',
+            'isPassByReference': bool(is_pass_by_reference), 'tooltip': tooltip or '',
+            **_target_args(blueprint_path, graph)}, _legacy_added_pin(type_identifier.strip()))
     except Exception as e:
         log_error(f"add_function_input_pin failed: {e}")
         return make_error_result(str(e))
@@ -125,8 +125,12 @@ def remove_function_entry_pin(pin_name: str, blueprint_path: str = "", graph: st
         {
             success: bool,
             data: {
-                removedPin: str,
-                functionName: str
+                removedPinName: str,
+                functionName: str,
+                blueprintName: str,
+                message: str,
+                target: {...},
+                # 1.x key, one release: removedPin
             },
             error: str or None
         }
@@ -140,8 +144,8 @@ def remove_function_entry_pin(pin_name: str, blueprint_path: str = "", graph: st
         return make_error_result("pin_name cannot be empty")
 
     try:
-        result = unreal.N2CPythonBridge.remove_function_entry_pin(pin_name.strip(), **_target_kwargs(blueprint_path, graph))
-        return _parse_bridge_result(result)
+        return _invoke('remove_function_entry_pin', {'pinName': pin_name.strip(), **_target_args(blueprint_path, graph)},
+                       _legacy_removed_pin)
     except Exception as e:
         log_error(f"remove_function_entry_pin failed: {e}")
         return make_error_result(str(e))
@@ -181,9 +185,14 @@ def add_function_return_pin(
             data: {
                 pinName: str,       # Requested name
                 actualName: str,    # Actual name (may differ if made unique)
-                pinGuid: str,       # Unique pin identifier
+                displayName: str,
+                pinId: str,         # Unique pin identifier
+                typeInfo: {...},    # The resolved type
                 functionName: str,  # Name of the function
-                typeIdentifier: str # Resolved type
+                blueprintName: str,
+                message: str,
+                target: {...},
+                # 1.x keys, one release: pinGuid, typeIdentifier
             },
             error: str or None
         }
@@ -209,13 +218,9 @@ def add_function_return_pin(
         return make_error_result("type_identifier cannot be empty")
 
     try:
-        result = unreal.N2CPythonBridge.add_function_return_pin(
-            pin_name.strip(),
-            type_identifier.strip(),
-            tooltip,
-            **_target_kwargs(blueprint_path, graph)
-        )
-        return _parse_bridge_result(result)
+        return _invoke('add_function_return_pin', {
+            'pinName': pin_name.strip(), 'typeIdentifier': type_identifier.strip(), 'tooltip': tooltip or '',
+            **_target_args(blueprint_path, graph)}, _legacy_added_pin(type_identifier.strip()))
     except Exception as e:
         log_error(f"add_function_return_pin failed: {e}")
         return make_error_result(str(e))
@@ -235,8 +240,12 @@ def remove_function_return_pin(pin_name: str, blueprint_path: str = "", graph: s
         {
             success: bool,
             data: {
-                removedPin: str,
-                functionName: str
+                removedPinName: str,
+                functionName: str,
+                blueprintName: str,
+                message: str,
+                target: {...},
+                # 1.x key, one release: removedPin
             },
             error: str or None
         }
@@ -250,8 +259,21 @@ def remove_function_return_pin(pin_name: str, blueprint_path: str = "", graph: s
         return make_error_result("pin_name cannot be empty")
 
     try:
-        result = unreal.N2CPythonBridge.remove_function_return_pin(pin_name.strip(), **_target_kwargs(blueprint_path, graph))
-        return _parse_bridge_result(result)
+        return _invoke('remove_function_return_pin', {'pinName': pin_name.strip(), **_target_args(blueprint_path, graph)},
+                       _legacy_removed_pin)
     except Exception as e:
         log_error(f"remove_function_return_pin failed: {e}")
         return make_error_result(str(e))
+
+
+# ============== 1.x result keys (card 0342) ==============
+
+def _legacy_added_pin(type_identifier: str):
+    def legacy(data: Dict[str, Any]) -> Dict[str, Any]:
+        return {'pinGuid': (legacy_guid(data.get('pinId')), "pinId"),
+                'typeIdentifier': (type_identifier, "typeInfo")}
+    return legacy
+
+
+def _legacy_removed_pin(data: Dict[str, Any]) -> Dict[str, Any]:
+    return {'removedPin': (data.get('removedPinName', ''), "removedPinName")}

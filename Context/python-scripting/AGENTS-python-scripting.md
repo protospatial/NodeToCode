@@ -146,12 +146,34 @@ tags = n2c.list_tags()
 | File | Purpose |
 |------|---------|
 | `__init__.py` | Module exports (`__all__`), version info (`__version__ = "1.0.0"`) |
-| `blueprint.py` | Blueprint get/read/compile/save/load via `UN2CPythonBridge` |
-| `graph.py` | Graph editing via `UN2CPythonBridge`: node search, add, connect, pin values, delete, find, comments |
-| `functions.py` | Function input and return pins via `UN2CPythonBridge` |
+| `blueprint.py` | Blueprint get/read/load via `UN2CPythonBridge`; compile and save through the MCP tools (`invoke_tool`) |
+| `graph.py` | Graph editing through the MCP tools (`invoke_tool`): node search, add, connect, pin values, delete, find, comments |
+| `functions.py` | Function input and return pins through the MCP pin tools (`invoke_tool`) |
 | `bridge.py` | Tagging, LLM provider info, `open_blueprint` and `open_blueprint_function` |
 | `scripts.py` | Script CRUD with dual-path search (plugin + project) |
-| `utils.py` | Logging (`log_info`, `log_warning`, `log_error`), result helpers, `_parse_bridge_result` |
+| `utils.py` | Logging (`log_info`, `log_warning`, `log_error`), result helpers, `_parse_bridge_result`, `invoke_tool`, `_invoke` with `TOOL_NAMES` and `BRIDGE_ONLY`, `LegacyKeys` |
+
+### Tools from Python: invoke_tool (card 0342)
+
+`UN2CPythonBridge::InvokeTool(ToolName, ArgumentsJson)` runs any registered MCP tool through the tool catalog
+(`FN2CToolCatalog::InvokeNow`) and returns `{success, data, error}` (`code` and `field` on a failure: `UNKNOWN_TOOL`,
+`INVALID_ARGUMENT`, `PIE_ACTIVE`, `NOT_RUNNABLE_HERE`, `TOOL_FAILED`). It resolves from a private tool manager
+configured with every toolset except PythonTools, so it reaches tools the MCP server does not serve (the Python
+Scripting profile serves only the Python tools); run-python and the script-library tools are refused, and a
+long-running tool (translation) gets `NOT_RUNNABLE_HERE`. It runs inline on the game thread, inside a run-python call
+too (the outer tool call compiles once). `data` is the tool's value: its JSON object or array, else its text.
+
+`nodetocode.invoke_tool(name, arguments)` is the Python form. The 16 functions in `utils.TOOL_NAMES` (search, add,
+connect, set pin, delete, find, comment, the four function-pin calls, compile, save, `tag_graph`, `open_blueprint`,
+`open_blueprint_function`) run their tool through `utils._invoke`, so they behave exactly as the MCP tools
+(`NodeToCode.Python.ToolParity` compares each with tools/call). Their `data` is the tool's result plus, for one
+release, the keys the 1.x bridge copies returned (`LegacyKeys`: reading one with `[]` or `get()` logs one deprecation
+warning naming the tool's key; the tool's own key wins where both exist, e.g. a pin's `type` is `String`). A tool
+value with `"success": false` (compile errors) makes the result a failure with the tool's `message` as `error`.
+`utils.BRIDGE_ONLY` lists the functions still on their own bridge UFUNCTION and why: `get_focused_blueprint` (the
+tool's N2C JSON uses `ids` objects), `list_tags` and `remove_tag` (the tag tools take no Blueprint path, card 0498),
+`get_llm_providers` (the tool lists configured providers only). The UFUNCTIONs themselves stay until card 0343 turns
+them into forwarders.
 
 ### Available Functions
 
@@ -186,10 +208,14 @@ arguments and the keys of its `data`. Grouped:
     `get_blueprint_n2c_json` reads too: its `ids.short` is the node or pin ID (card 0505). A read that had to skip a
     graph, node or pin (a missing required field) fails: `error` names the skipped parts, `data` holds the rest
 *   `compile_blueprint(path=None)` - Compile the Blueprint at `path` (loaded if needed; the focused one is never
-    touched), else the focused Blueprint (card 0297); `data`: `blueprint_name`, `blueprint_path`, `status`, `had_errors`, `had_warnings`, `error_count`, `warning_count` and
-    `messages` (each `severity`, `message`, and `nodeGuid`, `nodeTitle`, `graph`, `pin` when it names a node)
+    touched), else the focused Blueprint (card 0297); `data` is compile-blueprint's (`blueprintName`,
+    `blueprintPath`, `compilationStatus`, `results` with `errorCount`, `warningCount` and `messages`, each `severity`,
+    `message`, and `nodeGuid`, `nodeTitle`, `graph`, `pin` when it names a node); compile errors make it a failure.
+    The 1.x `blueprint_name`, `blueprint_path`, `status`, `had_errors`, `had_warnings`, `error_count`,
+    `warning_count` and `messages` are kept for one release
 *   `save_blueprint(path=None, only_if_dirty=True)` - Save the Blueprint at `path`, else the focused Blueprint;
-    `data`: `blueprint_name`, `blueprint_path`, `was_dirty`, `was_saved`
+    `data` is save-blueprint's (`message`, `blueprintPath`, `packageInfo`, `sourceControl` when it wrote the file),
+    with the 1.x `blueprint_name`, `blueprint_path`, `was_dirty`, `was_saved` for one release
 *   `load_blueprint(path)` - Load Blueprint by asset path; `data`: `name`, `path`, `class_name`, `parent_class`
     (the parent's name, such as `Actor`)
 *   `open_blueprint(path, focus_graph=None)` - Open a Blueprint editor and focus a graph by name, matched
@@ -205,8 +231,9 @@ focused graph as before; with `blueprint_path` alone, its focused graph or else 
 needs to be open then. A target that does not resolve fails with the resolver's code (`ASSET_NOT_FOUND`,
 `GRAPH_NOT_FOUND`, `AMBIGUOUS_GRAPH_NAME`, `READ_ONLY_GRAPH`, `NO_FOCUSED_GRAPH`).
 *   `search_blueprint_nodes(term, context_sensitive=True, max_results=20, category="", exclude_vm_functions=True)` -
-    Actions to add; each has `menuName` (also in `name` and `displayName`), `category`, `tooltip`, `keywords` and
-    `spawnMetadata` (`actionIdentifier`: the stable spawner-signature ID, card 0277; `nodeName`). `category` filters
+    Actions to add, as search-blueprint-nodes returns them: each an N2C JSON node with `spawnMetadata`
+    (`actionIdentifier`: the stable spawner-signature ID, card 0277; `nodeName`; `category`). The 1.x keys `menuName`,
+    `name`, `displayName`, `category` and `count` are kept for one release; `tooltip` and `keywords` are empty. `category` filters
     on the menu category, ignoring case and spaces. `context_sensitive` True and False search the same list, the
     target graph's (the editor's node menu with Context Sensitive off), and set only `isContextSensitive`; both need
     a graph, named or focused (card 0434)
@@ -219,7 +246,9 @@ needs to be open then. A target that does not resolve fails with the resolver's 
 *   `set_pin_value(node_guid, pin_guid, value, pin_name="")` - Default value of an unlinked input pin
 *   `delete_nodes(node_guids, preserve_connections=False, force=False)` - Delete nodes as the editor does; `preserve_connections` reconnects the exec line through a node with one exec input and output (and reroute knots); GUIDs not deleted are listed under `skipped`
 *   `find_nodes_in_graph(search_terms, search_type="keyword", case_sensitive=False, max_results=50)` - A keyword
-    matches the node's title (as shown and its source text), class or member name; or `search_type="guid"`
+    matches the node's title (as shown and its source text), class or member name; or `search_type="guid"`. Nodes
+    come as N2C JSON (`ids.guid`, `input_pins`/`output_pins` with `ids.guid` and `ids.name`); the 1.x `nodeGuid`,
+    `nodeName`, `nodeClass` and `inputPins`/`outputPins` (`pinGuid`, `pinName`) are kept for one release
 *   `create_comment_node(node_guids, comment_text="Comment", color=None, font_size=18, move_mode="group", padding=50)`
 
 Pick pins by `pinName` (`execute`, `then`, `ReturnValue`, `InString`, ...): it is the stable pin name, while

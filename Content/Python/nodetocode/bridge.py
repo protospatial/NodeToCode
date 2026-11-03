@@ -23,7 +23,8 @@ from typing import Dict, Any, Optional
 
 import unreal
 
-from .utils import make_success_result, make_error_result, log_info, log_warning, log_error, _parse_bridge_result, _target_kwargs
+from .utils import (make_success_result, make_error_result, log_info, log_warning, log_error, _parse_bridge_result,
+                    _invoke, _target_args, legacy_guid)
 
 
 # ============== Tagging System ==============
@@ -44,20 +45,22 @@ def tag_graph(tag: str, category: str = "Default", description: str = "", bluepr
             with blueprint_path alone its focused graph, else its event graph
 
     Returns:
-        {success, data: {tag, category, description, graph_guid, graph_name, blueprint_name,
-                         blueprint_path}, error}
+        {success, data: {message, taggedGraph: {tag, category, description, graphGuid, graphName, blueprintPath,
+                         timestamp}, target}, error} (tag-blueprint-graph's result, card 0342); the 1.x keys tag,
+        category, description, graph_guid, graph_name, blueprint_name, blueprint_path are kept for one release
 
     Example:
         result = tag_graph("player_controller", "Systems", "Main player input handling")
         if result['success']:
-            print(f"Tagged graph: {result['data']['graph_name']}")
+            print(f"Tagged graph: {result['data']['taggedGraph']['graphName']}")
     """
     if not tag or not tag.strip():
         return make_error_result("Tag name cannot be empty")
 
     try:
-        result = unreal.N2CPythonBridge.tag_focused_graph(tag.strip(), category.strip(), description.strip(), **_target_kwargs(blueprint_path, graph))
-        return _parse_bridge_result(result)
+        return _invoke('tag_graph', {'tag': tag.strip(), 'category': (category or 'Default').strip(),
+                                     'description': (description or '').strip(), **_target_args(blueprint_path, graph)},
+                       _legacy_tag)
     except Exception as e:
         log_error(f"tag_graph failed: {e}")
         return make_error_result(str(e))
@@ -252,11 +255,11 @@ def open_blueprint(blueprint_path: str, focus_graph: Optional[str] = None) -> Di
 
     requested = (focus_graph or "").strip()
     try:
-        result = _parse_bridge_result(unreal.N2CPythonBridge.open_blueprint(
-            blueprint_path.strip(), requested or "EventGraph"))
+        result = _invoke('open_blueprint', {'asset_path': blueprint_path.strip(),
+                                            'focus_graph': requested or "EventGraph"}, _legacy_open)
         # The default EventGraph only: a Blueprint without one opens unfocused; a name the caller gave stays an error
         if not requested and not result.get('success') and str(result.get('error') or '').startswith('GRAPH_NOT_FOUND'):
-            result = _parse_bridge_result(unreal.N2CPythonBridge.open_blueprint(blueprint_path.strip(), ""))
+            result = _invoke('open_blueprint', {'asset_path': blueprint_path.strip()}, _legacy_open)
         return result
     except Exception as e:
         log_error(f"open_blueprint failed: {e}")
@@ -289,8 +292,41 @@ def open_blueprint_function(function_name: str) -> Dict[str, Any]:
         return make_error_result("function_name cannot be empty")
 
     try:
-        result = unreal.N2CPythonBridge.open_blueprint_function(function_name.strip())
-        return _parse_bridge_result(result)
+        return _invoke('open_blueprint_function', {'graphName': function_name.strip()}, _legacy_open_function)
     except Exception as e:
         log_error(f"open_blueprint_function failed: {e}")
         return make_error_result(str(e))
+
+
+# ============== 1.x result keys (card 0342) ==============
+
+def _legacy_tag(data: Dict[str, Any]) -> Dict[str, Any]:
+    tagged = data.get('taggedGraph') or {}
+    target = data.get('target') or {}
+    return {
+        'tag': (tagged.get('tag', ''), "taggedGraph['tag']"),
+        'category': (tagged.get('category', ''), "taggedGraph['category']"),
+        'description': (tagged.get('description', ''), "taggedGraph['description']"),
+        'graph_guid': (legacy_guid(tagged.get('graphGuid')), "taggedGraph['graphGuid']"),
+        'graph_name': (tagged.get('graphName', ''), "taggedGraph['graphName']"),
+        'blueprint_name': (target.get('blueprintName', ''), "target['blueprintName']"),
+        'blueprint_path': (tagged.get('blueprintPath') or target.get('blueprintPath', ''), "taggedGraph['blueprintPath']"),
+    }
+
+
+def _legacy_open(data: Dict[str, Any]) -> Dict[str, Any]:
+    name = data.get('blueprint_name', '')
+    asset_path = data.get('asset_path', '')
+    counts = data.get('graph_counts') or {}
+    return {
+        'blueprintName': (name, "blueprint_name"),
+        'blueprintPath': (f"{asset_path}.{name}" if asset_path and name and '.' not in asset_path.rsplit('/', 1)[-1]
+                          else asset_path, "asset_path"),
+        'focusedGraph': (data.get('focused_graph', ''), "focused_graph"),
+        'eventGraphCount': (counts.get('event_graphs', 0), "graph_counts['event_graphs']"),
+        'functionCount': (counts.get('function_graphs', 0), "graph_counts['function_graphs']"),
+    }
+
+
+def _legacy_open_function(data: Dict[str, Any]) -> Dict[str, Any]:
+    return {'graphGuid': (data.get('functionGuid', ''), "functionGuid")}

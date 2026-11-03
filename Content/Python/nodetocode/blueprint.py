@@ -15,7 +15,8 @@ from .utils import (
     log_info,
     log_error,
     _parse_bridge_result,
-    _target_kwargs,
+    _invoke,
+    _target_args,
 )
 
 
@@ -210,34 +211,36 @@ def compile_blueprint(blueprint_path: Optional[str] = None) -> Dict[str, Any]:
     Returns:
         dict: {
             'success': bool,        # True if compilation succeeded without errors
-            'data': {
-                'blueprint_name': str,
-                'blueprint_path': str,  # the Blueprint compiled
-                'status': str,       # Post-compilation status
-                'had_errors': bool,
-                'had_warnings': bool,
-                'error_count': int,
-                'warning_count': int,
-                'messages': [         # The compiler's messages
-                    {'severity': str, 'message': str,
-                     # when the message names a node:
-                     'nodeGuid': str, 'nodeTitle': str, 'graph': str, 'pin': str},
-                ],
+            'data': {               # compile-blueprint's result (card 0342)
+                'blueprintName': str,
+                'blueprintPath': str,  # the Blueprint compiled
+                'compilationStatus': {'previousStatus': str, 'currentStatus': str, 'statusCode': int},
+                'compilationTime': float,
+                'results': {
+                    'errorCount': int, 'warningCount': int, 'noteCount': int,
+                    'messages': [     # The compiler's messages
+                        {'severity': str, 'message': str,
+                         # when the message names a node:
+                         'nodeGuid': str, 'nodeTitle': str, 'graph': str, 'pin': str},
+                    ],
+                },
+                'message': str,
+                # 1.x keys, one release: blueprint_name, blueprint_path, status, had_errors, had_warnings,
+                # error_count, warning_count, messages
             } or None,
-            'error': str or None
+            'error': str or None    # the tool's message when the compile had errors
         }
 
     Example:
         result = compile_blueprint()
         if result['success']:
             print("Compilation successful!")
-        elif result['data'] and result['data']['had_errors']:
+        elif result['data'] and result['data']['results']['errorCount']:
             print("Compilation failed with errors")
     """
     try:
-        # The bridge loads and compiles the Blueprint at the path (card 0274); without one, the focused Blueprint
-        result_json = unreal.N2CPythonBridge.compile_focused_blueprint(**_target_kwargs(blueprint_path or ""))
-        return _parse_bridge_result(result_json)
+        # compile-blueprint loads and compiles the Blueprint at the path; without one, the focused Blueprint
+        return _invoke('compile_blueprint', _target_args(blueprint_path or ""), _legacy_compile)
     except Exception as e:
         log_error(f"compile_blueprint failed: {e}")
         return make_error_result(str(e))
@@ -258,24 +261,26 @@ def save_blueprint(blueprint_path: Optional[str] = None,
     Returns:
         dict: {
             'success': bool,
-            'data': {
-                'blueprint_name': str,
-                'blueprint_path': str,  # the Blueprint saved (or found clean)
-                'was_dirty': bool,
-                'was_saved': bool,
+            'data': {               # save-blueprint's result (card 0342)
+                'message': str,
+                'blueprintName': str,
+                'blueprintPath': str,  # the Blueprint saved (or found clean)
+                'packageInfo': {'packageName': str, 'isDirty': bool, 'fileName': str},
+                'sourceControl': {...},  # only when the file was written
+                # 1.x keys, one release: blueprint_name, blueprint_path, was_dirty, was_saved
             } or None,
             'error': str or None
         }
 
     Example:
         result = save_blueprint()
-        if result['success'] and result['data']['was_saved']:
+        if result['success'] and 'sourceControl' in result['data']:   # set when the file was written
             print("Blueprint saved to disk")
     """
     try:
-        # The bridge loads and saves the Blueprint at the path (card 0274); without one, the focused Blueprint
-        result_json = unreal.N2CPythonBridge.save_focused_blueprint(only_if_dirty, **_target_kwargs(blueprint_path or ""))
-        return _parse_bridge_result(result_json)
+        # save-blueprint loads and saves the Blueprint at the path; without one, the focused Blueprint
+        return _invoke('save_blueprint', {'saveOnlyIfDirty': bool(only_if_dirty), **_target_args(blueprint_path or "")},
+                       _legacy_save(bool(only_if_dirty)))
     except Exception as e:
         log_error(f"save_blueprint failed: {e}")
         return make_error_result(str(e))
@@ -345,3 +350,32 @@ def _parent_class_name(blueprint) -> str:
     # "/Script/CoreUObject.Class'/Script/Engine.Actor'" -> "Actor"; a bare "/Script/Engine.Actor" also works
     path = tag.split("'")[1] if tag.count("'") >= 2 else tag
     return path.rsplit('.', 1)[-1] if path and path != 'None' else ''
+
+
+# ============== 1.x result keys (card 0342) ==============
+
+def _legacy_compile(data: Dict[str, Any]) -> Dict[str, Any]:
+    results = data.get('results') or {}
+    errors, warnings = results.get('errorCount', 0) or 0, results.get('warningCount', 0) or 0
+    return {
+        'blueprint_name': (data.get('blueprintName', ''), "blueprintName"),
+        'blueprint_path': (data.get('blueprintPath', ''), "blueprintPath"),
+        'status': ((data.get('compilationStatus') or {}).get('currentStatus', ''), "compilationStatus['currentStatus']"),
+        'had_errors': (errors > 0 or data.get('success') is False, "results['errorCount'] > 0"),
+        'had_warnings': (warnings > 0, "results['warningCount'] > 0"),
+        'error_count': (errors, "results['errorCount']"),
+        'warning_count': (warnings, "results['warningCount']"),
+        'messages': (results.get('messages') or [], "results['messages']"),
+    }
+
+
+def _legacy_save(only_if_dirty: bool):
+    def legacy(data: Dict[str, Any]) -> Dict[str, Any]:
+        saved = 'sourceControl' in data  # the tool reports source control only when it wrote the file
+        return {
+            'blueprint_name': (data.get('blueprintName', ''), "blueprintName"),
+            'blueprint_path': (data.get('blueprintPath', ''), "blueprintPath"),
+            'was_dirty': (saved if only_if_dirty else None, "message"),
+            'was_saved': (saved, "'sourceControl' in data (set when the file was written)"),
+        }
+    return legacy

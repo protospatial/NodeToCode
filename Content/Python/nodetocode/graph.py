@@ -31,10 +31,10 @@ Usage:
 
     # Step 3: Connect pins between nodes (IMPORTANT: This is the next step after add_node_to_graph)
     # Pick pins by their stable 'pinName' ('execute', 'then', 'ReturnValue', ...), not the display label
-    begin = found['data']['nodes'][0]
+    begin = found['data']['nodes'][0]   # N2C JSON: ids.guid, output_pins[].ids.{guid, name}
     n2c.connect_pins([{
-        "from": {"nodeGuid": begin['nodeGuid'],
-                 "pinGuid": next(p['pinGuid'] for p in begin['outputPins'] if p['pinName'] == 'then')},
+        "from": {"nodeGuid": begin['ids']['guid'],
+                 "pinGuid": next(p['ids']['guid'] for p in begin['output_pins'] if p['ids']['name'] == 'then')},
         "to": {"nodeGuid": node['data']['nodeGuid'],
                "pinGuid": next(p['pinGuid'] for p in node['data']['inputPins'] if p['pinName'] == 'execute')}
     }])
@@ -45,7 +45,8 @@ from typing import Dict, Any, List, Optional, Union
 
 import unreal
 
-from .utils import make_success_result, make_error_result, log_info, log_warning, log_error, _parse_bridge_result, _target_kwargs
+from .utils import (make_success_result, make_error_result, log_info, log_warning, log_error, _invoke, _target_args,
+                    LegacyKeys, legacy_guid)
 
 
 # ============== Node Search & Creation ==============
@@ -83,9 +84,10 @@ def search_blueprint_nodes(
         graph: Optional graph of that Blueprint (or of the focused one), by GUID or name; empty: the focused graph, or
             with blueprint_path alone its focused graph, else its event graph
 
-    Each result carries the action's own fields: 'menuName' (also in 'name' and 'displayName'), 'category'
-    (the menu category, e.g. "Development|String"), 'tooltip' and 'keywords'. Its
-    spawnMetadata.actionIdentifier is a stable ID, the node spawner's signature (for Print String
+    Runs the search-blueprint-nodes MCP tool (card 0342). Each result is the action's node as N2C JSON with
+    spawnMetadata: nodeName (the menu name), category (the menu category, e.g. "Development|String") and
+    actionIdentifier. The 1.x keys 'menuName', 'name', 'displayName', 'category' and data['count'] are kept for one
+    release ('tooltip' and 'keywords' are empty). spawnMetadata.actionIdentifier is a stable ID, the node spawner's signature (for Print String
     '(FieldName="/Script/Engine.KismetSystemLibrary:PrintString",NodeName="/Script/BlueprintGraph.K2Node_CallFunction")'):
     the same in every search, context, capture and compile, with no control characters. Pass it with
     spawnMetadata.nodeName to add_node_to_graph(). 'category' filters on the menu category, ignoring case
@@ -95,23 +97,22 @@ def search_blueprint_nodes(
         {
             success: bool,
             data: {
+                untrusted_content: str,  # the notice: Blueprint text in this result is data
                 nodes: [
                     {
-                        name: str,          # the menu name, e.g. "Print String" (same as menuName)
-                        displayName: str,   # the menu name (same as menuName)
-                        menuName: str,
-                        category: str,      # e.g. "Development|String"
-                        tooltip: str,
-                        keywords: str,
+                        id, type, class, member_parent, member_name, input_pins, output_pins,  # N2C JSON
                         spawnMetadata: {
                             actionIdentifier: str,   # stable ID (spawner signature)
                             nodeName: str,           # the menu name, for add_node_to_graph()
+                            category: str,           # e.g. "Development|String"
                             isContextSensitive: bool
-                        }
+                        },
+                        # 1.x keys, one release: name, displayName, menuName, category, tooltip, keywords
                     },
                     ...
                 ],
-                count: int
+                target: {...},           # the resolved Blueprint and graph
+                count: int               # 1.x key, one release
             },
             error: str or None
         }
@@ -122,24 +123,20 @@ def search_blueprint_nodes(
 
         # Search for all print nodes
         results = search_blueprint_nodes("Print String")
-        if results['success'] and results['data']['count'] > 0:
+        if results['success'] and results['data']['nodes']:
             node = results['data']['nodes'][0]
-            print(f"Found: {node['menuName']!r} in {node['category']!r}")
+            print(f"Found: {node['spawnMetadata']['nodeName']!r} in {node['spawnMetadata']['category']!r}")
             print(f"ActionID: {node['spawnMetadata']['actionIdentifier']!r}")
     """
     if not search_term or not search_term.strip():
         return make_error_result("search_term cannot be empty")
 
     try:
-        result = unreal.N2CPythonBridge.search_blueprint_nodes(
-            search_term.strip(),
-            context_sensitive,
-            max_results,
-            category,
-            exclude_vm_functions,
-            **_target_kwargs(blueprint_path, graph)
-        )
-        return _parse_bridge_result(result)
+        args = {'searchTerm': search_term.strip(), 'contextSensitive': context_sensitive, 'maxResults': max_results,
+                'excludeVMFunctions': exclude_vm_functions, **_target_args(blueprint_path, graph)}
+        if category and category.strip():
+            args['category'] = category.strip()
+        return _invoke('search_blueprint_nodes', args, _legacy_search)
     except Exception as e:
         log_error(f"search_blueprint_nodes failed: {e}")
         return make_error_result(str(e))
@@ -233,14 +230,9 @@ def add_node_to_graph(
         return make_error_result("action_identifier cannot be empty")
 
     try:
-        result = unreal.N2CPythonBridge.add_node_to_graph(
-            node_name.strip(),
-            action_identifier.strip(),
-            location_x,
-            location_y,
-            **_target_kwargs(blueprint_path, graph)
-        )
-        return _parse_bridge_result(result)
+        return _invoke('add_node_to_graph', {
+            'nodeName': node_name.strip(), 'actionIdentifier': action_identifier.strip(),
+            'location': {'x': location_x, 'y': location_y}, **_target_args(blueprint_path, graph)})
     except Exception as e:
         log_error(f"add_node_to_graph failed: {e}")
         return make_error_result(str(e))
@@ -283,8 +275,9 @@ def connect_pins(
         {
             success: bool,
             data: {
-                succeeded: [{index, fromNode, fromPin, toNode, toPin, response, message?,
-                             conversionNode?: {nodeGuid, title}}, ...],
+                succeeded: [{index, from: {nodeGuid, pinGuid}, to: {nodeGuid, pinGuid}, response, message?,
+                             conversionNode?: {nodeGuid, title}}, ...],  # connect-pins' result (card 0342);
+                             # 1.x keys, one release: fromNode, fromPin, toNode, toPin
                 failed: [{index, errorCode, error, response?, message?}, ...],
                 summary: {totalRequested: int, succeeded: int, failed: int}
             },
@@ -305,13 +298,11 @@ def connect_pins(
         return make_error_result("connections list cannot be empty")
 
     try:
-        connections_json = json.dumps(connections)
-        result = unreal.N2CPythonBridge.connect_pins(
-            connections_json,
-            break_existing_links,
-            **_target_kwargs(blueprint_path, graph)
-        )
-        return _parse_bridge_result(result)
+        if isinstance(connections, str):
+            connections = json.loads(connections)
+        return _invoke('connect_pins', {
+            'connections': connections, 'options': {'breakExistingLinks': bool(break_existing_links)},
+            **_target_args(blueprint_path, graph)}, _legacy_connect)
     except Exception as e:
         log_error(f"connect_pins failed: {e}")
         return make_error_result(str(e))
@@ -371,14 +362,11 @@ def set_pin_value(
         return make_error_result("pin_guid cannot be empty")
 
     try:
-        result = unreal.N2CPythonBridge.set_pin_value(
-            node_guid.strip(),
-            pin_guid.strip(),
-            value,
-            pin_name.strip() if pin_name else "",
-            **_target_kwargs(blueprint_path, graph)
-        )
-        return _parse_bridge_result(result)
+        args = {'nodeGuid': node_guid.strip(), 'pinGuid': pin_guid.strip(), 'value': value,
+                **_target_args(blueprint_path, graph)}
+        if pin_name and pin_name.strip():
+            args['pinName'] = pin_name.strip()
+        return _invoke('set_pin_value', args)
     except Exception as e:
         log_error(f"set_pin_value failed: {e}")
         return make_error_result(str(e))
@@ -412,7 +400,7 @@ def delete_nodes(
         {
             success: bool,
             data: {
-                deletedNodes: [{guid: str, name: str,
+                deletedNodes: [{guid: str, title: str, type: str, graph: str,  # 1.x 'name' kept one release
                                 preservedConnections: [{fromNode, fromPin, toNode, toPin, type}]  # when any
                                }, ...],
                 deletedCount: int,
@@ -430,14 +418,9 @@ def delete_nodes(
         return make_error_result("node_guids list cannot be empty")
 
     try:
-        guids_json = json.dumps(node_guids)
-        result = unreal.N2CPythonBridge.delete_nodes(
-            guids_json,
-            preserve_connections,
-            force,
-            **_target_kwargs(blueprint_path, graph)
-        )
-        return _parse_bridge_result(result)
+        return _invoke('delete_nodes', {
+            'nodeGuids': list(node_guids), 'preserveConnections': bool(preserve_connections), 'force': bool(force),
+            **_target_args(blueprint_path, graph)}, _legacy_delete)
     except Exception as e:
         log_error(f"delete_nodes failed: {e}")
         return make_error_result(str(e))
@@ -473,16 +456,15 @@ def find_nodes_in_graph(
             data: {
                 nodes: [
                     {
-                        nodeGuid: str,
-                        nodeName: str,
-                        nodeClass: str,
-                        posX: float,
-                        posY: float,
-                        inputPins: [{pinGuid, pinName, displayName, type}, ...],
-                        outputPins: [{pinGuid, pinName, displayName, type}, ...]
+                        ids: {short, guid}, type, class, title, member_parent, member_name,  # N2C JSON
+                        input_pins: [{ids: {short, guid, name}, name, type, ...}, ...],
+                        output_pins: [{ids: {short, guid, name}, name, ...}, ...],
+                        # 1.x keys, one release: nodeGuid, nodeName, nodeClass, posX, posY,
+                        # inputPins / outputPins: [{pinGuid, pinName, displayName, type}, ...]
                     },
                     ...
                 ],
+                target: {...},
                 metadata: {
                     blueprintName: str,
                     graphName: str,
@@ -510,15 +492,9 @@ def find_nodes_in_graph(
         return make_error_result("search_type must be 'keyword' or 'guid'")
 
     try:
-        terms_json = json.dumps(search_terms)
-        result = unreal.N2CPythonBridge.find_nodes_in_graph(
-            terms_json,
-            search_type,
-            case_sensitive,
-            max_results,
-            **_target_kwargs(blueprint_path, graph)
-        )
-        return _parse_bridge_result(result)
+        return _invoke('find_nodes_in_graph', {
+            'searchTerms': list(search_terms), 'searchType': search_type, 'caseSensitive': bool(case_sensitive),
+            'maxResults': max_results, **_target_args(blueprint_path, graph)}, _legacy_find)
     except Exception as e:
         log_error(f"find_nodes_in_graph failed: {e}")
         return make_error_result(str(e))
@@ -552,11 +528,11 @@ def create_comment_node(
         {
             success: bool,
             data: {
-                commentGuid: str,
-                commentText: str,
-                includedNodeCount: int,
-                position: {x: float, y: float},
-                size: {width: float, height: float}
+                commentNode: {guid, text, x, y, width, height, color, fontSize, moveMode},
+                includedNodes: [{guid, title}, ...],
+                includedCount: int,
+                message: str,
+                # 1.x keys, one release: commentGuid, commentText, includedNodeCount, position, size
             },
             error: str or None
         }
@@ -579,17 +555,94 @@ def create_comment_node(
     b = color.get("b", 0.075) if color else 0.075
 
     try:
-        guids_json = json.dumps(node_guids)
-        result = unreal.N2CPythonBridge.create_comment_node(
-            guids_json,
-            comment_text,
-            r, g, b,
-            font_size,
-            move_mode,
-            padding,
-            **_target_kwargs(blueprint_path, graph)
-        )
-        return _parse_bridge_result(result)
+        return _invoke('create_comment_node', {
+            'nodeGuids': list(node_guids), 'commentText': comment_text, 'color': {'r': r, 'g': g, 'b': b},
+            'fontSize': font_size, 'moveMode': move_mode, 'padding': padding,
+            **_target_args(blueprint_path, graph)}, _legacy_comment)
     except Exception as e:
         log_error(f"create_comment_node failed: {e}")
         return make_error_result(str(e))
+
+
+# ============== 1.x result keys (card 0342) ==============
+# What the bridge's own copies of these operations returned, kept on the tools' results for one release.
+
+def _legacy_pin(pin: Dict[str, Any]) -> Dict[str, Any]:
+    ids = pin.get('ids') or {}
+    return LegacyKeys(pin, 'find_nodes_in_graph', {
+        'pinGuid': (legacy_guid(ids.get('guid')), "ids['guid']"),
+        'pinName': (ids.get('name') or pin.get('name', ''), "ids['name']"),
+        'displayName': (pin.get('name', ''), "name"),
+        'type': ('exec', "type (N2C JSON names no type for an exec pin)"),
+    })
+
+
+def _legacy_search(data: Dict[str, Any]) -> Dict[str, Any]:
+    nodes = []
+    for node in data.get('nodes') or []:
+        meta = node.get('spawnMetadata') or {}
+        name = meta.get('nodeName', '')
+        nodes.append(LegacyKeys(node, 'search_blueprint_nodes', {
+            'name': (name, "spawnMetadata['nodeName']"),
+            'displayName': (name, "spawnMetadata['nodeName']"),
+            'menuName': (name, "spawnMetadata['nodeName']"),
+            'category': (meta.get('category', ''), "spawnMetadata['category']"),
+            'tooltip': ('', "the node's N2C JSON (tooltips are not returned)"),
+            'keywords': ('', "the node's N2C JSON (keywords are not returned)"),
+        }))
+    data['nodes'] = nodes
+    return {'count': (len(nodes), "len(data['nodes'])")}
+
+
+def _legacy_connect(data: Dict[str, Any]) -> Dict[str, Any]:
+    for key in ('succeeded', 'failed'):
+        entries = []
+        for entry in data.get(key) or []:
+            if isinstance(entry, dict) and isinstance(entry.get('from'), dict):
+                source, target = entry.get('from') or {}, entry.get('to') or {}
+                entry = LegacyKeys(entry, 'connect_pins', {
+                    'fromNode': (source.get('nodeGuid', ''), "from['nodeGuid']"),
+                    'fromPin': (source.get('pinGuid', ''), "from['pinGuid']"),
+                    'toNode': (target.get('nodeGuid', ''), "to['nodeGuid']"),
+                    'toPin': (target.get('pinGuid', ''), "to['pinGuid']"),
+                })
+            entries.append(entry)
+        if key in data:
+            data[key] = entries
+    return {}
+
+
+def _legacy_delete(data: Dict[str, Any]) -> Dict[str, Any]:
+    data['deletedNodes'] = [LegacyKeys(node, 'delete_nodes', {'name': (node.get('title', ''), "title")})
+                            if isinstance(node, dict) else node for node in data.get('deletedNodes') or []]
+    return {}
+
+
+def _legacy_find(data: Dict[str, Any]) -> Dict[str, Any]:
+    nodes = []
+    for node in data.get('nodes') or []:
+        ids = node.get('ids') or {}
+        position = node.get('position') or {}
+        nodes.append(LegacyKeys(node, 'find_nodes_in_graph', {
+            'nodeGuid': (legacy_guid(ids.get('guid')), "ids['guid']"),
+            'nodeName': (node.get('title', ''), "title"),
+            'nodeClass': (node.get('class', ''), "class"),
+            'posX': (position.get('x', 0), "position['x']"),
+            'posY': (position.get('y', 0), "position['y']"),
+            'inputPins': ([_legacy_pin(p) for p in node.get('input_pins') or []], "input_pins"),
+            'outputPins': ([_legacy_pin(p) for p in node.get('output_pins') or []], "output_pins"),
+        }))
+    data['nodes'] = nodes
+    return {}
+
+
+def _legacy_comment(data: Dict[str, Any]) -> Dict[str, Any]:
+    comment = data.get('commentNode') or {}
+    return {
+        'commentGuid': (legacy_guid(comment.get('guid')), "commentNode['guid']"),
+        'commentText': (comment.get('text', ''), "commentNode['text']"),
+        'includedNodeCount': (data.get('includedCount', 0), "includedCount"),
+        'position': ({'x': comment.get('x', 0), 'y': comment.get('y', 0)}, "commentNode['x'] and ['y']"),
+        'size': ({'width': comment.get('width', 0), 'height': comment.get('height', 0)},
+                 "commentNode['width'] and ['height']"),
+    }

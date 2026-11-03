@@ -10,6 +10,10 @@
 #include "Core/N2CCapture.h"
 #include "Core/N2CSerializer.h"
 #include "MCP/Utils/N2CMcpBlueprintUtils.h"
+#include "MCP/Tools/N2CMcpToolManager.h"
+#include "MCP/Tools/N2CMcpToolRegistry.h"
+#include "MCP/Tools/N2CMcpToolsets.h"
+#include "MCP/Tools/N2CToolCatalog.h"
 #include "MCP/Utils/N2CMcpGraphTarget.h"
 #include "MCP/Utils/N2CMcpNodeDeletion.h"
 #include "MCP/Utils/N2CMcpBlueprintExport.h"
@@ -92,6 +96,116 @@ namespace N2CPythonBridgePrivate
 }
 using N2CPythonBridgePrivate::AddCompileResult;
 using N2CPythonBridgePrivate::BridgeTargetArgs;
+
+namespace N2CPythonBridgePrivate
+{
+	/**
+	 * A tool manager that serves every registered tool except the PythonTools toolset, whatever the MCP server
+	 * serves (card 0342: in the Python Scripting profile the server's manager holds only the Python tools). Built on
+	 * the first InvokeTool; it shares the registry's tool instances and is never listed to an MCP client.
+	 */
+	FN2CMcpToolManager& InvokeToolManager()
+	{
+		static FN2CMcpToolManager Manager;
+		static bool bConfigured = false;
+		if (!bConfigured)
+		{
+			bConfigured = true;
+			FN2CMcpToolConfig Config;
+			for (const FString& Name : N2CMcpToolsets::AllNames())
+			{
+				if (!Name.Equals(N2CMcpToolsets::Python.Name, ESearchCase::IgnoreCase))
+				{
+					Config.Toolsets.Add(Name);
+				}
+			}
+			Manager.Configure(Config);
+		}
+		return Manager;
+	}
+
+	/** True when a tool of the PythonTools toolset has this name (run-python and the script library) */
+	bool IsPythonToolsetTool(const FString& ToolName)
+	{
+		for (const TSharedPtr<IN2CMcpTool>& Tool : FN2CMcpToolRegistry::Get().GetTools())
+		{
+			if (Tool.IsValid())
+			{
+				const FMcpToolDefinition Definition = Tool->GetDefinition();
+				if (Definition.Name == ToolName)
+				{
+					return Definition.Toolset == &N2CMcpToolsets::Python;
+				}
+			}
+		}
+		return false;
+	}
+
+	FString InvokeToolError(EN2CToolErrorCode Code, const FString& Message, const FString& Field = FString())
+	{
+		const TSharedPtr<FJsonObject> Response = MakeShared<FJsonObject>();
+		Response->SetBoolField(TEXT("success"), false);
+		Response->SetField(TEXT("data"), MakeShared<FJsonValueNull>());
+		Response->SetStringField(TEXT("error"), Message);
+		Response->SetStringField(TEXT("code"), FN2CToolError::CodeName(Code));
+		if (!Field.IsEmpty())
+		{
+			Response->SetStringField(TEXT("field"), Field);
+		}
+		FString Text;
+		FJsonSerializer::Serialize(Response.ToSharedRef(), TJsonWriterFactory<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>::Create(&Text));
+		return Text;
+	}
+}
+
+FString UN2CPythonBridge::InvokeTool(const FString& ToolName, const FString& ArgumentsJson)
+{
+	using namespace N2CPythonBridgePrivate;
+	const FString Name = ToolName.TrimStartAndEnd();
+	if (!IsInGameThread())
+	{
+		return InvokeToolError(EN2CToolErrorCode::NotRunnableHere, TEXT("InvokeTool runs on the game thread only"));
+	}
+	if (Name.IsEmpty())
+	{
+		return InvokeToolError(EN2CToolErrorCode::InvalidArgument, TEXT("No tool name given"), TEXT("tool_name"));
+	}
+
+	TSharedPtr<FJsonObject> Arguments = MakeShared<FJsonObject>();
+	const FString ArgumentsText = ArgumentsJson.TrimStartAndEnd();
+	if (!ArgumentsText.IsEmpty())
+	{
+		TSharedPtr<FJsonValue> Parsed;
+		const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(ArgumentsText);
+		if (!FJsonSerializer::Deserialize(Reader, Parsed) || !Parsed.IsValid() || Parsed->Type != EJson::Object)
+		{
+			return InvokeToolError(EN2CToolErrorCode::InvalidArgument,
+				TEXT("arguments_json is not a JSON object: pass the tool's arguments as {\"name\": value, ...}"),
+				TEXT("arguments_json"));
+		}
+		Arguments = Parsed->AsObject();
+	}
+
+	const FN2CToolOutcome Outcome = FN2CToolCatalog(InvokeToolManager()).InvokeNow(Name, Arguments);
+	if (Outcome.IsError() && Outcome.Error->Code == EN2CToolErrorCode::UnknownTool && IsPythonToolsetTool(Name))
+	{
+		return InvokeToolError(EN2CToolErrorCode::UnknownTool, FString::Printf(
+			TEXT("'%s' is a PythonTools tool, which InvokeTool does not run: you are in Python already, so run the code or call the nodetocode.scripts function directly"),
+			*Name));
+	}
+	if (Outcome.IsError())
+	{
+		return InvokeToolError(Outcome.Error->Code, Outcome.Error->Message, Outcome.Error->Field);
+	}
+
+	const TSharedPtr<FJsonObject> Response = MakeShared<FJsonObject>();
+	Response->SetBoolField(TEXT("success"), true);
+	Response->SetField(TEXT("data"), Outcome.Value.IsValid() ? Outcome.Value : MakeShared<FJsonValueNull>());
+	Response->SetField(TEXT("error"), MakeShared<FJsonValueNull>());
+	FString Text;
+	FJsonSerializer::Serialize(Response.ToSharedRef(), TJsonWriterFactory<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>::Create(&Text));
+	return Text;
+}
 
 FString UN2CPythonBridge::GetFocusedBlueprintJson()
 {
