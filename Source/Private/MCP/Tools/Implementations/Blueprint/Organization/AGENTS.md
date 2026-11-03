@@ -60,17 +60,19 @@ the added `FN2CTagEntry` and its `FN2CGraphRef` (card 0345; the `UN2CTagManager`
   graph keyed by its Blueprint's path and `GraphGuid` (`FN2CGraphKey`), together with that graph's translation and
   JSON-export state. A graph left with no tags,
   translation or export is dropped from the file.
-- **Writes.** Every change saves the whole in-memory state at once (`SaveState`, no undo). Since card 0066 the write
-  is atomic (`FN2CFileUtils::SaveStringAtomically`: a temporary file, then a replace, with the previous file kept as
+- **Writes.** Every change requests a save of the whole in-memory state (`RequestSave`, no undo); in the editor the
+  requests within a second are written once (card 0346). Since card 0066 the write is atomic (`FN2CFileUtils::SaveStringAtomically`: a temporary file, then a replace, with the previous file kept as
   `BlueprintGraphState.json.bak`); a corrupt file is set aside as `.corrupt-*` and saving stops until the tags are
   reloaded (`LoadStateInternal`), so a bad file is never overwritten.
 - **Reads.** The file is read once, when the editor starts (`UN2CGraphStateManager::Initialize`), and again only when
   the user reloads the tags (`UN2CGraphStateManager::LoadState`, the Blueprint library's `LoadTags`). Tags survive editor restarts and belong to one project.
-- **Several editors on one project: the last writer wins.** There is no lock and no merge: each editor keeps its own
-  copy in memory and writes all of it on every change. On UE 5.8, a tag written into the file from outside while the
-  editor ran was not seen by `list-blueprint-tags`, and the editor's next `tag-blueprint-graph` rewrote the file
-  without it. Tag from one editor at a time, or reload the tags in the other editor before tagging there.
-- **Known issue (suggested card 0436):** no lock or merge between editors.
+- **Several editors on one project: saves merge (card 0436).** Each editor keeps its own copy in memory. Before it
+  writes, it checks whether the file is still the one it last read or wrote (length and CRC of the text); if another
+  editor wrote it since, the two are merged per graph (`UN2CGraphStateManager::MergeStates`): the other editor's
+  graphs and tags stay, and this editor's own added and removed tags, translation and export records apply on top.
+  The merged state is what this editor holds afterwards (`OnGraphStatesReloaded` tells the Tag Manager). There is no
+  lock, so a change the other editor made is seen by this one only at its next save or a reload of the tags, and two
+  writes in the same instant can still race.
 - **Keys.** An entry is the Blueprint's path plus the graph's `GraphGuid` (card 0192), so a Blueprint duplicated in the
   Content Browser (same graph GUIDs) does not share the original's tags. Entries follow Blueprint renames and deletes
   through the asset registry (`HandleBlueprintRenamed`, `HandleBlueprintRemoved`). remove-tag-from-graph takes only a

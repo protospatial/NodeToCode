@@ -24,6 +24,12 @@ once. `SaveState` writes at once and drops the waiting save; `LoadState` and `Sh
 Every write is atomic (`FN2CFileUtils::SaveStringAtomically`: a temporary file in the same folder moved over the
 old one, which is kept as `.bak`). Spec: `NodeToCode.Core.GraphStateSubsystem`.
 
+Several editors (card 0436): the manager remembers the file as it last read or wrote it (`BaseState`, with the
+text's length and CRC). A save that finds a different file merges it in first (`MergeStates`, a three-way merge per
+graph: the other writer's state with this manager's changes since `BaseState` on top), keeps the result in memory
+and broadcasts `OnGraphStatesReloaded`; `GetMergeCount` counts these. A file it cannot read as the current version
+is written over (kept as `.bak`) with a warning. Spec: `NodeToCode.Core.GraphStateMerge`.
+
 | Area | Functions |
 |---|---|
 | Queries | `FindGraphState`, `FindKeysForGuid`, `GetGraphsWithTag`, `GetAllTagNames`, `GetAllCategories`, `GraphHasTag` |

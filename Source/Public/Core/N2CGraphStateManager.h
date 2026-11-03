@@ -445,6 +445,19 @@ public:
 	 */
 	void RequestSave();
 
+	/**
+	 * Three-way merge of graph state (card 0436): Theirs (the file as another editor left it) with the changes Ours
+	 * made since Base (the file as this manager last read or wrote it). Per graph: a tag Ours added is added and a tag
+	 * Ours removed is removed (tags identified by name and category, case-insensitive); the name, translation, JSON
+	 * export and missing flag take Ours' value where Ours changed it, else Theirs'. A graph Ours added is added, one Ours
+	 * removed is removed unless Theirs changed it, and an entry left with nothing is dropped. Graphs keep Theirs' order,
+	 * new ones follow in Ours' order.
+	 */
+	static FN2CGraphStateFile MergeStates(const FN2CGraphStateFile& Base, const FN2CGraphStateFile& Ours, const FN2CGraphStateFile& Theirs);
+
+	/** How many saves found the file changed by another writer and merged it (card 0436) */
+	int32 GetMergeCount() const { return MergeCount; }
+
 	/** Seconds RequestSave waits before writing (0: at once, the default for CreateIsolated) */
 	void SetSaveDelay(float Seconds) { SaveDelaySeconds = FMath::Max(0.0f, Seconds); }
 	float GetSaveDelay() const { return SaveDelaySeconds; }
@@ -582,6 +595,23 @@ private:
 
 	/** Removes the delayed save's ticker */
 	void CancelPendingSave();
+
+	/** The file as this manager last read or wrote it (MergeStates' Base), and its text's hash and length */
+	FN2CGraphStateFile BaseState;
+	uint32 BaseFileHash = 0;
+	int32 BaseFileLength = -1;
+
+	/** Records Text (just read or written) as the file's known content, with State as what it holds */
+	void RememberFile(const FString& Text, const FN2CGraphStateFile& State);
+
+	/**
+	 * Before a write: when the file on disk is not the one this manager last read or wrote, merges it into StateFile
+	 * (MergeStates). True when the merge changed StateFile.
+	 */
+	bool MergeChangesOnDisk(const FString& FilePath);
+
+	/** Saves that merged another writer's changes */
+	int32 MergeCount = 0;
 
 	/** RequestSave's delay; 0 writes at once */
 	float SaveDelaySeconds = 0.0f;
