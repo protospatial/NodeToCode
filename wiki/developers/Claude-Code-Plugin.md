@@ -1,5 +1,5 @@
 NodeToCode ships a Claude Code plugin in its plugin folder. One install gives Claude Code the connection to
-NodeToCode's MCP server in your open editor, the three [Agent Skills](Agent-Skills), a `/nodetocode:translate`
+NodeToCode's MCP server in your open editor, the six [Agent Skills](Agent-Skills), a `/nodetocode:translate`
 command and a check at the start of each session that tells you whether the editor answers. You no longer write the
 MCP client config by hand.
 
@@ -30,8 +30,9 @@ Start Claude Code in your Unreal project's folder with the editor open:
 - the session starts with `NodeToCode: the editor's MCP server answers at http://127.0.0.1:27000/mcp ...`;
 - `/mcp` shows `plugin:nodetocode:nodetocode` as connected (its tools are named
   `mcp__plugin_nodetocode_nodetocode__<tool>`);
-- `/skills` lists `nodetocode:blueprint-comprehension`, `nodetocode:blueprint-to-cpp` and
-  `nodetocode:blueprint-migration`.
+- `/skills` lists `nodetocode:blueprint-comprehension`, `nodetocode:blueprint-to-cpp`,
+  `nodetocode:blueprint-migration`, `nodetocode:asset-iterator`, `nodetocode:asset-validator` and
+  `nodetocode:project-folder-scaffold`.
 
 Then ask, for example, "What does /Game/Characters/BP_Door do?".
 

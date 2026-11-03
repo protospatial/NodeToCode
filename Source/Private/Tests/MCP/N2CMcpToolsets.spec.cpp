@@ -311,6 +311,22 @@ void FN2CMcpToolsetsSpec::Define()
 			ExpectNames(TEXT("Custom"), FN2CMcpToolConfig::ToolsetsForProfile(EN2CMcpToolProfile::Custom, Custom), Custom);
 		});
 
+		It(TEXT("serve run-python alone in the Python Scripting profile, and nothing while Allow MCP Python Execution is off"), [this]()
+		{
+			// Card 0306: since card 0305 PythonTools holds run-python only, which needs the per-user setting
+			FN2CMcpToolManager Manager;
+			FN2CMcpToolConfig Config;
+			Config.Toolsets = FN2CMcpToolConfig::ToolsetsForProfile(EN2CMcpToolProfile::PythonScripting, {});
+			Manager.Configure(Config);
+			TArray<FString> Names;
+			for (const FMcpToolDefinition& Definition : Manager.GetAllToolDefinitions())
+			{
+				Names.Add(Definition.Name);
+			}
+			ExpectNames(TEXT("tools/list"), Names, UN2CUserSettings::IsMcpPythonExecutionAllowed()
+				? TArray<FString>{ TEXT("run-python") } : TArray<FString>());
+		});
+
 		It(TEXT("serve exactly the tools of the enabled toolsets and report unknown toolset names"), [this]()
 		{
 			FN2CMcpToolManager Manager;

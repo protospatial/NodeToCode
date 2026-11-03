@@ -6,6 +6,10 @@ and logging operations.
 """
 
 import json
+import os
+import re
+import sys
+import types
 import uuid
 
 import unreal
@@ -323,3 +327,62 @@ def _invoke(function: str, arguments: Dict[str, Any], legacy: Optional[Callable[
         except Exception as e:  # the tool's own result is never lost over the compatibility keys
             log_warning(f"nodetocode.{function}: the 1.x result keys could not be added: {e}")
     return result
+
+
+# ============== Agent Skill scripts (card 0306) ==============
+
+SKILL_NAME_RE = re.compile(r'^[a-z0-9]+(-[a-z0-9]+)*$')
+SCRIPT_NAME_RE = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
+
+
+def skills_dir() -> str:
+    """The Agent Skills NodeToCode ships: <plugin>/Agents/claude-code/nodetocode/skills (the nodetocode package is
+    <plugin>/Content/Python/nodetocode), wherever the plugin is installed. The package's real path is used, so a
+    plugin whose Content folder is a link (build.ps1's host projects link only Source, Content, Resources and
+    ThirdParty) still finds the Agents folder beside the real one."""
+    plugin_root = os.path.normpath(os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', '..', '..'))
+    return os.path.join(plugin_root, 'Agents', 'claude-code', 'nodetocode', 'skills')
+
+
+def skill_script(skill: str, script: Optional[str] = None):
+    """
+    Loads the Python script of one of NodeToCode's Agent Skills and returns it as a module (card 0306), so a
+    run-python call can use it:
+
+        validator = nodetocode.skill_script('asset-validator')
+        issues = validator.check_naming('/Game/Characters')
+
+    Args:
+        skill: The skill's name ('asset-iterator', 'asset-validator', 'project-folder-scaffold')
+        script: The file in the skill's scripts/ folder without .py; default the skill name with '_' for '-'
+
+    Returns:
+        The module (loaded once per editor session; reloaded when the file changed). Raises ValueError for a name
+        that is not a skill or script name and FileNotFoundError when the file does not exist.
+    """
+    if not isinstance(skill, str) or not SKILL_NAME_RE.match(skill):
+        raise ValueError(f"'{skill}' is not an Agent Skill name (lowercase letters, digits and hyphens)")
+    name = script if script else skill.replace('-', '_')
+    if not isinstance(name, str) or not SCRIPT_NAME_RE.match(name):
+        raise ValueError(f"'{script}' is not a script name (a Python identifier, no .py)")
+    path = os.path.join(skills_dir(), skill, 'scripts', name + '.py')
+    if not os.path.isfile(path):
+        raise FileNotFoundError(f'no script {name}.py in the {skill} skill ({path})')
+    module_name = f'nodetocode_skill_{skill.replace("-", "_")}_{name}'
+    mtime = os.path.getmtime(path)
+    module = sys.modules.get(module_name)
+    if module is not None and getattr(module, '__n2c_mtime__', None) == mtime:
+        return module
+    with open(path, encoding='utf-8') as f:
+        source = f.read()
+    module = types.ModuleType(module_name)
+    module.__file__ = path
+    sys.modules[module_name] = module
+    try:
+        # Compiled here, not through an import loader, so no __pycache__ is written into the plugin's skills folder
+        exec(compile(source, path, 'exec'), module.__dict__)
+    except BaseException:
+        sys.modules.pop(module_name, None)
+        raise
+    module.__n2c_mtime__ = mtime
+    return module

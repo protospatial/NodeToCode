@@ -119,12 +119,12 @@ FMcpToolCallResult FN2CMcpRunPythonTool::Execute(const TSharedPtr<FJsonObject>& 
 			}
 		}
 
-		// Add hint about ue5_compat.py when there's an error
+		// A hint on an error (the ue5_compat helpers it named went with the script library, card 0306)
 		if (!bResponseSuccess)
 		{
 			ResponseJson->SetStringField(TEXT("hint"),
-				TEXT("If this error relates to UE5 Python API limitations (e.g., missing methods, protected properties), ")
-				TEXT("check 'from scripts.core.ue5_compat import ...' for documented workarounds."));
+				TEXT("If this error relates to the UE Python API (a missing method, a protected property), look the API up ")
+				TEXT("(Context7, unreal-python-stubhub), or do the step with a NodeToCode tool: nodetocode.invoke_tool(name, arguments)."));
 		}
 
 		// Serialize response as compact JSON (no pretty printing)

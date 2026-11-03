@@ -4,7 +4,9 @@ The Agent Skills NodeToCode ships for coding agents, how they are generated and 
 copies, and the Claude Code plugin around them. User pages: `wiki/developers/Agent-Skills.md`,
 `wiki/developers/Claude-Code-Plugin.md`.
 
-- The user-facing Agent Skills (blueprint-comprehension, blueprint-to-cpp, blueprint-migration) are written once in
+- The user-facing Agent Skills (blueprint-comprehension, blueprint-to-cpp, blueprint-migration, and since card 0306
+  asset-iterator, asset-validator and project-folder-scaffold, whose `scripts/*.py` run through run-python via
+  `nodetocode.skill_script`) are written once in
   `Agents/claude-code/nodetocode/skills/<name>/` and ship in the plugin package (`Config/FilterPlugin.ini`). After
   editing one, or `Content/Prompting/Shared/N2CJsonSpec.md` (copied into their `references/`), run
   `python -I Agents/sync_skills.py`: it regenerates the copies and the `.agents/skills/` mirror. `--check` (run by
