@@ -122,9 +122,14 @@ void UN2CSystemPromptManager::LoadPrompts()
         FN2CLogger::Get().LogError(TEXT("Could not find NodeToCode Docs/Prompting directory! Translation will likely fail!"));
     }
 
-    // Prompt families, one per translation source kind (only Blueprint graphs today). Each family has an optional base
-    // prompt, <Family>.md, and one prompt per target language, <Family>_<PromptKey>.md, for every row of the table.
-    const TArray<FString> BasePromptFiles = { N2C::BlueprintPromptFamily };
+    // Prompt families, one per translation source kind (Blueprint graphs, materials: N2C::GetPromptFamilies). Each
+    // family has an optional base prompt, <Family>.md, and a prompt for each target language it serves,
+    // <Family>_<PromptKey>.md (MaterialGen serves Pseudocode only, card 0454).
+    TArray<FString> BasePromptFiles;
+    for (const TCHAR* Family : N2C::GetPromptFamilies())
+    {
+        BasePromptFiles.Add(Family);
+    }
 
     // Shared fragments the prompts include by placeholder (one copy of the N2C JSON spec for every language)
     TMap<FString, FString> Fragments;
@@ -144,6 +149,10 @@ void UN2CSystemPromptManager::LoadPrompts()
         // Load language-specific prompts
         for (const FN2CTargetLanguage& Language : N2C::GetLanguages())
         {
+            if (!N2C::IsLanguageAvailableForFamily(*PromptKey, Language.Enum))
+            {
+                continue;
+            }
             const FString LanguageKey = GetLanguagePromptKey(PromptKey, Language.Enum);
             if (LoadPromptFromFile(GetPromptFilePath(LanguageKey), PromptContent))
             {

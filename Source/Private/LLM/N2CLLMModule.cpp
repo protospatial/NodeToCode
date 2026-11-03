@@ -260,6 +260,23 @@ FN2CLLMRequestHandleRef UN2CLLMModule::ProcessN2CJson(
         return FailBeforeSend(TEXT("No active LLM service"));
     }
 
+    // The prompt family of the document's kind (card 0454): a material in a language with no material prompt is
+    // refused before anything is sent
+    const UN2CSettings* Settings = GetDefault<UN2CSettings>();
+    const EN2CCodeLanguage Language = Settings ? Settings->TargetLanguage : EN2CCodeLanguage::Cpp;
+    const TCHAR* PromptFamily = N2C::GetPromptFamilyForDocument(JsonInput);
+    if (!N2C::IsLanguageAvailableForFamily(PromptFamily, Language))
+    {
+        SetStatusIfIdle(EN2CSystemStatus::Error);
+        FN2CTranslationResponse Failed;
+        Failed.Error = FN2CTranslationError::Make(N2C::TargetNotAvailableForMaterialsMessage(Language), EN2CTranslationErrorKind::InvalidRequest);
+        Failed.Error.ProviderErrorType = N2C::TargetNotAvailableForMaterialsCode;
+        FN2CLogger::Get().LogError(Failed.Error.Message, TEXT("LLMModule"));
+        OnParsed.ExecuteIfBound(Failed, false);
+        BroadcastFailure(Failed.Error);
+        return CompleteWithoutRequest(OnComplete, Failed.Error.ToJsonString());
+    }
+
     // This request owns the Processing status until it completes or is cancelled
     BeginRequest();
 
@@ -271,12 +288,7 @@ FN2CLLMRequestHandleRef UN2CLLMModule::ProcessN2CJson(
     FString Endpoint;
     Service->GetConfiguration(Endpoint, bSupportsSystemPrompts);
 
-    // Get system prompt with language specification
-    const UN2CSettings* Settings = GetDefault<UN2CSettings>();
-    FString SystemPrompt = PromptManager->GetLanguageSpecificPrompt(
-        N2C::BlueprintPromptFamily,
-        Settings ? Settings->TargetLanguage : EN2CCodeLanguage::Cpp
-    );
+    FString SystemPrompt = PromptManager->GetLanguageSpecificPrompt(PromptFamily, Language);
 
 // Send request through service, with the JSON in <n2c_json> tags (data, not instructions; see N2CJsonSpec.md).
     // The callback keeps the service it was sent on alive and parses with that
@@ -456,6 +468,21 @@ FN2CLLMRequestHandleRef UN2CLLMModule::ProcessN2CJsonWithOverrides(
     // another thread get EInternalObjectFlags::Async and are never collected.
     check(IsInGameThread());
 
+    // A material in a language with no material prompt is refused before anything is created or sent (card 0454)
+    const TCHAR* PromptFamily = N2C::GetPromptFamilyForDocument(JsonInput);
+    if (!N2C::IsLanguageAvailableForFamily(PromptFamily, RequestLanguage))
+    {
+        SetStatusIfIdle(EN2CSystemStatus::Error);
+        FN2CTranslationResponse Failed;
+        Failed.Error = FN2CTranslationError::Make(N2C::TargetNotAvailableForMaterialsMessage(RequestLanguage), EN2CTranslationErrorKind::InvalidRequest);
+        Failed.Error.ProviderErrorType = N2C::TargetNotAvailableForMaterialsCode;
+        Failed.Error.Provider = GetProviderName(RequestConfig.Provider);
+        Failed.Error.Model = RequestConfig.Model;
+        FN2CLogger::Get().LogError(Failed.Error.Message, TEXT("LLMModule"));
+        OnParsed.ExecuteIfBound(Failed, false);
+        return CompleteWithoutRequest(OnComplete, Failed.Error.ToJsonString());
+    }
+
     // This request owns the Processing status until it completes or is cancelled
     BeginRequest();
     // Note: We don't broadcast OnTranslationRequestSent here as this is for a specific tool call,
@@ -487,7 +514,7 @@ FN2CLLMRequestHandleRef UN2CLLMModule::ProcessN2CJsonWithOverrides(
     // references it, so hold it strongly while it builds the prompt; it is collected after this call.
     TStrongObjectPtr<UN2CSystemPromptManager> TempPromptManager(NewObject<UN2CSystemPromptManager>(this));
     TempPromptManager->Initialize(RequestConfig); // Initialize with the request-specific config
-    FString SystemPrompt = TempPromptManager->GetLanguageSpecificPrompt(N2C::BlueprintPromptFamily, RequestLanguage);
+    FString SystemPrompt = TempPromptManager->GetLanguageSpecificPrompt(PromptFamily, RequestLanguage);
 
     TempPromptManager.Reset();
 

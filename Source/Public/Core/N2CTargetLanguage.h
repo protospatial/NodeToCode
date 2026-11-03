@@ -56,11 +56,33 @@ struct NODETOCODE_API FN2CTargetLanguage
 namespace N2C
 {
 	/**
-	 * The prompt family of a translation source kind. Only Blueprint graphs exist today ("CodeGen"); another source
-	 * kind (a material graph, for example) would add its own family and the languages it serves, without touching
-	 * the per-language prompt keys.
+	 * The prompt family of a translation source kind: its prompts are Content/Prompting/<Family>_<PromptKey>.md.
+	 * Blueprint graphs use "CodeGen" in every language; material graphs (an N2C JSON document whose
+	 * metadata.asset_kind is "Material", card 0454) use "MaterialGen", which serves Pseudocode only.
 	 */
 	inline constexpr const TCHAR* BlueprintPromptFamily = TEXT("CodeGen");
+	inline constexpr const TCHAR* MaterialPromptFamily = TEXT("MaterialGen");
+
+	/** Every prompt family, the one Blueprint graphs use first */
+	NODETOCODE_API TConstArrayView<const TCHAR*> GetPromptFamilies();
+
+	/**
+	 * The prompt family of an N2C JSON document: MaterialPromptFamily when its metadata.asset_kind is "Material",
+	 * else BlueprintPromptFamily (also for text that is not an N2C JSON object)
+	 */
+	NODETOCODE_API const TCHAR* GetPromptFamilyForDocument(const FString& N2CJson);
+
+	/** Whether Family has a prompt for Language: every language for Blueprint graphs, Pseudocode for materials */
+	NODETOCODE_API bool IsLanguageAvailableForFamily(const TCHAR* Family, EN2CCodeLanguage Language);
+
+	/**
+	 * The code of the error a translation returns, before anything is sent, when a material is asked for in a language
+	 * its family has no prompt for (FN2CTranslationError::ProviderErrorType, with Kind InvalidRequest)
+	 */
+	inline constexpr const TCHAR* TargetNotAvailableForMaterialsCode = TEXT("TARGET_NOT_AVAILABLE_FOR_MATERIALS");
+
+	/** The error message for TargetNotAvailableForMaterialsCode: names the language and the one that works */
+	NODETOCODE_API FString TargetNotAvailableForMaterialsMessage(EN2CCodeLanguage Language);
 
 	/** Every target language, in enum order */
 	NODETOCODE_API TConstArrayView<FN2CTargetLanguage> GetLanguages();
