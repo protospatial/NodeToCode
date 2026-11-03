@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="1024" height="1024">
+  <!-- Vector redraw of Resources/Icon128.png (the plugin logo), the source of
+       Agents/claude-code/nodetocode/.claude-plugin/icon.png (1024 px, card 0511). -->
+  <rect x="1" y="1" width="126" height="126" rx="9" fill="#190B00"/>
+  <g stroke="#2B1A0A" stroke-width="0.8">
+    <path d="M12 1V127M26.5 1V127M41 1V127M56 1V127M71 1V127M86 1V127M101 1V127M116 1V127"/>
+    <path d="M1 15H127M1 29H127M1 43H127M1 57H127M1 71H127M1 85H127M1 99H127M1 113H127"/>
+  </g>
+  <g fill="none" stroke="#C35F31" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M30.5 29H26Q19.5 29 19.5 35.5V54Q19.5 61.5 11.5 64.5Q19.5 67.5 19.5 75V92.5Q19.5 99 26 99H30.5"/>
+    <path d="M97.5 29H102Q108.5 29 108.5 35.5V54Q108.5 61.5 116.5 64.5Q108.5 67.5 108.5 75V92.5Q108.5 99 102 99H97.5"/>
+  </g>
+  <g fill="none" stroke="#7A5932" stroke-width="1.6" stroke-linecap="round">
+    <path d="M56 46.5H67"/>
+    <path d="M56 57C62 57 60 78 67 78"/>
+    <path d="M56 72C62 72 60 81 67 81"/>
+    <path d="M56 85.5C61 85.5 62 84 67 84"/>
+  </g>
+  <g fill="#F38F3E">
+    <rect x="29" y="39" width="27" height="23.5" rx="3"/>
+    <rect x="66.5" y="39" width="32" height="23.5" rx="3"/>
+    <rect x="66.5" y="68" width="32" height="21.5" rx="3"/>
+    <rect x="29" y="68.5" width="27" height="7.5" rx="3.75"/>
+    <rect x="29" y="82" width="27" height="7.5" rx="3.75"/>
+  </g>
+  <g fill="#B26744">
+    <path d="M32 39H53A3 3 0 0 1 56 42V46.5H29V42A3 3 0 0 1 32 39Z"/>
+    <path d="M69.5 39H95.5A3 3 0 0 1 98.5 42V46.5H66.5V42A3 3 0 0 1 69.5 39Z"/>
+    <path d="M69.5 68H95.5A3 3 0 0 1 98.5 71V75H66.5V71A3 3 0 0 1 69.5 68Z"/>
+  </g>
+</svg>

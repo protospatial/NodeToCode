@@ -10,6 +10,7 @@
 #include "Core/Services/N2CTokenEstimationService.h"
 #include "Core/Widgets/SN2CContextWindowVisualizer.h"
 #include "Core/N2CSettings.h"
+#include "Core/N2CUserSettings.h"
 #include "BlueprintLibraries/N2CTagBlueprintLibrary.h"
 #include "EdGraph/EdGraph.h"
 #include "EdGraphSchema_K2.h"
@@ -49,14 +50,14 @@ BEGIN_DEFINE_SPEC(FN2CCostEstimateSpec, "NodeToCode.TokenEstimate.Cost", N2C_TES
 		FScopedSettings()
 		{
 			const UN2CSettings* Settings = GetDefault<UN2CSettings>();
-			Provider = Settings->Provider;
+			Provider = GetMutableDefault<UN2CUserSettings>()->Provider;
 			NumCtx = Settings->OllamaConfig.NumCtx;
 			Pricing = Settings->ModelPricing;
 		}
 		~FScopedSettings()
 		{
 			UN2CSettings* Settings = GetMutableDefault<UN2CSettings>();
-			Settings->Provider = Provider;
+			GetMutableDefault<UN2CUserSettings>()->Provider = Provider;
 			Settings->OllamaConfig.NumCtx = NumCtx;
 			Settings->ModelPricing = Pricing;
 			FN2CTokenEstimationService::Get().RefreshModelInfo();
@@ -81,7 +82,7 @@ void FN2CCostEstimateSpec::Define()
 	{
 		FScopedSettings Scoped;
 		UN2CSettings* Settings = GetMutableDefault<UN2CSettings>();
-		Settings->Provider = EN2CLLMProvider::Anthropic;
+		GetMutableDefault<UN2CUserSettings>()->Provider = EN2CLLMProvider::Anthropic;
 		Settings->ModelPricing.Add(Settings->GetActiveModelForProvider(EN2CLLMProvider::Anthropic), FN2CModelPricing(3.0f, 15.0f));
 		FN2CTokenEstimationService& Service = FN2CTokenEstimationService::Get();
 		Service.RefreshModelInfo();
@@ -106,7 +107,7 @@ void FN2CCostEstimateSpec::Define()
 	{
 		FScopedSettings Scoped;
 		UN2CSettings* Settings = GetMutableDefault<UN2CSettings>();
-		Settings->Provider = EN2CLLMProvider::Ollama;
+		GetMutableDefault<UN2CUserSettings>()->Provider = EN2CLLMProvider::Ollama;
 		Settings->OllamaConfig.NumCtx = 8192;
 		FN2CTokenEstimationService& Service = FN2CTokenEstimationService::Get();
 		Service.RefreshModelInfo();
@@ -127,7 +128,7 @@ void FN2CCostEstimateSpec::Define()
 		}
 		FScopedSettings Scoped;
 		UN2CSettings* Settings = GetMutableDefault<UN2CSettings>();
-		Settings->Provider = EN2CLLMProvider::Anthropic;
+		GetMutableDefault<UN2CUserSettings>()->Provider = EN2CLLMProvider::Anthropic;
 		const FString Model = Settings->GetActiveModelForProvider(EN2CLLMProvider::Anthropic);
 		Settings->ModelPricing.Add(Model, FN2CModelPricing(3.0f, 15.0f));
 		FN2CTokenEstimationService& Service = FN2CTokenEstimationService::Get();
@@ -153,11 +154,17 @@ void FN2CCostEstimateSpec::Define()
 		const float After = (*Visualizer).*N2CTest::GetPrivateMember(N2CTest::FN2CCostVisualizerTotalCost());
 		TestTrue(FString::Printf(TEXT("doubled prices double the total (%f -> %f)"), Before, After), FMath::IsNearlyEqual(After, 2.0f * Before, 1e-5f));
 
-		// The provider changed in Project Settings, not through the picker: the picker becomes Ollama's model box
+		// The provider changed in Editor Preferences (a per-user setting since card 0188), not through the picker: the
+		// picker becomes Ollama's model box
 		TestFalse(TEXT("a cloud provider has the model list, not the local model box"),
 			((*Visualizer).*N2CTest::GetPrivateMember(N2CTest::FN2CCostVisualizerLocalBox())).IsValid());
-		Settings->Provider = EN2CLLMProvider::Ollama;
-		Changed(GET_MEMBER_NAME_CHECKED(UN2CSettings, Provider));
+		UN2CUserSettings* UserSettings = GetMutableDefault<UN2CUserSettings>();
+		const int32 UserVersionBefore = UserSettings->SettingsVersion;
+		UserSettings->Provider = EN2CLLMProvider::Ollama;
+		FPropertyChangedEvent ProviderEdit(UN2CUserSettings::StaticClass()->FindPropertyByName(GET_MEMBER_NAME_CHECKED(UN2CUserSettings, Provider)),
+			EPropertyChangeType::ValueSet);
+		UserSettings->PostEditChangeProperty(ProviderEdit);
+		UserSettings->SettingsVersion = UserVersionBefore;
 		TestTrue(TEXT("the visualizer follows the provider"),
 			(*Visualizer).*N2CTest::GetPrivateMember(N2CTest::FN2CCostVisualizerProvider()) == EN2CLLMProvider::Ollama);
 		TestTrue(TEXT("the picker is rebuilt as the local model box"),

@@ -3,6 +3,7 @@
 #include "Utils/N2CPathUtils.h"
 #include "Utils/N2CLogger.h"
 #include "Core/N2CSettings.h"
+#include "Core/N2CUserSettings.h"
 #include "Core/N2CTargetLanguage.h"
 #include "Misc/Paths.h"
 #include "HAL/FileManager.h"
@@ -21,7 +22,7 @@ FString FN2CPathUtils::GetTranslationsBasePath()
 {
     // The custom output directory from the settings: a relative one is under the project folder (card 0252)
     const UN2CSettings* Settings = GetDefault<UN2CSettings>();
-    const FString Custom = Settings ? Settings->CustomTranslationOutputDirectory.Path.TrimStartAndEnd() : FString();
+    const FString Custom = Settings ? GetDefault<UN2CUserSettings>()->CustomTranslationOutputDirectory.Path.TrimStartAndEnd() : FString();
     if (!Custom.IsEmpty())
     {
         FString Path = FPaths::IsRelative(Custom)

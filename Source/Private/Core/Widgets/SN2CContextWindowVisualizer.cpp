@@ -3,6 +3,7 @@
 #include "Core/Widgets/SN2CContextWindowVisualizer.h"
 #include "Core/Services/N2CTokenEstimationService.h"
 #include "Core/N2CSettings.h"
+#include "Core/N2CUserSettings.h"
 #include "Core/Style/N2CUIColors.h"
 #include "Core/Style/N2CStyle.h"
 #include "Core/Widgets/SN2CPanel.h"
@@ -28,7 +29,7 @@ void SN2CContextWindowVisualizer::Construct(const FArguments& InArgs)
 
 	// Cache initial provider state
 	const UN2CSettings* Settings = GetDefault<UN2CSettings>();
-	CachedProvider = Settings->Provider;
+	CachedProvider = GetDefault<UN2CUserSettings>()->Provider;
 
 	// Subscribe to model changes from the token estimation service
 	FN2CTokenEstimationService& TokenService = FN2CTokenEstimationService::Get();
@@ -221,9 +222,9 @@ void SN2CContextWindowVisualizer::OnModelChanged()
 {
 	// The provider changed in Project Settings (not through this picker): offer that provider's models
 	const UN2CSettings* Settings = GetDefault<UN2CSettings>();
-	if (Settings && Settings->Provider != CachedProvider)
+	if (Settings && GetDefault<UN2CUserSettings>()->Provider != CachedProvider)
 	{
-		CachedProvider = Settings->Provider;
+		CachedProvider = GetDefault<UN2CUserSettings>()->Provider;
 		RebuildModelSelectionWidget();
 	}
 
@@ -254,7 +255,7 @@ void SN2CContextWindowVisualizer::PopulateModelOptions()
 	const UN2CSettings* Settings = GetDefault<UN2CSettings>();
 
 	// The provider's live catalog rows (retired ones are not offered); Ollama and LM Studio have none (text input)
-	for (const FN2CModelMetadata* Row : FN2CModelCatalog::Get().List(FN2CModelCatalog::ProviderIdFor(Settings->Provider)))
+	for (const FN2CModelMetadata* Row : FN2CModelCatalog::Get().List(FN2CModelCatalog::ProviderIdFor(GetDefault<UN2CUserSettings>()->Provider)))
 	{
 		ModelOptions.Add(MakeShared<FString>(Row->DisplayName));
 	}
@@ -348,19 +349,19 @@ void SN2CContextWindowVisualizer::OnProviderSelectionChanged(TSharedPtr<FString>
 	}
 
 	// Check if provider actually changed
-	if (Settings->Provider == NewProvider)
+	if (GetDefault<UN2CUserSettings>()->Provider == NewProvider)
 	{
 		return;
 	}
 
-	Settings->Provider = NewProvider;
+	GetMutableDefault<UN2CUserSettings>()->Provider = NewProvider;
 	CachedProvider = NewProvider;
 
 	// Rebuild model selection widget (dropdown vs text input)
 	RebuildModelSelectionWidget();
 
 	// Save and notify
-	SaveSettings({ GET_MEMBER_NAME_CHECKED(UN2CSettings, Provider) });
+	SaveSettings({ GET_MEMBER_NAME_CHECKED(UN2CUserSettings, Provider) });
 	Settings->NotifyModelSettingsChanged();
 }
 
@@ -375,7 +376,7 @@ void SN2CContextWindowVisualizer::OnModelSelectionChanged(TSharedPtr<FString> Ne
 	const FString& SelectedDisplayName = *NewValue;
 
 	// The catalog row with that display name sets the model ID (and the DeepSeek thinking mode its entry names)
-	for (const FN2CModelMetadata* Row : FN2CModelCatalog::Get().List(FN2CModelCatalog::ProviderIdFor(Settings->Provider)))
+	for (const FN2CModelMetadata* Row : FN2CModelCatalog::Get().List(FN2CModelCatalog::ProviderIdFor(GetDefault<UN2CUserSettings>()->Provider)))
 	{
 		if (Row->DisplayName == SelectedDisplayName)
 		{
@@ -386,8 +387,8 @@ void SN2CContextWindowVisualizer::OnModelSelectionChanged(TSharedPtr<FString> Ne
 
 	// Save and notify: SelectModel sets the model ID, clears the custom ID and may set the DeepSeek thinking mode
 	SaveSettings({
-		UN2CSettings::GetModelIdPropertyName(Settings->Provider),
-		UN2CSettings::GetCustomModelIdPropertyName(Settings->Provider),
+		UN2CSettings::GetModelIdPropertyName(GetDefault<UN2CUserSettings>()->Provider),
+		UN2CSettings::GetCustomModelIdPropertyName(GetDefault<UN2CUserSettings>()->Provider),
 		GET_MEMBER_NAME_CHECKED(UN2CSettings, DeepSeekReasoningEffort) });
 	Settings->NotifyModelSettingsChanged();
 }
@@ -403,7 +404,7 @@ void SN2CContextWindowVisualizer::OnLocalModelTextCommitted(const FText& NewText
 	const FString ModelName = NewText.ToString();
 
 	FName Changed;
-	switch (Settings->Provider)
+	switch (GetDefault<UN2CUserSettings>()->Provider)
 	{
 	case EN2CLLMProvider::Ollama:
 		Settings->OllamaModel = ModelName;
@@ -442,7 +443,7 @@ FText SN2CContextWindowVisualizer::GetCurrentProviderText() const
 {
 	const UN2CSettings* Settings = GetDefault<UN2CSettings>();
 
-	switch (Settings->Provider)
+	switch (GetDefault<UN2CUserSettings>()->Provider)
 	{
 	case EN2CLLMProvider::OpenAI:
 		return FText::FromString(TEXT("OpenAI"));
@@ -465,7 +466,7 @@ FText SN2CContextWindowVisualizer::GetLocalModelText() const
 {
 	const UN2CSettings* Settings = GetDefault<UN2CSettings>();
 
-	switch (Settings->Provider)
+	switch (GetDefault<UN2CUserSettings>()->Provider)
 	{
 	case EN2CLLMProvider::Ollama:
 		return FText::FromString(Settings->OllamaModel);
@@ -479,8 +480,8 @@ FText SN2CContextWindowVisualizer::GetLocalModelText() const
 bool SN2CContextWindowVisualizer::IsLocalProvider() const
 {
 	const UN2CSettings* Settings = GetDefault<UN2CSettings>();
-	return Settings->Provider == EN2CLLMProvider::Ollama ||
-		   Settings->Provider == EN2CLLMProvider::LMStudio;
+	return GetDefault<UN2CUserSettings>()->Provider == EN2CLLMProvider::Ollama ||
+		   GetDefault<UN2CUserSettings>()->Provider == EN2CLLMProvider::LMStudio;
 }
 
 FReply SN2CContextWindowVisualizer::OnSettingsClicked()
@@ -495,9 +496,23 @@ FReply SN2CContextWindowVisualizer::OnSettingsClicked()
 
 void SN2CContextWindowVisualizer::SaveSettings(TConstArrayView<FName> PropertyNames)
 {
-	// Not SaveConfig(): that writes the Saved/Config layer, which loads after Config/DefaultNodeToCode.ini and so
-	// overrode later Project Settings edits at the next start (card 0186)
-	GetMutableDefault<UN2CSettings>()->SaveToProjectConfig(PropertyNames);
+	// The provider is the user's own (UN2CUserSettings, card 0188): saved to their per-user config only. The models
+	// are project settings, saved through SaveToProjectConfig, not SaveConfig(): that writes the Saved/Config layer,
+	// which loads after Config/DefaultNodeToCode.ini and so overrode later Project Settings edits (card 0186)
+	TArray<FName> UserNames;
+	TArray<FName> ProjectNames;
+	for (const FName& Name : PropertyNames)
+	{
+		(UN2CUserSettings::StaticClass()->FindPropertyByName(Name) ? UserNames : ProjectNames).Add(Name);
+	}
+	if (UserNames.Num() > 0)
+	{
+		GetMutableDefault<UN2CUserSettings>()->SaveToUserConfig(UserNames);
+	}
+	if (ProjectNames.Num() > 0)
+	{
+		GetMutableDefault<UN2CSettings>()->SaveToProjectConfig(ProjectNames);
+	}
 }
 
 // ==================== Display Text Getters ====================

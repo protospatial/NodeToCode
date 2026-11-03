@@ -14,6 +14,7 @@
 #include "Core/N2CEditorIntegration.h"
 #include "Core/N2CGraphStateManager.h"
 #include "Core/N2CSettings.h"
+#include "Core/N2CUserSettings.h"
 #include "Core/N2CGraphStateManager.h"
 #include "Models/N2CJsonContract.h"
 #include "Models/N2CTaggedBlueprintGraph.h"
@@ -461,17 +462,17 @@ void FN2CPythonBridgeJsonSpec::Define()
 		It(TEXT("GetActiveProvider and GetLLMProviders write an awkward model and endpoint as valid JSON"), [this]()
 		{
 			UN2CSettings* Settings = GetMutableDefault<UN2CSettings>();
-			const EN2CLLMProvider OldProvider = Settings->Provider;
+			const EN2CLLMProvider OldProvider = GetMutableDefault<UN2CUserSettings>()->Provider;
 			const FString OldModel = Settings->OllamaModel;
 			const FString OldEndpoint = Settings->OllamaConfig.OllamaEndpoint;
-			Settings->Provider = EN2CLLMProvider::Ollama;
+			GetMutableDefault<UN2CUserSettings>()->Provider = EN2CLLMProvider::Ollama;
 			Settings->OllamaModel = Awkward;
 			Settings->OllamaConfig.OllamaEndpoint = Awkward;
 
 			const TSharedPtr<FJsonObject> Active = SuccessData(TEXT("GetActiveProvider"), UN2CPythonBridge::GetActiveProvider());
 			const TSharedPtr<FJsonObject> All = SuccessData(TEXT("GetLLMProviders"), UN2CPythonBridge::GetLLMProviders());
 
-			Settings->Provider = OldProvider;
+			GetMutableDefault<UN2CUserSettings>()->Provider = OldProvider;
 			Settings->OllamaModel = OldModel;
 			Settings->OllamaConfig.OllamaEndpoint = OldEndpoint;
 

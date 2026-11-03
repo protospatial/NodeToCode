@@ -79,6 +79,11 @@ void FNodeToCodeModule::StartupModule()
             Targets.bThrottleCPUWhenNotForeground = Performance->bThrottleCPUWhenNotForeground;
         }
         GetMutableDefault<UN2CSettings>()->MigrateLegacy12Settings(Targets);
+
+        // Settings version 5 (card 0188): copy this user's provider, LM Studio endpoint, MCP port, colors, output folder
+        // and own reference files from the project config to their per-user settings, once. Reads the project config
+        // only; before the styles and the MCP server start, so both use the copied values.
+        GetMutableDefault<UN2CUserSettings>()->UpgradeFromProjectSettings(FN2CUserSettingsUpgradeSources::ForProject());
     }
     
     // Apply configured log severity from settings

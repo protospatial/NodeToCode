@@ -6,6 +6,7 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Core/N2CSettings.h"
+#include "Core/N2CUserSettings.h"
 #include "Core/Style/N2CStyle.h"
 #include "Core/Widgets/SN2CContextWindowVisualizer.h"
 #include "Tests/N2CTestHelpers.h"
@@ -14,11 +15,15 @@
 #include "Misc/ConfigContext.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
+#include "Misc/ScopeExit.h"
 #include "UObject/Package.h"
 #include "UObject/UnrealType.h"
 
 /**
- * How the settings are saved and loaded (card 0186).
+ * How the settings are saved and loaded (cards 0186, 0188).
+ *
+ * Since settings version 5 the provider, colours and other per-user fields are UN2CUserSettings properties: the picker
+ * saves the provider to the user's own config (SaveToUserConfig) and never touches Config/DefaultNodeToCode.ini.
  *
  * The provider and model picker in the NodeToCode window and Project Settings save through one path,
  * UN2CSettings::SaveToProjectConfig: it writes Config/DefaultNodeToCode.ini and removes the same keys from the
@@ -81,6 +86,22 @@ BEGIN_DEFINE_SPEC(FN2CSettingsSaveSpec, "NodeToCode.Settings.Save", N2C_TEST_FLA
 		return Lines.ContainsByPredicate([&Prefix](const FString& Line) { return Line.TrimStart().StartsWith(Prefix, ESearchCase::CaseSensitive); });
 	}
 
+	/** The user's Saved/Config/<Platform>Editor/EditorPerProjectUserSettings.ini on disk (UN2CUserSettings) */
+	static FString UserIniPath()
+	{
+		const FString UserConfig = UN2CUserSettings::StaticClass()->GetConfigName();
+		const FConfigBranch* Branch = GConfig->FindBranch(FName(*UserConfig), UserConfig);
+		return Branch ? FPaths::ConvertRelativePathToFull(Branch->IniPath) : FString();
+	}
+
+	/** As an editor start: the per-user config read again from its files */
+	static void ReloadUserConfigFromFiles()
+	{
+		FConfigContext Context = FConfigContext::ForceReloadIntoGConfig();
+		Context.bWriteDestIni = false;
+		Context.Load(*UN2CUserSettings::StaticClass()->GetConfigName());
+	}
+
 	/** Settings loaded from the text of the project file, read with array commands as the editor reads it */
 	UN2CSettings* LoadProjectText(const FString& ScratchPath, const FString& Text)
 	{
@@ -99,110 +120,97 @@ void FN2CSettingsSaveSpec::Define()
 {
 	Describe(TEXT("the provider picker in the NodeToCode window"), [this]()
 	{
-		It(TEXT("saves to the project file, so a later Project Settings choice is the one loaded at the next start"), [this]()
+		It(TEXT("saves the provider to the user's own config and the model to the project file (card 0188)"), [this]()
 		{
 			UN2CSettings* Settings = GetMutableDefault<UN2CSettings>();
+			UN2CUserSettings* UserSettings = GetMutableDefault<UN2CUserSettings>();
 			const FString ProjectIni = Settings->GetDefaultConfigFilename();
 			const FString SavedIni = Settings->GetClass()->GetConfigName();
-			const FFileCopy ProjectCopy(ProjectIni);
-			const FFileCopy SavedCopy(SavedIni);
-			const EN2CLLMProvider ProviderBefore = Settings->Provider;
-			// Saving stamps the current layout version on the settings; later specs make settings from them
-			const int32 VersionBefore = Settings->SettingsVersion;
-			const FName ProviderName = GET_MEMBER_NAME_CHECKED(UN2CSettings, Provider);
-			FProperty* ProviderProperty = UN2CSettings::StaticClass()->FindPropertyByName(ProviderName);
-			if (!TestNotNull(TEXT("Provider property"), ProviderProperty))
+			const FString UserConfig = UN2CUserSettings::StaticClass()->GetConfigName();
+			const FString UserIni = UserIniPath();
+			if (!TestFalse(TEXT("the user config file is known"), UserIni.IsEmpty()))
 			{
 				return;
 			}
-
-			// The picker: Provider set, then saved as OnProviderSelectionChanged saves it
-			Settings->Provider = EN2CLLMProvider::Ollama;
-			SN2CContextWindowVisualizer::SaveSettings({ ProviderName });
 			GConfig->Flush(false, *ConfigName());
-			TestTrue(TEXT("picker: Provider written to the project file"), FileHasKey(ProjectIni, TEXT("Provider")));
-			TestFalse(TEXT("picker: Provider not in the Saved layer"), FileHasKey(SavedIni, TEXT("Provider")));
-
-			// Project Settings, as the details panel and SSettingsEditor::NotifyPostChange run it for a committed edit
-			Settings->PreEditChange(ProviderProperty);
-			Settings->Provider = EN2CLLMProvider::Gemini;
-			FPropertyChangedEvent Event(ProviderProperty, EPropertyChangeType::ValueSet);
-			Settings->PostEditChangeProperty(Event);
-			Settings->UpdateSinglePropertyInConfigFile(ProviderProperty, ProjectIni);
-
-			// Editor exit writes GConfig's changes to the Saved layer; the next start reads the files again
-			GConfig->Flush(false, *ConfigName());
-			ReloadConfigFromFiles();
-			FString Loaded;
-			GConfig->GetString(*Section(), TEXT("Provider"), Loaded, SavedIni);
-			TestEqual(TEXT("Provider at the next start"), Loaded, FString(TEXT("Gemini")));
-			TestFalse(TEXT("Provider not in the Saved layer"), FileHasKey(SavedIni, TEXT("Provider")));
-			UN2CSettings* Restarted = NewObject<UN2CSettings>(GetTransientPackage());
-			Restarted->LoadConfig();
-			TestEqual(TEXT("settings loaded at the next start"), Restarted->Provider, EN2CLLMProvider::Gemini);
-
-			ProjectCopy.Restore();
-			SavedCopy.Restore();
-			ReloadConfigFromFiles();
-			Settings->Provider = ProviderBefore;
-			Settings->SettingsVersion = VersionBefore;
-		});
-
-		It(TEXT("removes a provider an older picker left in the Saved layer"), [this]()
-		{
-			UN2CSettings* Settings = GetMutableDefault<UN2CSettings>();
-			const FString ProjectIni = Settings->GetDefaultConfigFilename();
-			const FString SavedIni = Settings->GetClass()->GetConfigName();
+			GConfig->Flush(false, UserConfig);
 			const FFileCopy ProjectCopy(ProjectIni);
 			const FFileCopy SavedCopy(SavedIni);
-			const EN2CLLMProvider ProviderBefore = Settings->Provider;
+			const FFileCopy UserCopy(UserIni);
+			const EN2CLLMProvider ProviderBefore = UserSettings->Provider;
+			const FString ModelBefore = Settings->AnthropicModelId;
+			// Saving stamps the current layout version on the settings; later specs make settings from them
 			const int32 VersionBefore = Settings->SettingsVersion;
+			ON_SCOPE_EXIT
+			{
+				ProjectCopy.Restore();
+				SavedCopy.Restore();
+				UserCopy.Restore();
+				ReloadConfigFromFiles();
+				ReloadUserConfigFromFiles();
+				UserSettings->Provider = ProviderBefore;
+				Settings->AnthropicModelId = ModelBefore;
+				Settings->SettingsVersion = VersionBefore;
+			};
 
-			// What SaveConfig() left there before card 0186
+			// The picker: the provider alone, as OnProviderSelectionChanged saves it
+			UserSettings->Provider = EN2CLLMProvider::Ollama;
+			SN2CContextWindowVisualizer::SaveSettings({ GET_MEMBER_NAME_CHECKED(UN2CUserSettings, Provider) });
 			GConfig->Flush(false, *ConfigName());
-			FString SavedText;
-			FFileHelper::LoadFileToString(SavedText, *SavedCopy.Path);
-			SavedText += FString::Printf(TEXT("\r\n[%s]\r\nProvider=Ollama\r\n"), *Section());
-			TestTrue(TEXT("stale Saved layer written"), FFileHelper::SaveStringToFile(SavedText, *SavedCopy.Path));
-			ReloadConfigFromFiles();
-
-			Settings->Provider = EN2CLLMProvider::DeepSeek;
-			SN2CContextWindowVisualizer::SaveSettings({ GET_MEMBER_NAME_CHECKED(UN2CSettings, Provider) });
-			GConfig->Flush(false, *ConfigName());
-			ReloadConfigFromFiles();
+			TArray<uint8> ProjectAfter;
+			const bool bProjectExists = FFileHelper::LoadFileToArray(ProjectAfter, *ProjectCopy.Path);
+			TestTrue(TEXT("provider: the project file is untouched"), bProjectExists == ProjectCopy.bExisted && ProjectAfter == ProjectCopy.Bytes);
+			TestFalse(TEXT("provider: not in the project's Saved layer"), FileHasKey(SavedIni, TEXT("Provider")));
+			TestTrue(TEXT("provider: written to the user's own config file"), FileHasKey(UserIni, TEXT("Provider")));
 			FString Loaded;
-			GConfig->GetString(*Section(), TEXT("Provider"), Loaded, SavedIni);
-			TestEqual(TEXT("Provider at the next start"), Loaded, FString(TEXT("DeepSeek")));
-			TestFalse(TEXT("old Provider removed from the Saved layer"), FileHasKey(SavedIni, TEXT("Provider")));
+			GConfig->GetString(*UN2CUserSettings::StaticClass()->GetPathName(), TEXT("Provider"), Loaded, UserConfig);
+			TestEqual(TEXT("provider: the user config holds it"), Loaded, FString(TEXT("Ollama")));
 
-			ProjectCopy.Restore();
-			SavedCopy.Restore();
-			ReloadConfigFromFiles();
-			Settings->Provider = ProviderBefore;
-			Settings->SettingsVersion = VersionBefore;
+			// A model choice still goes to the project file, the provider still to the user's
+			Settings->AnthropicModelId = TEXT("n2c-test-model-0188");
+			UserSettings->Provider = EN2CLLMProvider::Anthropic;
+			SN2CContextWindowVisualizer::SaveSettings({ GET_MEMBER_NAME_CHECKED(UN2CUserSettings, Provider), GET_MEMBER_NAME_CHECKED(UN2CSettings, AnthropicModelId) });
+			TestTrue(TEXT("model: written to the project file"), FileHasKey(ProjectIni, TEXT("AnthropicModelId")));
+			TestFalse(TEXT("model: the provider is not written to the project file"), FileHasKey(ProjectIni, TEXT("Provider")));
+			GConfig->GetString(*UN2CUserSettings::StaticClass()->GetPathName(), TEXT("Provider"), Loaded, UserConfig);
+			TestEqual(TEXT("model: the provider is saved per user"), Loaded, FString(TEXT("Anthropic")));
+
+			// The next start loads the user's provider from their own config file
+			ReloadUserConfigFromFiles();
+			UN2CUserSettings* Restarted = NewObject<UN2CUserSettings>(GetTransientPackage());
+			Restarted->LoadConfig();
+			TestEqual(TEXT("provider loaded at the next start"), Restarted->Provider, EN2CLLMProvider::Anthropic);
 		});
 	});
 
-	Describe(TEXT("Project Settings"), [this]()
+	Describe(TEXT("Editor Preferences"), [this]()
 	{
-		It(TEXT("saves and restyles nothing while a colour is dragged, and saves UI Colors once it is released"), [this]()
+		It(TEXT("restyles nothing while a UI colour is dragged, restyles once it is released, and never writes the project file"), [this]()
 		{
 			UN2CSettings* Settings = GetMutableDefault<UN2CSettings>();
+			UN2CUserSettings* UserSettings = GetMutableDefault<UN2CUserSettings>();
 			const FString ProjectIni = Settings->GetDefaultConfigFilename();
 			const FFileCopy ProjectCopy(ProjectIni);
-			const FFileCopy SavedCopy(Settings->GetClass()->GetConfigName());
-			const FN2CUIColors ColorsBefore = Settings->UIColors;
-			const int32 VersionBefore = Settings->SettingsVersion;
+			const FN2CUIColors ColorsBefore = UserSettings->UIColors;
+			const int32 UserVersionBefore = UserSettings->SettingsVersion;
+			ON_SCOPE_EXIT
+			{
+				ProjectCopy.Restore();
+				UserSettings->UIColors = ColorsBefore;
+				UserSettings->SettingsVersion = UserVersionBefore;
+				N2CStyle::UpdateBorderBrushes();
+			};
 
-			FStructProperty* ColorsProperty = CastField<FStructProperty>(UN2CSettings::StaticClass()->FindPropertyByName(GET_MEMBER_NAME_CHECKED(UN2CSettings, UIColors)));
+			FStructProperty* ColorsProperty = CastField<FStructProperty>(UN2CUserSettings::StaticClass()->FindPropertyByName(GET_MEMBER_NAME_CHECKED(UN2CUserSettings, UIColors)));
 			FProperty* LeafProperty = FN2CUIColors::StaticStruct()->FindPropertyByName(GET_MEMBER_NAME_CHECKED(FN2CUIColors, BorderSubtle));
 			if (!TestNotNull(TEXT("UIColors property"), ColorsProperty) || !TestNotNull(TEXT("BorderSubtle property"), LeafProperty))
 			{
 				return;
 			}
+			TestNull(TEXT("UI Colors is no longer a project setting"), UN2CSettings::StaticClass()->FindPropertyByName(TEXT("UIColors")));
 			const FColor Picked(12, 34, 56);
 			const FLinearColor PickedLinear = FN2CUIColors::ToLinear(Picked);
-			if (!TestFalse(TEXT("the picked colour differs from the current one"), Settings->UIColors.BorderSubtle == Picked))
+			if (!TestFalse(TEXT("the picked colour differs from the current one"), UserSettings->UIColors.BorderSubtle == Picked))
 			{
 				return;
 			}
@@ -213,38 +221,22 @@ void FN2CSettingsSaveSpec::Define()
 			const FDateTime Before = IFileManager::Get().GetTimeStamp(*ProjectCopy.Path);
 
 			// A drag: the colour picker sends an Interactive change for the colour inside UI Colors on each move
-			Settings->PreEditChange(LeafProperty);
-			Settings->UIColors.BorderSubtle = Picked;
+			UserSettings->PreEditChange(LeafProperty);
+			UserSettings->UIColors.BorderSubtle = Picked;
 			FPropertyChangedEvent Drag(LeafProperty, EPropertyChangeType::Interactive);
 			Drag.SetActiveMemberProperty(ColorsProperty);
-			Settings->PostEditChangeProperty(Drag);
-			TestEqual(TEXT("drag: project file not written"), IFileManager::Get().GetTimeStamp(*ProjectCopy.Path), Before);
-			TArray<uint8> AfterDrag;
-			const bool bExistsAfterDrag = FFileHelper::LoadFileToArray(AfterDrag, *ProjectCopy.Path);
-			TestTrue(TEXT("drag: project file unchanged on disk"), bExistsAfterDrag == ProjectCopy.bExisted && AfterDrag == ProjectCopy.Bytes);
+			UserSettings->PostEditChangeProperty(Drag);
 			TestFalse(TEXT("drag: panel border style not rebuilt"), N2CStyle::GetPanelBorderBrush().OutlineSettings.Color.GetSpecifiedColor().Equals(PickedLinear));
 
 			// Released: one ValueSet change
 			FPropertyChangedEvent Release(LeafProperty, EPropertyChangeType::ValueSet);
 			Release.SetActiveMemberProperty(ColorsProperty);
-			Settings->PostEditChangeProperty(Release);
+			UserSettings->PostEditChangeProperty(Release);
 			TestTrue(TEXT("release: panel border style rebuilt"), N2CStyle::GetPanelBorderBrush().OutlineSettings.Color.GetSpecifiedColor().Equals(PickedLinear));
-			FString Text;
-			FFileHelper::LoadFileToString(Text, *ProjectCopy.Path);
-			N2CTest::FScratchDir Dir(TEXT("N2CSettingsSave"));
-			const UN2CSettings* Loaded = LoadProjectText(Dir / TEXT("DefaultNodeToCode.ini"), Text);
-			TestEqual(TEXT("release: UI Colors in the project file has the picked colour"), Loaded->UIColors.BorderSubtle, Picked);
-			if (Loaded->UIColors.BorderSubtle != Picked)
-			{
-				AddInfo(FString::Printf(TEXT("%s holds:\n%s"), *ProjectCopy.Path, *Text));
-			}
-
-			ProjectCopy.Restore();
-			SavedCopy.Restore();
-			ReloadConfigFromFiles();
-			Settings->UIColors = ColorsBefore;
-			Settings->SettingsVersion = VersionBefore;
-			N2CStyle::UpdateBorderBrushes();
+			TestEqual(TEXT("the project file is not written"), IFileManager::Get().GetTimeStamp(*ProjectCopy.Path), Before);
+			TArray<uint8> After;
+			const bool bExists = FFileHelper::LoadFileToArray(After, *ProjectCopy.Path);
+			TestTrue(TEXT("the project file is unchanged on disk"), bExists == ProjectCopy.bExisted && After == ProjectCopy.Bytes);
 		});
 	});
 

@@ -2,6 +2,7 @@
 
 #include "Core/Services/N2CTokenEstimationService.h"
 #include "Core/N2CSettings.h"
+#include "Core/N2CUserSettings.h"
 #include "Core/N2CTargetLanguage.h"
 #include "LLM/N2CLLMModule.h"
 #include "LLM/N2CLLMPricing.h"
@@ -368,7 +369,7 @@ void FN2CTokenEstimationService::RefreshModelInfo()
 	CachedOutputCostPer1M = 0.0f;
 	CachedMaxOutputTokens = 0;
 
-	switch (Settings->Provider)
+	switch (GetDefault<UN2CUserSettings>()->Provider)
 	{
 	case EN2CLLMProvider::Ollama:
 		CachedModelName = Settings->OllamaModel;
@@ -390,8 +391,8 @@ void FN2CTokenEstimationService::RefreshModelInfo()
 	}
 
 	// Cloud providers: the selected model ID's catalog row; the price is the user's override when there is one
-	const FN2CModelMetadata* Metadata = Settings->GetActiveModelMetadataForProvider(Settings->Provider);
-	const FN2CModelPricing Pricing = Settings->GetActivePricingForProvider(Settings->Provider);
+	const FN2CModelMetadata* Metadata = Settings->GetActiveModelMetadataForProvider(GetDefault<UN2CUserSettings>()->Provider);
+	const FN2CModelPricing Pricing = Settings->GetActivePricingForProvider(GetDefault<UN2CUserSettings>()->Provider);
 	CachedInputCostPer1M = Pricing.InputCost;
 	CachedOutputCostPer1M = Pricing.OutputCost;
 	bCachedIsLocal = false;
@@ -404,7 +405,7 @@ void FN2CTokenEstimationService::RefreshModelInfo()
 	else
 	{
 		// A custom model ID the catalog does not list: its own name, and a common context size as the estimate
-		const FString ModelId = Settings->GetActiveModelForProvider(Settings->Provider);
+		const FString ModelId = Settings->GetActiveModelForProvider(GetDefault<UN2CUserSettings>()->Provider);
 		CachedModelName = ModelId.IsEmpty() ? FString(TEXT("Unknown Model")) : ModelId;
 		CachedFullContextWindow = 128000;
 	}
@@ -429,8 +430,9 @@ void FN2CTokenEstimationService::OnSettingsPropertyChanged(UObject* Object, FPro
 		OnCacheInvalidated.Broadcast();
 		return;
 	}
-	if (PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, Provider) ||
-		PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, OpenAIModelId) ||
+	// The provider and the user's own reference files are UN2CUserSettings properties, whose edits call
+	// UN2CSettings::NotifyModelSettingsChanged
+	if (PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, OpenAIModelId) ||
 		PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, OpenAICustomModelId) ||
 		PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, AnthropicModelId) ||
 		PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, AnthropicCustomModelId) ||

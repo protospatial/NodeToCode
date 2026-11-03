@@ -2,6 +2,7 @@
 
 #include "Core/N2CSettings.h"
 #include "Core/N2CSecretStore.h"
+#include "Core/N2CUserSettings.h"
 #include "LLM/N2CCredentialSource.h"
 #include "Core/Services/N2CTokenEstimationService.h"
 #include "Code Editor/Widgets/SN2CCodeEditor.h"
@@ -33,6 +34,10 @@
 #include "HAL/PlatformApplicationMisc.h"
 
 #define LOCTEXT_NAMESPACE "NodeToCode"
+
+// Every edit stamps the project's CurrentSettingsVersion; the per-user upgrade stamps the same counter in the user config
+static_assert(UN2CSettings::CurrentSettingsVersion >= UN2CUserSettings::CurrentSettingsVersion,
+    "the project settings version may not fall behind the version that moved the per-user fields");
 
 UN2CSettings::UN2CSettings()
 {
@@ -1149,7 +1154,7 @@ FText UN2CSettings::GetSectionText() const
 
 FString UN2CSettings::GetActiveModel() const
 {
-    return GetActiveModelForProvider(Provider);
+    return GetActiveModelForProvider(GetDefault<UN2CUserSettings>()->Provider);
 }
 
 void UN2CSettings::PreEditChange(FProperty* PropertyAboutToChange)
@@ -1280,11 +1285,12 @@ void UN2CSettings::RefreshReferenceFiles()
 
 int32 UN2CSettings::GetReferenceFilesTokenEstimate() const
 {
+    // The project's files and the user's own, as a translation sends them
     int32 TotalTokens = 0;
-    for (const FFilePath& Path : ReferenceSourceFilePaths)
+    for (const FString& Path : UN2CUserSettings::CollectReferenceSourceFiles(ReferenceSourceFilePaths, GetDefault<UN2CUserSettings>()->ReferenceSourceFilePaths))
     {
         FString Content;
-        if (FPaths::FileExists(Path.FilePath) && FFileHelper::LoadFileToString(Content, *Path.FilePath))
+        if (FFileHelper::LoadFileToString(Content, *Path))
         {
             // Estimate tokens by dividing character count by 4
             TotalTokens += FMath::CeilToInt(Content.Len() / 4.0f);
@@ -1293,12 +1299,53 @@ int32 UN2CSettings::GetReferenceFilesTokenEstimate() const
     return TotalTokens;
 }
 
+int32 UN2CSettings::NormalizeReferenceSourceFilePaths(TArray<FFilePath>& ProjectList, TArray<FFilePath>& UserList, const FString& ProjectDir)
+{
+    const FString Root = ProjectDir.IsEmpty() ? FPaths::ProjectDir() : ProjectDir;
+    int32 Moved = 0;
+    for (int32 Index = ProjectList.Num() - 1; Index >= 0; --Index)
+    {
+        FString& Entry = ProjectList[Index].FilePath;
+        if (Entry.TrimStartAndEnd().IsEmpty())
+        {
+            // A row just added in Project Settings, before a file is picked
+            continue;
+        }
+        const FString Absolute = UN2CUserSettings::ResolveReferencePath(Entry, Root);
+        if (UN2CUserSettings::IsInsideProject(Absolute, Root))
+        {
+            FString Base = FPaths::ConvertRelativePathToFull(Root);
+            FPaths::NormalizeDirectoryName(Base);
+            if (!Base.EndsWith(TEXT("/")))
+            {
+                Base += TEXT("/");
+            }
+            FString Relative = Absolute;
+            FPaths::MakePathRelativeTo(Relative, *Base);
+            Entry = Relative;
+            continue;
+        }
+        // Outside the project: this developer's own file, which the team's list must not hold
+        if (!UserList.ContainsByPredicate([&Absolute, &Root](const FFilePath& Each)
+            { return UN2CUserSettings::ResolveReferencePath(Each.FilePath, Root) == Absolute; }))
+        {
+            FFilePath Personal;
+            Personal.FilePath = Absolute;
+            UserList.Add(Personal);
+        }
+        ProjectList.RemoveAt(Index);
+        ++Moved;
+    }
+    return Moved;
+}
+
 void UN2CSettings::ValidateReferenceSourcePaths()
 {
     TArray<FFilePath> ValidPaths;
     for (const FFilePath& Path : ReferenceSourceFilePaths)
     {
-        if (FPaths::FileExists(Path.FilePath))
+        // A project-relative entry is under the project folder, not the editor's working directory
+        if (FPaths::FileExists(UN2CUserSettings::ResolveReferencePath(Path.FilePath)))
         {
             ValidPaths.Add(Path);
         }
@@ -1312,17 +1359,18 @@ void UN2CSettings::ValidateReferenceSourcePaths()
     }
     ReferenceSourceFilePaths = ValidPaths;
 
-    // Validate custom translation output directory if set
-    if (!CustomTranslationOutputDirectory.Path.IsEmpty())
+    // Validate custom translation output directory if set (a per-user setting since version 5)
+    const FString OutputDirectory = GetDefault<UN2CUserSettings>()->CustomTranslationOutputDirectory.Path;
+    if (!OutputDirectory.IsEmpty())
     {
-        if (!FPaths::DirectoryExists(CustomTranslationOutputDirectory.Path)
-            && N2CModelIds::FirstTime(TEXT("missing-output-dir|") + CustomTranslationOutputDirectory.Path))
+        if (!FPaths::DirectoryExists(OutputDirectory)
+            && N2CModelIds::FirstTime(TEXT("missing-output-dir|") + OutputDirectory))
         {
             // Not a fault: the folder is created by the first translation saved there, so this is Info, not a warning
             // repeated at every start
             FN2CLogger::Get().Log(FString::Printf(
                 TEXT("Custom translation output directory does not exist yet: %s. It is created when a translation is saved there."),
-                *CustomTranslationOutputDirectory.Path), EN2CLogSeverity::Info, TEXT("N2CSettings"));
+                *OutputDirectory), EN2CLogSeverity::Info, TEXT("N2CSettings"));
         }
     }
 }
@@ -1378,9 +1426,8 @@ void UN2CSettings::PostEditChangeProperty(FPropertyChangedEvent& PropertyChanged
             FN2CLogger::Get().SetMinSeverity(MinSeverity);
         }
 
-        // Notify token estimation service when provider or model changes
-        if (PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, Provider) ||
-            PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, OpenAIModelId) ||
+        // Notify token estimation service when a model changes (the provider is a per-user setting, UN2CUserSettings)
+        if (PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, OpenAIModelId) ||
             PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, OpenAICustomModelId) ||
             PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, AnthropicModelId) ||
             PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, AnthropicCustomModelId) ||
@@ -1405,20 +1452,35 @@ void UN2CSettings::PostEditChangeProperty(FPropertyChangedEvent& PropertyChanged
             ShowRestartEditorNotification();
         }
 
-        // Restart the MCP server on the new port (a slider drag arrives here once, when released). If no port in the
-        // range is free, the server's own error notification names the port and this setting.
-        if (PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, McpServerPort)
-            || PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, McpServerPortRange))
+        // Restart the MCP server when the fallback range changes (the port itself is a per-user setting). If no port
+        // in the range is free, the server's own error notification names the port and this setting.
+        if (PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, McpServerPortRange))
         {
             FN2CMcpHttpServerManager::Get().HandlePortSettingsChanged();
         }
 
-        // Check for both array changes and changes to FilePath within the struct                                                                                                                         
-        const bool bIsFilePathChange = PropertyName == GET_MEMBER_NAME_CHECKED(FFilePath, FilePath);                                                                                              
-        const bool bIsArrayChange = PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, ReferenceSourceFilePaths);
+        // Check for both array changes and changes to FilePath within the struct
+        const bool bIsFilePathChange = PropertyName == GET_MEMBER_NAME_CHECKED(FFilePath, FilePath);
+        const FName ChangedMember = PropertyChangedEvent.MemberProperty ? PropertyChangedEvent.MemberProperty->GetFName() : PropertyName;
+        const bool bIsArrayChange = ChangedMember == GET_MEMBER_NAME_CHECKED(UN2CSettings, ReferenceSourceFilePaths);
 
         if (bIsFilePathChange || bIsArrayChange)
         {
+            // The team's list holds project files, stored project-relative; a file outside the project is this
+            // developer's own and moves to their My Reference Source Files (card 0188). The settings editor then
+            // saves the whole list to the project file.
+            if (bIsArrayChange && HasAnyFlags(RF_ClassDefaultObject))
+            {
+                UN2CUserSettings* UserSettings = GetMutableDefault<UN2CUserSettings>();
+                const int32 Moved = NormalizeReferenceSourceFilePaths(ReferenceSourceFilePaths, UserSettings->ReferenceSourceFilePaths);
+                if (Moved > 0)
+                {
+                    UserSettings->SaveToUserConfig({ GET_MEMBER_NAME_CHECKED(UN2CUserSettings, ReferenceSourceFilePaths) });
+                    FN2CLogger::Get().Log(FString::Printf(
+                        TEXT("Moved %d reference source file(s) outside the project to your own list (Editor Preferences > Plugins > Node to Code (User) > My Reference Source Files), so they are not saved to the project's config."),
+                        Moved), EN2CLogSeverity::Info, TEXT("N2CSettings"));
+                }
+            }
             EstimatedReferenceTokens = GetReferenceFilesTokenEstimate();
             FN2CLogger::Get().Log(
                 FString::Printf(TEXT("Estimated reference file tokens: %d"), EstimatedReferenceTokens),
@@ -1434,17 +1496,9 @@ void UN2CSettings::PostEditChangeProperty(FPropertyChangedEvent& PropertyChanged
             {
                 FN2CCodeEditorStyle::Reinitialize();
             }
-
-            if (MemberName == GET_MEMBER_NAME_CHECKED(UN2CSettings, UIColors))
-            {
-                N2CStyle::UpdateButtonStyles();
-                N2CStyle::UpdateBorderBrushes();
-                N2CStyle::UpdateComboBoxStyle();
-                N2CStyle::UpdateWidgetStyles();
-            }
         }
     }
-    // Saved by the member property, as the settings editor saves it (a colour inside UI Colors is the key UIColors),
+    // Saved by the member property, as the settings editor saves it (a colour inside a theme is its member's key),
     // with the layout version PreEditChange stamped, through the same path as the picker in the NodeToCode window.
     // An array member is skipped there: the settings editor saves the whole section for it.
     const FProperty* Member = PropertyChangedEvent.MemberProperty ? PropertyChangedEvent.MemberProperty : Property;
@@ -1561,12 +1615,12 @@ FN2CModelPricing UN2CSettings::GetActivePricingForProvider(EN2CLLMProvider InPro
 
 float UN2CSettings::GetCurrentInputCost() const
 {
-    return GetActivePricingForProvider(Provider).InputCost;
+    return GetActivePricingForProvider(GetDefault<UN2CUserSettings>()->Provider).InputCost;
 }
 
 float UN2CSettings::GetCurrentOutputCost() const
 {
-    return GetActivePricingForProvider(Provider).OutputCost;
+    return GetActivePricingForProvider(GetDefault<UN2CUserSettings>()->Provider).OutputCost;
 }
 
 void UN2CSettings::SelectModel(const FN2CModelMetadata& Row)

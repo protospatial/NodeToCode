@@ -7,6 +7,7 @@
 
 #include "Core/N2CSecretStore.h"
 #include "Core/N2CSettings.h"
+#include "Core/N2CUserSettings.h"
 #include "LLM/N2CLLMModels.h"
 #include "LLM/N2CModelCatalog.h"
 #include "Tests/Core/N2CTestCredentials.h"
@@ -32,6 +33,8 @@ namespace N2CSettingsMigrationSpec
 		Pricing,
 		/** Per-language theme 2.0 cannot convert: reported once and left in the ini for the user */
 		Theme,
+		/** A per-user setting since version 5: copied to UN2CUserSettings once, the key left in the project ini */
+		PerUser,
 	};
 
 	struct FKey
@@ -45,7 +48,7 @@ namespace N2CSettingsMigrationSpec
 	 * The API keys were not config: 1.2.x kept them in <Project>/Saved/NodeToCode/User/secrets.json (UN2CUserSecrets).
 	 */
 	const FKey Legacy12xKeys[] = {
-		{ TEXT("Provider"), EFate::Same },
+		{ TEXT("Provider"), EFate::PerUser },
 		{ TEXT("AnthropicModel"), EFate::ModelId },
 		{ TEXT("OpenAI_Model"), EFate::ModelId },
 		{ TEXT("Gemini_Model"), EFate::ModelId },
@@ -53,7 +56,7 @@ namespace N2CSettingsMigrationSpec
 		{ TEXT("OllamaConfig"), EFate::Migrated },
 		{ TEXT("OllamaModel"), EFate::Same },
 		{ TEXT("LMStudioModel"), EFate::Same },
-		{ TEXT("LMStudioEndpoint"), EFate::Same },
+		{ TEXT("LMStudioEndpoint"), EFate::PerUser },
 		{ TEXT("LMStudioPrependedModelCommand"), EFate::Same },
 		{ TEXT("OpenAIModelPricing"), EFate::Pricing },
 		{ TEXT("AnthropicModelPricing"), EFate::Pricing },
@@ -70,7 +73,7 @@ namespace N2CSettingsMigrationSpec
 		{ TEXT("PseudocodeThemes"), EFate::Theme },
 		{ TEXT("EstimatedReferenceTokens"), EFate::Same },
 		{ TEXT("ReferenceSourceFilePaths"), EFate::Same },
-		{ TEXT("CustomTranslationOutputDirectory"), EFate::Same },
+		{ TEXT("CustomTranslationOutputDirectory"), EFate::PerUser },
 	};
 }
 
@@ -89,6 +92,7 @@ BEGIN_DEFINE_SPEC(FN2CSettingsMigrationSpec, "NodeToCode.Settings.Migration", N2
 	FString EngineIni;
 	FString UserSecrets;
 	FString ProjectSecrets;
+	FString UserIni;
 	FString VaultPrefix;
 
 	static FString Fixture(const TCHAR* Name)
@@ -156,6 +160,36 @@ BEGIN_DEFINE_SPEC(FN2CSettingsMigrationSpec, "NodeToCode.Settings.Migration", N2
 		return Settings;
 	}
 
+	/** A user settings object as the editor loads it from UserIni (the scratch per-user config) at startup */
+	UN2CUserSettings* LoadUser()
+	{
+		GConfig->UnloadFile(UserIni);
+		FConfigFile File;
+		File.Combine(UserIni);
+		GConfig->SetFile(UserIni, &File);
+		UN2CUserSettings* User = NewObject<UN2CUserSettings>(GetTransientPackage());
+		// A fresh object takes the class default's values; reset what UserIni may set so only its values show
+		User->SettingsVersion = 0;
+		User->Provider = EN2CLLMProvider::Anthropic;
+		User->LMStudioEndpoint = TEXT("http://localhost:1234");
+		User->McpServerPort = 27000;
+		User->ReferenceSourceFilePaths.Reset();
+		User->CustomTranslationOutputDirectory.Path.Reset();
+		User->UIColors = FN2CUIColors();
+		User->LoadConfig(nullptr, *UserIni);
+		return User;
+	}
+
+	/** The version 5 upgrade's inputs: the project file, the scratch user config, the scratch project folder */
+	FN2CUserSettingsUpgradeSources UserSources() const
+	{
+		FN2CUserSettingsUpgradeSources Result;
+		Result.ReadConfigs.Add(SettingsIni);
+		Result.UserConfig = UserIni;
+		Result.ProjectDir = *Scratch / TEXT("Project/");
+		return Result;
+	}
+
 	FN2CLegacyMigrationTargets Targets() const
 	{
 		FN2CLegacyMigrationTargets Result;
@@ -183,15 +217,20 @@ BEGIN_DEFINE_SPEC(FN2CSettingsMigrationSpec, "NodeToCode.Settings.Migration", N2
 	}
 
 	/** Checks every value the fixture holds as 2.0 reads it (after the upgrade, and after a restart) */
-	void ExpectFixtureValues(const UN2CSettings& Settings, const FString& When)
+	void ExpectFixtureValues(const UN2CSettings& Settings, const UN2CUserSettings& User, const FString& When)
 	{
 		auto Label = [&When](const TCHAR* What) { return FString::Printf(TEXT("%s: %s"), *When, What); };
 
+		// PerUser: copied to the user's own settings by the version 5 upgrade
+		TestEqual(Label(TEXT("Provider (per user)")), User.Provider, EN2CLLMProvider::DeepSeek);
+		TestEqual(Label(TEXT("LMStudioEndpoint (per user)")), User.LMStudioEndpoint, FString(TEXT("http://192.168.1.21:1234")));
+		TestEqual(Label(TEXT("CustomTranslationOutputDirectory (per user)")), User.CustomTranslationOutputDirectory.Path, FString(TEXT("C:/Projects/MyGame/Translations")));
+		TestEqual(Label(TEXT("user settings version")), User.SettingsVersion, UN2CUserSettings::CurrentSettingsVersion);
+		TestEqual(Label(TEXT("1.2.x had no per-user reference files")), User.ReferenceSourceFilePaths.Num(), 0);
+
 		// Same: loaded unchanged
-		TestEqual(Label(TEXT("Provider")), Settings.Provider, EN2CLLMProvider::DeepSeek);
 		TestEqual(Label(TEXT("OllamaModel")), Settings.OllamaModel, FString(TEXT("llama3.3:70b")));
 		TestEqual(Label(TEXT("LMStudioModel")), Settings.LMStudioModel, FString(TEXT("gemma-3-27b-it")));
-		TestEqual(Label(TEXT("LMStudioEndpoint")), Settings.LMStudioEndpoint, FString(TEXT("http://192.168.1.21:1234")));
 		TestEqual(Label(TEXT("LMStudioPrependedModelCommand")), Settings.LMStudioPrependedModelCommand, FString(TEXT("/think")));
 		TestEqual(Label(TEXT("TargetLanguage")), Settings.TargetLanguage, EN2CCodeLanguage::CSharp);
 		TestEqual(Label(TEXT("TranslationDepth")), Settings.TranslationDepth, 3);
@@ -203,7 +242,6 @@ BEGIN_DEFINE_SPEC(FN2CSettingsMigrationSpec, "NodeToCode.Settings.Migration", N2
 			TestEqual(Label(TEXT("first reference file")), Settings.ReferenceSourceFilePaths[0].FilePath, FString(TEXT("C:/Projects/MyGame/Source/MyGame/Public/MyActor.h")));
 			TestEqual(Label(TEXT("second reference file")), Settings.ReferenceSourceFilePaths[1].FilePath, FString(TEXT("C:/Projects/MyGame/Source/MyGame/Private/MyActor.cpp")));
 		}
-		TestEqual(Label(TEXT("CustomTranslationOutputDirectory")), Settings.CustomTranslationOutputDirectory.Path, FString(TEXT("C:/Projects/MyGame/Translations")));
 
 		// Migrated: the user's Ollama values are kept and still sent; values at 1.2.x's always-sent default are not
 		const FN2COllamaConfig& Ollama = Settings.OllamaConfig;
@@ -249,6 +287,7 @@ void FN2CSettingsMigrationSpec::Define()
 		EngineIni = *Scratch / TEXT("Project/Config/DefaultEngine.ini");
 		UserSecrets = *Scratch / TEXT("User/NodeToCode/secrets.json");
 		ProjectSecrets = *Scratch / TEXT("Project/Saved/NodeToCode/User/secrets.json");
+		UserIni = *Scratch / TEXT("Project/Saved/Config/WindowsEditor/EditorPerProjectUserSettings.ini");
 		N2CTest::SweepStaleTestCredentialsOnce();
 		VaultPrefix = N2CTest::MakeTestCredentialPrefix();
 	});
@@ -256,6 +295,7 @@ void FN2CSettingsMigrationSpec::Define()
 	AfterEach([this]()
 	{
 		GConfig->UnloadFile(SettingsIni);
+		GConfig->UnloadFile(UserIni);
 		RemoveVaultEntries();
 		Scratch.Reset();
 		FN2CModelCatalog::Get().ReloadBundled();
@@ -288,6 +328,12 @@ void FN2CSettingsMigrationSpec::Define()
 				const FProperty* Property = UN2CSettings::StaticClass()->FindPropertyByName(Key.Name);
 				TestTrue(FString::Printf(TEXT("%s is a 2.0 config property"), Key.Name), Property && Property->HasAnyPropertyFlags(CPF_Config));
 			}
+			if (Key.Fate == N2CSettingsMigrationSpec::EFate::PerUser)
+			{
+				const FProperty* Property = UN2CUserSettings::StaticClass()->FindPropertyByName(Key.Name);
+				TestTrue(FString::Printf(TEXT("%s is a per-user config property"), Key.Name), Property && Property->HasAnyPropertyFlags(CPF_Config));
+				TestTrue(FString::Printf(TEXT("%s is one the version 5 upgrade moves"), Key.Name), UN2CUserSettings::GetMovedPropertyNames().Contains(FName(Key.Name)));
+			}
 		}
 
 		const FString Secrets = ReadText(Fixture(TEXT("secrets.json")));
@@ -295,7 +341,7 @@ void FN2CSettingsMigrationSpec::Define()
 		TestFalse(TEXT("the secrets fixture holds no real Google key"), Secrets.Contains(TEXT("AIza")));
 	});
 
-	It(TEXT("brings every 1.2.x setting into the 2.0 project settings, and keeps them after a restart"), [this]()
+	It(TEXT("brings every 1.2.x setting into the 2.0 project and user settings, and keeps them after a restart"), [this]()
 	{
 		if (!CopyFixture(TEXT("DefaultNodeToCode.ini"), SettingsIni) || !CopyFixture(TEXT("DefaultEngine.ini"), EngineIni)) { return; }
 		UN2CSettings* Settings = LoadSettings();
@@ -311,7 +357,14 @@ void FN2CSettingsMigrationSpec::Define()
 		TestTrue(TEXT("the model ID conversion ran"), Report.ModelIds.bRan && !Report.ModelIds.bDeferred);
 		TestFalse(TEXT("the config was written"), Report.bWriteFailed);
 		TestEqual(TEXT("settings version"), Settings->SettingsVersion, UN2CSettings::CurrentSettingsVersion);
-		ExpectFixtureValues(*Settings, TEXT("after the upgrade"));
+
+		// Then the version 5 step at the same start: the per-user values go to the user's own config
+		TestTrue(TEXT("user config created"), FFileHelper::SaveStringToFile(TEXT("; no NodeToCode user setting yet\n"), *UserIni));
+		UN2CUserSettings* User = LoadUser();
+		const FN2CUserSettingsUpgradeReport UserReport = User->UpgradeFromProjectSettings(UserSources());
+		TestTrue(TEXT("the per-user upgrade ran and was saved"), UserReport.bRan && UserReport.bStamped && !UserReport.bWriteFailed);
+		TestEqual(TEXT("1.2.x's reference files outside the scratch project do not exist here: left in the project file"), UserReport.SkippedReferenceFiles.Num(), 2);
+		ExpectFixtureValues(*Settings, *User, TEXT("after the upgrade"));
 
 		// What happened to each 1.2.x key, by its fate
 		const FString Saved = ReadText(SettingsIni);
@@ -324,6 +377,10 @@ void FN2CSettingsMigrationSpec::Define()
 				case N2CSettingsMigrationSpec::EFate::Migrated:
 				case N2CSettingsMigrationSpec::EFate::Theme:
 					TestTrue(FString::Printf(TEXT("%s is still in DefaultNodeToCode.ini"), Key.Name), SavedKeys.Contains(Key.Name));
+					break;
+				case N2CSettingsMigrationSpec::EFate::PerUser:
+					TestTrue(FString::Printf(TEXT("%s is left in DefaultNodeToCode.ini for the other developers"), Key.Name), SavedKeys.Contains(Key.Name));
+					TestTrue(FString::Printf(TEXT("%s is reported as no longer read"), Key.Name), UserReport.LegacyKeys.Contains(Key.Name));
 					break;
 				case N2CSettingsMigrationSpec::EFate::ModelId:
 				case N2CSettingsMigrationSpec::EFate::Pricing:
@@ -350,8 +407,12 @@ void FN2CSettingsMigrationSpec::Define()
 		const FN2CLegacyMigrationReport Again = Restarted->MigrateLegacy12Settings(Targets());
 		TestFalse(TEXT("the 1.2.x steps do not run again"), Again.bRanLegacySteps);
 		TestEqual(TEXT("nothing is written again"), Again.PersistedProperties.Num(), 0);
+		const FString UserSaved = ReadText(UserIni);
+		UN2CUserSettings* RestartedUser = LoadUser();
+		TestFalse(TEXT("the per-user upgrade does not run again"), RestartedUser->UpgradeFromProjectSettings(UserSources()).bRan);
 		TestEqual(TEXT("the settings file is unchanged"), ReadText(SettingsIni), Saved);
-		ExpectFixtureValues(*Restarted, TEXT("after a restart"));
+		TestEqual(TEXT("the user config is unchanged"), ReadText(UserIni), UserSaved);
+		ExpectFixtureValues(*Restarted, *RestartedUser, TEXT("after a restart"));
 	});
 
 	It(TEXT("moves every API key of a 1.2.x project secrets.json into the per-user store"), [this]()

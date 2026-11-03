@@ -7,6 +7,7 @@
 #include "LLM/N2CLLMModule.h"
 #include "LLM/IN2CLLMService.h"
 #include "Core/N2CSettings.h"
+#include "Core/N2CUserSettings.h"
 #include "UObject/UObjectGlobals.h"
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FN2CLLMServiceSurvivesGCTest, "NodeToCode.Robustness.LLMServiceSurvivesGC",
@@ -22,10 +23,10 @@ bool FN2CLLMServiceSurvivesGCTest::RunTest(const FString& Parameters)
 
 	// Ollama needs no API key, so the module can create a service in any host
 	UN2CSettings* Settings = GetMutableDefault<UN2CSettings>();
-	const EN2CLLMProvider SavedProvider = Settings->Provider;
-	Settings->Provider = EN2CLLMProvider::Ollama;
+	const EN2CLLMProvider SavedProvider = GetMutableDefault<UN2CUserSettings>()->Provider;
+	GetMutableDefault<UN2CUserSettings>()->Provider = EN2CLLMProvider::Ollama;
 	const bool bInitialized = Module->Initialize();
-	Settings->Provider = SavedProvider;
+	GetMutableDefault<UN2CUserSettings>()->Provider = SavedProvider;
 	TestTrue(TEXT("module initializes with Ollama"), bInitialized);
 
 	TScriptInterface<IN2CLLMService> Before = Module->GetActiveService();

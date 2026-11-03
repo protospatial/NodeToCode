@@ -163,7 +163,7 @@ int32 FN2CMcpClientConfig::GetCurrentPort()
 		return Server.GetServerPort();
 	}
 	const UN2CSettings* Settings = GetDefault<UN2CSettings>();
-	return Settings ? Settings->McpServerPort : 27000;
+	return Settings ? GetDefault<UN2CUserSettings>()->McpServerPort : 27000;
 }
 
 FString FN2CMcpClientConfig::GetDefaultBaseDir()
