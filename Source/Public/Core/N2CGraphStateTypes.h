@@ -69,6 +69,34 @@ struct NODETOCODE_API FN2CTranslationState
 	UPROPERTY(BlueprintReadOnly, Category = "NodeToCode|GraphState")
 	FN2CTranslationSummary Summary;
 
+	/** The translation archive run that wrote it (card 0253); empty in records older builds wrote */
+	UPROPERTY(BlueprintReadOnly, Category = "NodeToCode|GraphState")
+	FString RunId;
+
+	/** The run's manifest.json (relative to the project folder when inside it, else absolute); empty in older records */
+	UPROPERTY(BlueprintReadOnly, Category = "NodeToCode|GraphState")
+	FString ManifestPath;
+
+	/**
+	 * The root entry's files as the archive wrote them (same path form as OutputPath; empty when the entry has none).
+	 * LoadTranslation reads these instead of guessing file names; records without them still load by the old rules.
+	 */
+	UPROPERTY(BlueprintReadOnly, Category = "NodeToCode|GraphState")
+	FString ImplementationFile;
+
+	UPROPERTY(BlueprintReadOnly, Category = "NodeToCode|GraphState")
+	FString DeclarationFile;
+
+	UPROPERTY(BlueprintReadOnly, Category = "NodeToCode|GraphState")
+	FString NotesFile;
+
+	/** Tokens the provider reported for the request (0 when unknown) */
+	UPROPERTY(BlueprintReadOnly, Category = "NodeToCode|GraphState")
+	int32 InputTokens = 0;
+
+	UPROPERTY(BlueprintReadOnly, Category = "NodeToCode|GraphState")
+	int32 OutputTokens = 0;
+
 	/** Serialize to JSON */
 	TSharedPtr<FJsonObject> ToJson() const;
 
