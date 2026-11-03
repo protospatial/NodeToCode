@@ -6,6 +6,8 @@ via the UN2CPythonBridge class. All functions return standardized result diction
 with 'success', 'data', and 'error' keys.
 """
 
+import json
+
 import unreal
 from typing import Dict, Any, Optional
 
@@ -149,6 +151,9 @@ def get_blueprint_dependencies(paths, include_call_graph: bool = True, include_r
     The dependency index of the project's Blueprints, Blueprint interfaces, macro libraries, user structs and user
     enums under asset paths or content folders (as the MCP get-blueprint-dependencies tool returns it, always whole).
 
+    Runs get-blueprint-dependencies (card 0342). An index over the tool's inline limit comes back whole all the same:
+    the lists are read from the export the tool wrote ('savedTo'). Like the tool, at most 100 paths (pass a folder).
+
     Args:
         paths: An asset path or content folder, or a list of them, e.g. '/Game/Blueprints' or
             ['/Game/Blueprints/BP_Door', '/Game/AI']
@@ -171,7 +176,7 @@ def get_blueprint_dependencies(paths, include_call_graph: bool = True, include_r
                 'order': [str],                  # every path once, dependencies first
                 'cycleGroups': [[str]],          # paths that depend on each other
                 'warnings': [str], 'inline': bool,
-                'savedTo': str, 'bytes': int,    # with to_file
+                'savedTo': str, 'bytes': int,    # with to_file, or when the index is over the tool's inline limit
             } or None,
             'error': str or None                 # starts with INVALID_ARGUMENT, NOT_FOUND or EXPORT_FAILED
         }
@@ -187,8 +192,10 @@ def get_blueprint_dependencies(paths, include_call_graph: bool = True, include_r
         paths = [p for p in (paths or []) if isinstance(p, str) and p.strip()]
         if not paths:
             return make_error_result('INVALID_ARGUMENT: paths is required, an asset path or content folder such as /Game/Blueprints')
-        return _parse_bridge_result(unreal.N2CPythonBridge.get_blueprint_dependencies(
-            paths, bool(include_call_graph), bool(include_referenced), bool(to_file)))
+        result = _invoke('get_blueprint_dependencies', {
+            'paths': paths, 'includeCallGraph': bool(include_call_graph),
+            'includeReferenced': bool(include_referenced), 'toFile': bool(to_file)})
+        return _whole_dependencies(result)
     except Exception as e:
         log_error(f"get_blueprint_dependencies failed: {e}")
         return make_error_result(str(e))
@@ -430,3 +437,22 @@ def _legacy_save(only_if_dirty: bool):
             'was_saved': (saved, "'sourceControl' in data (set when the file was written)"),
         }
     return legacy
+
+
+def _whole_dependencies(result: Dict[str, Any]) -> Dict[str, Any]:
+    """get-blueprint-dependencies leaves nodes, edges, order and cycleGroups out of an index over its inline limit
+    and writes them to savedTo; the Python wrapper has no limit, so it reads them back from that file"""
+    data = result.get('data')
+    if not result.get('success') or not isinstance(data, dict) or data.get('inline') is not False:
+        return result
+    try:
+        with open(data.get('savedTo') or '', encoding='utf-8') as f:
+            export = json.load(f)
+    except (OSError, ValueError) as e:
+        return make_error_result(f"EXPORT_FAILED: the index is over the inline limit and its export could not be read: {e}", data)
+    for key in ('nodes', 'edges', 'order', 'cycleGroups'):
+        data[key] = export.get(key, [])
+    for key in ('reason', 'cycleGroupCount'):
+        data.pop(key, None)
+    data['inline'] = True
+    return result

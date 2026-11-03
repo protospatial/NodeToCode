@@ -163,9 +163,9 @@ Scripting profile serves only the Python tools); run-python and the script-libra
 long-running tool (translation) gets `NOT_RUNNABLE_HERE`. It runs inline on the game thread, inside a run-python call
 too (the outer tool call compiles once). `data` is the tool's value: its JSON object or array, else its text.
 
-`nodetocode.invoke_tool(name, arguments)` is the Python form. The 16 functions in `utils.TOOL_NAMES` (search, add,
+`nodetocode.invoke_tool(name, arguments)` is the Python form. The 17 functions in `utils.TOOL_NAMES` (search, add,
 connect, set pin, delete, find, comment, the four function-pin calls, compile, save, `tag_graph`, `open_blueprint`,
-`open_blueprint_function`) run their tool through `utils._invoke`, so they behave exactly as the MCP tools
+`open_blueprint_function`, `get_blueprint_dependencies`) run their tool through `utils._invoke`, so they behave exactly as the MCP tools
 (`NodeToCode.Python.ToolParity` compares each with tools/call). Their `data` is the tool's result plus, for one
 release, the keys the 1.x bridge copies returned (`LegacyKeys`: reading one with `[]` or `get()` logs one deprecation
 warning naming the tool's key; the tool's own key wins where both exist, e.g. a pin's `type` is `String`). A tool
@@ -201,8 +201,9 @@ arguments and the keys of its `data`. Grouped:
     `readOnly` and, for collapsed graphs, `parentGraph`
 *   `get_blueprint_dependencies(paths, include_call_graph=True, include_referenced=True, to_file=False)` - The
     dependency index under asset paths or content folders (a string or a list), as get-blueprint-dependencies returns
-    it but always whole (`UN2CPythonBridge::GetBlueprintDependencies`, card 0319): `nodes`, `edges`, `order`
-    (dependencies first), `cycleGroups`, `warnings`; with `to_file` also `savedTo` (`Saved/NodeToCode/Dependencies`)
+    it but always whole (the tool through `invoke_tool`, card 0319/0342: an index over the tool's inline limit gets its
+    lists back from the export, `savedTo`; at most 100 paths): `nodes`, `edges`, `order` (dependencies first),
+    `cycleGroups`, `warnings`; with `to_file` also `savedTo` (`Saved/NodeToCode/Dependencies`)
 *   `read_n2c_json(text)` - Read N2C JSON 1.x or 2.x (for example a saved `N2C_BP_*.json`) with the plugin's reader
     (`UN2CPythonBridge::ReadN2CJson`); returns its source version, counts (`data_edges`, `exec_edges`) and the document
     as current (2.0.0) N2C JSON; exec flows are "N1.P2->N3.P4" pin pairs, and a 1.x file keeps its "N1->N2" node pairs;
@@ -388,8 +389,10 @@ Bridge class exposing NodeToCode functionality to Python via `unreal.N2CPythonBr
 
 *   **Location**: `Source/Private/MCP/Python/N2CPythonBridge.h/.cpp`
 *   **UFunction Category**: `NodeToCode|Python`
-*   **Functions**: every public `UFUNCTION` in the header, and each has a `nodetocode` wrapper (call the wrapper,
-    which parses the JSON and checks arguments): `GetFocusedBlueprintJson`, `GetBlueprintN2CJson`,
+*   **Functions**: every public `UFUNCTION` in the header. `InvokeTool` (`utils.invoke_tool`) runs any MCP tool, and
+    the 17 wrappers in `utils.TOOL_NAMES` call it rather than their own UFUNCTION below (card 0342; card 0343 turns
+    those into forwarders). The rest have their own `nodetocode` wrapper (call the wrapper, which parses the JSON and
+    checks arguments): `GetFocusedBlueprintJson`, `GetBlueprintN2CJson`,
     `ListBlueprintGraphs`, `GetBlueprintDependencies`, `ReadN2CJson`, `CompileFocusedBlueprint`,
     `SaveFocusedBlueprint` (`blueprint.py`); `TagFocusedGraph`, `ListTags`, `RemoveTag`, `GetLLMProviders`,
     `GetActiveProvider`, `OpenBlueprint`, `OpenBlueprintFunction` (`bridge.py`); `SearchBlueprintNodes`,

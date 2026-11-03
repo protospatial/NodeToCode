@@ -195,6 +195,7 @@ TOOL_NAMES = {
     'tag_graph': 'tag-blueprint-graph',
     'open_blueprint': 'open-blueprint-asset',
     'open_blueprint_function': 'open-blueprint-function',
+    'get_blueprint_dependencies': 'get-blueprint-dependencies',
 }
 
 # nodetocode functions that still call their own UN2CPythonBridge function, and why (card 0343 retires those)

@@ -9,7 +9,7 @@ the same steps with the MCP tools on a twin Blueprint and compares each outcome 
 The steps (the spec's list must match): open_blueprint, open_blueprint_function, search_blueprint_nodes,
 add_node_to_graph, find_nodes_in_graph, connect_pins, set_pin_value, create_comment_node, add_function_input_pin,
 add_function_return_pin, remove_function_entry_pin, remove_function_return_pin, compile_blueprint, save_blueprint,
-tag_graph, delete_nodes. Then the card's tag case: a tag described "Player's input", and remove_tag of a tag the
+tag_graph, delete_nodes, get_blueprint_dependencies (on the dependency fixtures, N2C_CTX["dependencyFolder"]). Then the card's tag case: a tag described "Player's input", and remove_tag of a tag the
 graph does not have; json.loads must read both, and the second must carry the real error text.
 
 Report (written to N2C_CTX["out"]): {"steps": [{"step", "success", "data", "error"}], "tagCase": {...}, "problem"}.
@@ -61,6 +61,7 @@ def run(ctx):
     step('save_blueprint', n2c.save_blueprint(path))
     step('tag_graph', n2c.tag_graph('N2CParity', 'N2CParity', "Player's input", **target))
     step('delete_nodes', n2c.delete_nodes([node], **target))
+    step('get_blueprint_dependencies', n2c.get_blueprint_dependencies(ctx['dependencyFolder'], include_call_graph=False))
 
     # The card's tag case: both results go through json.loads, the second carries the real error text
     tagged = json.loads(json.dumps(n2c.tag_graph('N2CParityInput', 'N2CParity', "Player's input", **target)))

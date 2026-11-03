@@ -52,6 +52,8 @@ BEGIN_DEFINE_SPEC(FN2CPythonToolParitySpec, "NodeToCode.Python.ToolParity", N2C_
 	static constexpr const TCHAR* FunctionName = TEXT("N2CParityFn");
 	static constexpr const TCHAR* PyName = TEXT("BP_N2CParityPy");
 	static constexpr const TCHAR* McpName = TEXT("BP_N2CParityMcp");
+	/** The dependency fixtures (Tests/NodeToCodeTestContent, linked into every host by build.ps1) */
+	static constexpr const TCHAR* DependencyFolder = TEXT("/NodeToCodeTestContent/Dependencies");
 
 	static bool PythonAvailable()
 	{
@@ -95,6 +97,7 @@ BEGIN_DEFINE_SPEC(FN2CPythonToolParitySpec, "NodeToCode.Python.ToolParity", N2C_
 		Context->SetStringField(TEXT("out"), ReportPath);
 		Context->SetStringField(TEXT("blueprintPath"), PyBlueprint->Path());
 		Context->SetStringField(TEXT("functionName"), FunctionName);
+		Context->SetStringField(TEXT("dependencyFolder"), DependencyFolder);
 		FString ContextText;
 		FJsonSerializer::Serialize(Context.ToSharedRef(), TJsonWriterFactory<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>::Create(&ContextText));
 
@@ -334,6 +337,13 @@ BEGIN_DEFINE_SPEC(FN2CPythonToolParitySpec, "NodeToCode.Python.ToolParity", N2C_
 			A.SetArrayField(TEXT("nodeGuids"), StringArray(NodeGuid));
 			A.SetBoolField(TEXT("preserveConnections"), false);
 			A.SetBoolField(TEXT("force"), false);
+		})));
+		Steps.Add(McpStep(TEXT("get_blueprint_dependencies"), TEXT("get-blueprint-dependencies"), With(nullptr, [&](FJsonObject& A)
+		{
+			A.SetArrayField(TEXT("paths"), StringArray(DependencyFolder));
+			A.SetBoolField(TEXT("includeCallGraph"), false);
+			A.SetBoolField(TEXT("includeReferenced"), true);
+			A.SetBoolField(TEXT("toFile"), false);
 		})));
 		return Steps;
 	}

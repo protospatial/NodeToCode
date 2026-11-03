@@ -4,7 +4,7 @@
 Tests for nodetocode.invoke_tool and the wrappers that run MCP tools through UN2CPythonBridge::InvokeTool (card
 0342), on plain CPython with the `unreal` stub from conftest.py (ToolStub stands in for InvokeTool).
 
-The bridge's own copies of 16 operations drifted from the MCP tools (review later-1, imp-python-bridge-2); the
+The bridge's own copies of 17 operations drifted from the MCP tools (review later-1, imp-python-bridge-2); the
 nodetocode functions now run the tools, through one table (utils.TOOL_NAMES), and keep the keys the 1.x copies
 returned for one release (LegacyKeys: reading one logs a deprecation warning once). The parity of the tool results
 with MCP's is checked in the editor (NodeToCode.Python.ToolParity).
@@ -92,6 +92,7 @@ WRAPPERS = [
     ('bridge', 'tag_graph', ('Movement',)),
     ('bridge', 'open_blueprint', ('/Game/BP',)),
     ('bridge', 'open_blueprint_function', ('Open',)),
+    ('blueprint', 'get_blueprint_dependencies', ('/Game/AI',)),
 ]
 
 
