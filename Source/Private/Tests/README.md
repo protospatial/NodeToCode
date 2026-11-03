@@ -541,6 +541,16 @@ be saved) from a fixed seed per fixture. Regenerate on UE 5.6 only, since a 5.8 
 `$env:N2C_GENERATE_PERF_FIXTURES = '1'; .\build.ps1 -UEVersion 5.6 -Test -TestFilter NodeToCode.Perf` (then remove
 the variable and commit the `.uasset` files).
 
+### Material capture budget (card 0456)
+
+`NodeToCode.Material.Budget` (`Material/N2CMaterialBudget.spec.cpp`) builds a material in code: 1,000 Constants summed
+by a balanced Add tree (2,000 live expressions) into a call of `MF_N2CBudget_Outer`, which calls `MF_N2CBudget_Inner`
+(a depth-2 function chain). It captures it with Max Translation Depth 2. The budget is 1 s for
+`N2C::CaptureMaterialAsset` (best of three runs after the first). The spec fails when that, or the first capture
+(which also builds the editor graph), takes more than 2 s. Each run logs `N2C_MATERIAL_BUDGET engine=... nodes=...
+first_capture_ms=... capture_ms=... json_bytes=... tokens=...`. The document is far over get-material-n2cjson's
+inline limit, and the second test checks that the tool writes it to a file on its own (`"reason": "size"`).
+
 ## Dependency fixtures
 
 `NodeToCode.Dependencies.Index` (`Dependencies/N2CDependencyIndex.spec.cpp`, card 0318) builds `FN2CDependencyIndex`
