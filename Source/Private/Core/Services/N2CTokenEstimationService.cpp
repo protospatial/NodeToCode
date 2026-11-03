@@ -6,6 +6,7 @@
 #include "Core/N2CTargetLanguage.h"
 #include "LLM/N2CLLMModule.h"
 #include "LLM/N2CLLMPricing.h"
+#include "LLM/N2CModelDiscovery.h"
 #include "LLM/N2CSystemPromptManager.h"
 #include "UObject/StrongObjectPtr.h"
 #include "Core/N2CNodeCollector.h"
@@ -368,6 +369,7 @@ void FN2CTokenEstimationService::RefreshModelInfo()
 	CachedRequestOverheadTokens = ComputeRequestOverheadTokens();
 	CachedOutputCostPer1M = 0.0f;
 	CachedMaxOutputTokens = 0;
+	bCachedPriceKnown = true;
 
 	switch (GetDefault<UN2CUserSettings>()->Provider)
 	{
@@ -380,13 +382,21 @@ void FN2CTokenEstimationService::RefreshModelInfo()
 		bCachedIsLocal = true;
 		return;
 	case EN2CLLMProvider::OpenAICompatible:
-		// Context length unknown until live discovery (card 0216): the local estimate
+	{
+		// The context length the profile's live model list gives (card 0216), else the local estimate
 		CachedModelName = GetDefault<UN2CUserSettings>()->OpenAICompatibleModel;
 		CachedFullContextWindow = 128000;
+		const FN2CModelList* Live = FN2CModelDiscovery::Get().GetListIfOptedIn(FN2CModelDiscovery::GetActiveProviderId());
+		const FN2CDiscoveredModel* Listed = Live ? Live->Find(FN2CModelDiscovery::GetSelectedModelId(EN2CLLMProvider::OpenAICompatible)) : nullptr;
+		if (Listed && Listed->ContextWindow > 0)
+		{
+			CachedFullContextWindow = Listed->ContextWindow;
+		}
 		CachedUsableContextWindow = FMath::RoundToInt(CachedFullContextWindow * ContextWindowFactor);
 		CachedInputCostPer1M = 0.0f;
 		bCachedIsLocal = true;
 		return;
+	}
 	case EN2CLLMProvider::LMStudio:
 		CachedModelName = Settings->LMStudioModel;
 		CachedFullContextWindow = 128000; // Default estimate for local models
@@ -403,6 +413,7 @@ void FN2CTokenEstimationService::RefreshModelInfo()
 	const FN2CModelPricing Pricing = Settings->GetActivePricingForProvider(GetDefault<UN2CUserSettings>()->Provider);
 	CachedInputCostPer1M = Pricing.InputCost;
 	CachedOutputCostPer1M = Pricing.OutputCost;
+	bCachedPriceKnown = Settings->IsActivePricingKnown(GetDefault<UN2CUserSettings>()->Provider);
 	bCachedIsLocal = false;
 	if (Metadata)
 	{
@@ -412,10 +423,24 @@ void FN2CTokenEstimationService::RefreshModelInfo()
 	}
 	else
 	{
-		// A custom model ID the catalog does not list: its own name, and a common context size as the estimate
+		// A model the catalog does not list (a custom ID, or one from the live model list): its own name, and the
+		// limits the provider's list gives (card 0216), else a common context size as the estimate
 		const FString ModelId = Settings->GetActiveModelForProvider(GetDefault<UN2CUserSettings>()->Provider);
 		CachedModelName = ModelId.IsEmpty() ? FString(TEXT("Unknown Model")) : ModelId;
 		CachedFullContextWindow = 128000;
+		const FN2CModelList* Live = FN2CModelDiscovery::Get().GetListIfOptedIn(FN2CModelDiscovery::GetActiveProviderId());
+		if (const FN2CDiscoveredModel* Listed = Live ? Live->Find(ModelId) : nullptr)
+		{
+			if (!Listed->DisplayName.IsEmpty())
+			{
+				CachedModelName = Listed->DisplayName;
+			}
+			if (Listed->ContextWindow > 0)
+			{
+				CachedFullContextWindow = Listed->ContextWindow;
+			}
+			CachedMaxOutputTokens = Listed->MaxOutput;
+		}
 	}
 	CachedUsableContextWindow = FMath::RoundToInt(CachedFullContextWindow * ContextWindowFactor);
 }

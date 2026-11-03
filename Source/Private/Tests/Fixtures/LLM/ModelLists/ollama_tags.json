@@ -1,0 +1,38 @@
+{
+ "models": [
+  {
+   "name": "qwen3:8b",
+   "model": "qwen3:8b",
+   "modified_at": "2026-10-30T09:12:44.512Z",
+   "size": 5225388164,
+   "digest": "500a1f067a9f782620b40bee6f7b0c89e17ae61f686b92c24933e4ca4b2b8b41",
+   "details": {
+    "parent_model": "",
+    "format": "gguf",
+    "family": "qwen3",
+    "families": [
+     "qwen3"
+    ],
+    "parameter_size": "8.2B",
+    "quantization_level": "Q4_K_M"
+   }
+  },
+  {
+   "name": "gpt-oss:20b",
+   "model": "gpt-oss:20b",
+   "modified_at": "2026-10-12T17:40:02.118Z",
+   "size": 13780173839,
+   "digest": "aa4295ac10c3afb60e6d711289fc6896f5aef82258997b9efdaed6d0cc4cd8b8",
+   "details": {
+    "parent_model": "",
+    "format": "gguf",
+    "family": "gptoss",
+    "families": [
+     "gptoss"
+    ],
+    "parameter_size": "20.9B",
+    "quantization_level": "MXFP4"
+   }
+  }
+ ]
+}

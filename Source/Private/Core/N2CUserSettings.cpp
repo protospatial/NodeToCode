@@ -1,6 +1,7 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
 #include "Core/N2CUserSettings.h"
+#include "LLM/N2CModelDiscovery.h"
 
 #include "Core/N2CSettings.h"
 #include "Core/Style/N2CStyle.h"
@@ -585,9 +586,19 @@ void UN2CUserSettings::PostEditChangeProperty(FPropertyChangedEvent& PropertyCha
 	// Editing these settings stamps the layout version, which is saved with them
 	SettingsVersion = FMath::Max(SettingsVersion, CurrentSettingsVersion);
 
-	if (PropertyName == GET_MEMBER_NAME_CHECKED(UN2CUserSettings, Provider))
+	if (PropertyName == GET_MEMBER_NAME_CHECKED(UN2CUserSettings, Provider)
+		|| PropertyName == GET_MEMBER_NAME_CHECKED(UN2CUserSettings, ProviderProfile)
+		|| PropertyName == GET_MEMBER_NAME_CHECKED(UN2CUserSettings, OpenAICompatibleModel))
 	{
 		GetMutableDefault<UN2CSettings>()->NotifyModelSettingsChanged();
+		// A newly active provider in Live Model Lists gets its list once (card 0216; never unattended)
+		const FName Active = FN2CModelDiscovery::GetActiveProviderId();
+		if (PropertyName != GET_MEMBER_NAME_CHECKED(UN2CUserSettings, OpenAICompatibleModel)
+			&& FN2CModelDiscovery::IsOptedIn(Active) && !FN2CModelDiscovery::Get().GetList(Active))
+		{
+			FN2CModelDiscovery::Get().RequestActiveRefresh(TEXT("active provider changed"));
+		}
+		GetDefault<UN2CSettings>()->WarnAboutSelectedModel();
 	}
 	if (PropertyName == GET_MEMBER_NAME_CHECKED(UN2CUserSettings, McpServerPort))
 	{

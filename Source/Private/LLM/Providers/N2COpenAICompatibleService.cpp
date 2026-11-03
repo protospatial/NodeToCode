@@ -138,6 +138,38 @@ bool UN2COpenAICompatibleService::ResolveProfile(EN2CLLMProvider Provider, const
 	return true;
 }
 
+bool UN2COpenAICompatibleService::ResolveProfileCredential(const FN2CProviderProfile& InProfile, FN2CCredential& OutCredential)
+{
+	OutCredential = FN2CCredential();
+	OutCredential.AuthStyle = FN2CCredential::AuthStyleFromName(InProfile.AuthStyle);
+	if (!InProfile.SecretId.IsEmpty())
+	{
+		FString VariableName;
+		const EN2CApiKeySource Origin = FN2CSecretStore::Get().GetApiKeySource(InProfile.SecretId, &VariableName);
+		if (Origin != EN2CApiKeySource::None)
+		{
+			OutCredential.Value = FN2CSecretStore::Get().GetApiKey(InProfile.SecretId).TrimStartAndEnd();
+			OutCredential.Origin = Origin;
+			OutCredential.VariableName = VariableName;
+		}
+	}
+	if (OutCredential.Value.IsEmpty())
+	{
+		for (const FString& Variable : InProfile.ApiKeyEnvironmentVariables)
+		{
+			const FString Value = FPlatformMisc::GetEnvironmentVariable(*Variable).TrimStartAndEnd();
+			if (!Value.IsEmpty())
+			{
+				OutCredential.Value = Value;
+				OutCredential.Origin = EN2CApiKeySource::Environment;
+				OutCredential.VariableName = Variable;
+				break;
+			}
+		}
+	}
+	return !OutCredential.Value.IsEmpty() || !InProfile.bNeedsKey;
+}
+
 bool UN2COpenAICompatibleService::Initialize(const FN2CLLMConfig& InConfig)
 {
 	FString Error;
@@ -269,32 +301,7 @@ FN2CLLMRequestHandleRef UN2COpenAICompatibleService::SendRequest(const FString& 
 
 	// The profile's key: the secret store entry it names, else its environment variables; read for this request only
 	FN2CCredential Credential;
-	Credential.AuthStyle = FN2CCredential::AuthStyleFromName(Profile.AuthStyle);
-	if (!Profile.SecretId.IsEmpty())
-	{
-		FString VariableName;
-		const EN2CApiKeySource Origin = FN2CSecretStore::Get().GetApiKeySource(Profile.SecretId, &VariableName);
-		if (Origin != EN2CApiKeySource::None)
-		{
-			Credential.Value = FN2CSecretStore::Get().GetApiKey(Profile.SecretId).TrimStartAndEnd();
-			Credential.Origin = Origin;
-			Credential.VariableName = VariableName;
-		}
-	}
-	if (Credential.Value.IsEmpty())
-	{
-		for (const FString& Variable : Profile.ApiKeyEnvironmentVariables)
-		{
-			const FString Value = FPlatformMisc::GetEnvironmentVariable(*Variable).TrimStartAndEnd();
-			if (!Value.IsEmpty())
-			{
-				Credential.Value = Value;
-				Credential.Origin = EN2CApiKeySource::Environment;
-				Credential.VariableName = Variable;
-				break;
-			}
-		}
-	}
+	ResolveProfileCredential(Profile, Credential);
 	if (Credential.Value.IsEmpty() && Profile.bNeedsKey)
 	{
 		const FString Message = FString::Printf(TEXT("No API key for %s: set the environment variable %s for the editor"),

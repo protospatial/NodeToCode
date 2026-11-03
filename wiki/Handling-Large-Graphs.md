@@ -28,9 +28,10 @@ context size and prices, or your entry under [Model Price Overrides](Provider-Co
 The cost counts everything a request sends (the graph, the system prompt for the target language and your reference
 files) at the input price, plus the expected reply (about the graph's size) at the output price; the batch total
 shows the two parts. The context bars count the prompt with the graph, so a graph that only fits without it is not
-shown as safe. For a **Custom Model ID** it shows the ID, assumes a 128K context and costs nothing unless you add a
-price override. The same 128K estimate, at no cost, applies to the **OpenAI-Compatible** provider (a vLLM, llama.cpp
-or hosted server), whose real context length NodeToCode does not know yet.
+shown as safe. For a **Custom Model ID** it shows the ID, assumes a 128K context and shows the cost as unknown
+unless you add a price override; a model from a [live model list](Provider-Configuration#live-model-lists) takes its
+context size from the provider's list. The **OpenAI-Compatible** provider (a vLLM, llama.cpp or hosted server) is
+estimated at no cost, with the context length its live model list gives (vLLM's `max_model_len`) or else 128K.
 
 The ring in a graph editor's overlay and the token counts in the Node to Code list estimate exactly what Translate
 sends: the graph and its nested graphs up to the [Translation Depth](Translation-Depth), each counted once, at about

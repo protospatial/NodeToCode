@@ -5,6 +5,7 @@
 
 #include "CoreMinimal.h"
 #include "LLM/N2CBaseLLMService.h"
+#include "LLM/N2CCredentialSource.h"
 #include "LLM/N2CLLMRequest.h"
 #include "LLM/N2CModelCatalog.h"
 #include "LLM/N2CResponseParserBase.h"
@@ -63,6 +64,13 @@ public:
 	 * of that ID, else the catalog preset, with the user's Base URL Override. False with OutError when there is none.
 	 */
 	static bool ResolveProfile(EN2CLLMProvider Provider, const FString& ProfileId, FN2CProviderProfile& OutProfile, FString* OutError = nullptr);
+
+	/**
+	 * An OpenAI-Compatible profile's key for one request: the secret store entry SecretId names, else the first set
+	 * variable of ApiKeyEnvironmentVariables, sent in the profile's AuthStyle header. False when the profile needs a key
+	 * and has none. Requests and the model list fetch (FN2CModelDiscovery, card 0216) both read the key here.
+	 */
+	static bool ResolveProfileCredential(const FN2CProviderProfile& InProfile, FN2CCredential& OutCredential);
 
 	/** The request this service sends for one translation (what FormatRequestPayload encodes) */
 	FN2CLLMRequest BuildRequest(const FString& UserMessage, const FString& SystemMessage) const;

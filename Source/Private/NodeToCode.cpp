@@ -16,6 +16,7 @@
 #include "Editor/EditorEngine.h"
 #include "LLM/N2CBatchTranslationOrchestrator.h"
 #include "LLM/N2CLLMModule.h"
+#include "LLM/N2CModelDiscovery.h"
 #include "Core/N2CUserSettings.h"
 #include "Misc/App.h"
 #include "Misc/CommandLine.h"
@@ -188,6 +189,10 @@ void FNodeToCodeModule::CompleteStartup()
 #if !N2C_START_MCP_EARLY
     StartMcpServer();
 #endif
+
+    // Live model lists (card 0216): the cached lists of the opted-in providers, then the active provider's list a few
+    // seconds later. Nothing in commandlets or -unattended runs, and nothing at all unless Live Model Lists names one.
+    FN2CModelDiscovery::Get().Startup();
 }
 
 void FNodeToCodeModule::StartMcpServer()
@@ -236,6 +241,7 @@ void FNodeToCodeModule::CancelAsyncTasks()
     // A running translation holds an in-flight LLM request on UObjects that are about to be purged: cancel it now, so
     // no completion or ticker runs after the purge and exit does not wait for the LLM
     FN2CToolAsyncTaskManager::Get().CancelAllTasks();
+    FN2CModelDiscovery::Get().Shutdown();
 }
 
 void FNodeToCodeModule::HandlePreExit()
@@ -273,6 +279,7 @@ void FNodeToCodeModule::ShutdownModule()
     // Cancel running MCP async tasks while their requests can still be answered (on exit, HandlePreExit already did
     // this and there is nothing left to cancel)
     FN2CToolAsyncTaskManager::Get().CancelAllTasks();
+    FN2CModelDiscovery::Get().Shutdown();
 
     // Unbind the MCP routes (other plugins' HTTPServer listeners keep running)
     FN2CMcpHttpServerManager::Get().StopConfiguredServers();
