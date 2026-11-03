@@ -18,6 +18,7 @@
 #include "MCP/Validation/N2CMcpRequestValidator.h"
 #include "MCP/Async/N2CToolAsyncTaskManager.h"
 #include "Misc/ScopeExit.h"
+#include "Framework/Application/SlateApplication.h"
 #include "Core/N2CBlueprintEditorTracker.h"
 #include "MCP/Resources/Implementations/N2CMcpBlueprintResource.h"
 #include "BlueprintEditor.h"
@@ -476,6 +477,11 @@ void FN2CMcpProtocol::Handle(const FN2CMcpInbound& Inbound, const TSharedRef<IN2
 bool FN2CMcpProtocol::TryHandleLongRunningToolCall(const FN2CMcpInbound& Inbound, const TSharedRef<IN2CMcpResponder>& Responder,
 	const TSharedPtr<FJsonObject>& SingleObject, const FString& SessionId, bool bModern)
 {
+	// While a modal dialog is open nothing long-running starts: DispatchMethod answers MODAL_DIALOG_OPEN (card 0209)
+	if (IsModalDialogOpen())
+	{
+		return false;
+	}
 	const TSharedPtr<FJsonObject>* ParamsObj = nullptr;
 	FString ToolName;
 	if (SingleObject->TryGetObjectField(TEXT("params"), ParamsObj) && ParamsObj && ParamsObj->IsValid()
@@ -907,9 +913,76 @@ void FN2CMcpProtocol::HandleCancelledNotification(const FJsonRpcNotification& No
 	}
 }
 
+namespace N2CMcpProtocolModalPrivate
+{
+	TOptional<bool>& ModalOverride()
+	{
+		static TOptional<bool> Value;
+		return Value;
+	}
+}
+
+bool FN2CMcpProtocol::IsModalDialogOpen()
+{
+	if (N2CMcpProtocolModalPrivate::ModalOverride().IsSet())
+	{
+		return N2CMcpProtocolModalPrivate::ModalOverride().GetValue();
+	}
+	return IsInGameThread() && FSlateApplication::IsInitialized() && FSlateApplication::Get().GetActiveModalWindow().IsValid();
+}
+
+void FN2CMcpProtocol::SetModalDialogOpenForTests(TOptional<bool> Value)
+{
+	N2CMcpProtocolModalPrivate::ModalOverride() = Value;
+}
+
+FString FN2CMcpProtocol::ModalBusyMessage()
+{
+	return TEXT("MODAL_DIALOG_OPEN: the Unreal Editor has a modal dialog open, so NodeToCode does not run editor work now. ")
+		TEXT("Ask the user to close the dialog, then retry.");
+}
+
+bool FN2CMcpProtocol::NeedsEditor(const FString& Method, const TSharedPtr<FJsonValue>& Params)
+{
+	if (Method == TEXT("resources/read") || Method == TEXT("prompts/get"))
+	{
+		return true;
+	}
+	if (Method != TEXT("tools/call"))
+	{
+		return false;
+	}
+	FString Name;
+	if (Params.IsValid() && Params->Type == EJson::Object)
+	{
+		Params->AsObject()->TryGetStringField(TEXT("name"), Name);
+	}
+	// They read files or the tool catalog and never touch the editor's objects
+	static const TSet<FString> EditorFree = { TEXT("read-file"), TEXT("read-path"), TEXT("list_toolsets"), TEXT("describe_toolset") };
+	return !EditorFree.Contains(Name);
+}
+
 bool FN2CMcpProtocol::DispatchMethod(const FString& Method, const TSharedPtr<FJsonValue>& Params, const TSharedPtr<FJsonValue>& Id, FJsonRpcResponse& OutResponse)
 {
 	FN2CLogger::Get().Log(FString::Printf(TEXT("Dispatching JSON-RPC method: %s"), *Method), EN2CLogSeverity::Debug);
+
+	// A modal dialog is open (card 0209): the transport still answers from the dialog's loop, but editor work waits
+	// for the user. A tool call gets an isError result with the code, other editor requests a JSON-RPC error.
+	if (IsModalDialogOpen() && NeedsEditor(Method, Params))
+	{
+		FN2CLogger::Get().Log(FString::Printf(TEXT("MCP %s refused: a modal dialog is open"), *Method), EN2CLogSeverity::Info);
+		if (Method == TEXT("tools/call"))
+		{
+			FMcpToolCallResult Busy = FMcpToolCallResult::CreateErrorResult(ModalBusyMessage());
+			Busy.SetErrorCode(TEXT("MODAL_DIALOG_OPEN"));
+			OutResponse = FJsonRpcUtils::CreateSuccessResponse(Id, MakeShared<FJsonValueObject>(Busy.ToJson()));
+		}
+		else
+		{
+			OutResponse = FJsonRpcUtils::CreateErrorResponse(Id, JsonRpcErrorCodes::InternalError, ModalBusyMessage());
+		}
+		return true;
+	}
 
 	// Handle method calls that expect responses
 	if (Method == TEXT("initialize"))
