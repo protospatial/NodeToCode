@@ -14,7 +14,9 @@ import os
 import re
 import shutil
 import socket
+import struct
 import subprocess
+import sys
 import time
 
 import pytest
@@ -184,3 +186,69 @@ def test_hook_finds_the_editor_on_another_port_from_its_discovery_entry(tmp_path
     message = json.loads(proc.stdout.decode('utf-8'))['systemMessage']
     assert 'nothing at http://127.0.0.1:%d/mcp' % dead in message, message
     assert 'MyGame, UE 5.8.3 serves NodeToCode at http://127.0.0.1:%d/mcp' % port in message, message
+
+
+def test_manifest_icon_is_a_square_png_the_plugin_directory_accepts():
+    """Card 0511: the plugin directory wants a square PNG or JPEG of 512 to 2048 px, under 2 MB (no SVG/WebP)"""
+    icon = _load(os.path.join(PLUGIN, '.claude-plugin', 'plugin.json')).get('icon')
+    assert icon, 'plugin.json names no icon (claude plugin validate: ICON_MISSING)'
+    path = os.path.normpath(os.path.join(PLUGIN, icon))
+    assert path.startswith(PLUGIN + os.sep) and os.path.isfile(path), icon
+    with open(path, 'rb') as f:
+        head = f.read(24)
+    assert head[:8] == b'\x89PNG\r\n\x1a\n' and head[12:16] == b'IHDR', 'not a PNG: %s' % icon
+    width, height = struct.unpack('>II', head[16:24])
+    assert width == height and 512 <= width <= 2048, (width, height)
+    assert os.path.getsize(path) < 2 * 1024 * 1024
+
+
+VALIDATE_DIRECTORY_BLOCK = '''Validating plugin manifest: /x/nodetocode/.claude-plugin/plugin.json
+
+Plugin directory checks for /x/nodetocode. The plugin directory is the catalog that plugins are submitted to.
+
+\u26a0 Found 2 plugin directory warnings:
+
+  \u276f .claude-plugin/plugin.json icon: No icon (ICON_MISSING). No icon found in the plugin.
+  \u276f .claude-plugin/plugin.json privacyPolicyUrl: No privacy policy URL (PRIVACY_URL_MISSING). This plugin connects
+    to a remote MCP server or HTTP hook but declares no privacy policy URL.
+    Fix: Set `privacyPolicyUrl` in plugin.json.
+
+These plugin directory checks do not change the result below.
+
+The directory also runs a safety scan and a policy review that this command does not.
+
+\u2714 Validation passed
+'''
+
+
+@pytest.fixture(scope='module')
+def probe_0172():
+    spec = importlib.util.spec_from_file_location(
+        'live_claude_plugin_0172', os.path.join(REPO_ROOT, 'Tests', 'mcp_probe', 'live_claude_plugin_0172.py'))
+    module = importlib.util.module_from_spec(spec)
+    sys.path.insert(0, os.path.join(REPO_ROOT, 'Tests', 'mcp_probe'))
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.path.pop(0)
+    return module
+
+
+def test_probe_reports_plugin_directory_warnings_without_failing(probe_0172):
+    """Card 0511: Claude Code 2.1.310+ prints plugin-directory warnings on a passing validation; the 0172 probe's
+    validate step reported FAIL on them"""
+    codes, rest = probe_0172.split_validate_output(VALIDATE_DIRECTORY_BLOCK)
+    assert codes == ['ICON_MISSING', 'PRIVACY_URL_MISSING']
+    assert 'Validation passed' in rest and 'ICON_MISSING' not in rest
+    assert probe_0172.validate_passed(0, VALIDATE_DIRECTORY_BLOCK)
+    assert probe_0172.validate_passed(0, 'Validating marketplace manifest: x\n\n\u2714 Validation passed\n')
+
+
+def test_probe_still_fails_validation_warnings_and_errors(probe_0172):
+    outside = VALIDATE_DIRECTORY_BLOCK.replace(
+        '\u2714 Validation passed', '\u26a0 Found 1 warning:\n  \u276f description: too short\n\n\u2714 Validation passed')
+    assert not probe_0172.validate_passed(0, outside)
+    assert not probe_0172.validate_passed(0, 'Found 1 warning: x\n\u2714 Validation passed\n')
+    assert not probe_0172.validate_passed(1, '\u2716 Validation failed\n')
+    # A directory block without its closing line is an unknown layout: the whole output is judged
+    assert not probe_0172.validate_passed(0, VALIDATE_DIRECTORY_BLOCK.replace(probe_0172.DIRECTORY_END, ''))
