@@ -6441,14 +6441,14 @@
 					"type": "boolean",
 					"required": false,
 					"default": true,
-					"description": "Include engine-provided classes in results"
+					"description": "Include engine-provided classes in results: the engine's modules, /Engine content and engine plugins"
 				},
 				{
 					"name": "includePluginClasses",
 					"type": "boolean",
 					"required": false,
 					"default": true,
-					"description": "Include plugin-provided classes in results"
+					"description": "Include plugin-provided classes in results: native and content classes of engine and project plugins"
 				},
 				{
 					"name": "includeDeprecated",
@@ -6499,13 +6499,13 @@
 					{
 						"type": "boolean",
 						"default": true,
-						"description": "Include engine-provided classes in results"
+						"description": "Include engine-provided classes in results: the engine's modules, /Engine content and engine plugins"
 					},
 					"includePluginClasses":
 					{
 						"type": "boolean",
 						"default": true,
-						"description": "Include plugin-provided classes in results"
+						"description": "Include plugin-provided classes in results: native and content classes of engine and project plugins"
 					},
 					"includeDeprecated":
 					{

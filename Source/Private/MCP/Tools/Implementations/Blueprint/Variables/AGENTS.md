@@ -116,9 +116,10 @@ and `FindLocalVariable`, `FString` comparison in `FindVariable`): `health` finds
     (`FilterTypesBySearchTerm`)
   - `category`: `all`, `primitive`, `class`, `struct` or `enum` (case-insensitive)
   - `includeEngineTypes`: With false, types from the engine and engine plugins are left
-    out: a native type by where its module's binary is (under the engine directory or not), an asset by its mount
-    point (`/Engine`, or a plugin loaded from the engine). The project's own native types (`/Script/MyGame`) and
-    project plugins' types stay (`IsEngineTypePath`). Primitives always stay
+    out: a native type by its module's owner (an engine plugin whose descriptor lists it, the project's descriptor, or
+    else the engine), an asset by its mount point (`/Engine`, or a plugin loaded from the engine). The project's own
+    native types (`/Script/MyGame`) and project plugins' types stay (`FN2CTypeScope`, `MCP/Utils/N2CTypeScope.h`, the
+    classifier search-blueprint-classes also uses, card 0348). Primitives always stay
   - `maxResults`: Clamped to 1-200
 - **Returns**: `types` (each with `typeName`, `typeIdentifier`, `category`, `description`, plus `icon` for
   primitives, `parentClass` and `isAbstract` for classes, and for enums `values`, the enumerator names a default value

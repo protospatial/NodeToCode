@@ -838,8 +838,8 @@ Unreal MCP counterpart (UE 5.8): `ObjectTools.search_subclasses`. Left to Unreal
 |---|---|---|---|---|
 | `searchTerm` | `string` | yes |  | Text query to search for class names |
 | `classType` | `string` | no | `"all"` | Filter by base class type. One of: `"all"`, `"actor"`, `"actorComponent"`, `"object"`, `"userWidget"`. |
-| `includeEngineClasses` | `boolean` | no | `true` | Include engine-provided classes in results |
-| `includePluginClasses` | `boolean` | no | `true` | Include plugin-provided classes in results |
+| `includeEngineClasses` | `boolean` | no | `true` | Include engine-provided classes in results: the engine's modules, /Engine content and engine plugins |
+| `includePluginClasses` | `boolean` | no | `true` | Include plugin-provided classes in results: native and content classes of engine and project plugins |
 | `includeDeprecated` | `boolean` | no | `false` | Include deprecated classes in results |
 | `includeAbstract` | `boolean` | no | `true` | Include abstract classes in results; abstract classes such as UserWidget and PrimaryDataAsset are valid parents |
 | `maxResults` | `integer` | no | `50` | Maximum number of results to return |
