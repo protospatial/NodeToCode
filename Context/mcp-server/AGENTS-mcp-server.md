@@ -194,10 +194,12 @@ basic/versioning page), in `Source/Private/MCP/Server/N2CMcpProtocolModern.cpp`.
     header is ignored and none is minted.
 *   **Methods**: `server/discover` (`supportedVersions` `["2026-07-28"]`, the same capabilities as `initialize`,
     `instructions`), `subscriptions/listen`, `tools/list`, `tools/call`, `resources/list`, `resources/templates/list`,
-    `resources/read`, `prompts/list`, `prompts/get`. Anything else, `ping`, `logging/setLevel` and
+    `resources/read`, `prompts/list`, `prompts/get`, `completion/complete`. Anything else, `ping`, `logging/setLevel` and
     `nodetocode/cancelTask` included, is **404** with -32601.
 *   **Results**: every result gets `resultType: "complete"` and `_meta["io.modelcontextprotocol/serverInfo"]`
-    (`DecorateModernResult`). `tools/list`, `prompts/list` and `resources/templates/list` get `ttlMs`
+    (`DecorateModernResult`; name, title, version, description, websiteUrl; only `server/discover`'s also carries the
+    `icons`, card 0214). `server/discover` advertises `resources.subscribe: true` when the transport can keep a
+    stream open (UE 5.8) and `completions`. `tools/list`, `prompts/list` and `resources/templates/list` get `ttlMs`
     `FN2CMcpProtocol::ListTtlMs` (60000; they are fixed while the server runs) and `resources/list` and
     `resources/read` `ttlMs` 0; all `cacheScope: "private"`. An unknown resource is -32602 (2026-07-28 replaced -32002).
 *   **Long-running calls** (`translate-focused-blueprint`): the same call path with `bModern`. It streams whenever the
@@ -210,9 +212,14 @@ basic/versioning page), in `Source/Private/MCP/Server/N2CMcpProtocolModern.cpp`.
     whose client does not accept `text/event-stream`; see "A client that goes away" below for how those are cancelled.
 *   **`subscriptions/listen`** (UE 5.8): answers on a `text/event-stream` response that stays open. The first message
     is `notifications/subscriptions/acknowledged` with the subscription id (the request id) in `_meta` and the subset
-    honoured: only `toolsListChanged`, since prompts, resources and resource contents never send change
-    notifications here. `notifications/tools/list_changed` (from `FN2CMcpToolManager::OnToolListChanged`) then goes to
-    every listener that asked, tagged with its id. Keep-alives as above; a closed stream is dropped. `StopServer`
+    honoured: `toolsListChanged`, and in `resourceSubscriptions` the Blueprint resources it named
+    (`nodetocode://blueprint/current` and `nodetocode://blueprint/<path>`, card 0214; other URIs are left out, the
+    prompt and resource lists never change). `notifications/tools/list_changed` (from
+    `FN2CMcpToolManager::OnToolListChanged`) then goes to every listener that asked, tagged with its id, and
+    `notifications/resources/updated {uri}` to each listener subscribed to a Blueprint after it compiles
+    (`UEditorEngine::OnBlueprintPreCompile`) or its package is saved (`UPackage::PackageSavedWithContextEvent`), and
+    for `current` also when the focused Blueprint changes. Changes are collected and sent on the next stream beat
+    (`FlushResourceUpdates`, at most 2 s later); URIs are compared percent-decoded. Keep-alives as above; a closed stream is dropped. `StopServer`
     calls `CloseSubscriptions`, which sends each one its completion result (`resultType` complete, the id in `_meta`)
     and closes it. On 5.6/5.7 (no stream) it is **404** -32601.
 *   **Stdio bridge**: a client message with the modern `_meta` is sent without a session, with `MCP-Protocol-Version`,
@@ -531,8 +538,18 @@ Resources expose Blueprint data in a structured, queryable format:
 
 *   Static resources: Fixed URIs with direct handlers (`resources/list`)
 *   Dynamic resources: Template-based URI patterns (`resources/templates/list`)
-*   No subscriptions: `initialize` advertises `resources.subscribe: false` and there is no `resources/subscribe`
-    method (the manager's `SubscribeToResource` bookkeeping is not wired to the protocol)
+*   Subscriptions only for 2026-07-28 clients, through `subscriptions/listen` (above, card 0214): a legacy session
+    has no channel for server notifications (GET `/mcp` is 405), so `initialize` advertises `resources.subscribe:
+    false` and there is no `resources/subscribe` method (the manager's `SubscribeToResource` bookkeeping is unused)
+*   Annotations (MCP `Annotations`, card 0214): `audience: ["assistant"]` and a `priority` (current 0.9, the by-path
+    template 0.7, the open-Blueprint list 0.5, the Python stub 0.3); the non-standard `readOnly` is gone, and
+    `RegisterMcpResources` registers each resource with its class's own definition
+*   `completion/complete` (`N2CMcpCompletion`, `Source/Private/MCP/Server/`, card 0214; capability `completions`):
+    `ref/resource` with the `nodetocode://blueprint/{+path}` template completes `path` with Blueprint asset paths
+    from the AssetRegistry (package name without its leading `/`; project and plugin content, never `/Engine`,
+    `/Script`, `/Temp`, `/Memory`); `ref/prompt` completes an argument from its `FMcpPromptArgument::CompletionValues`.
+    Values start with the typed value, case-insensitively, sorted; at most 100, with `total` and `hasMore`. A missing
+    or unknown ref is -32602
 
 ### Implemented Resources (`Implementations/`)
 
@@ -546,6 +563,10 @@ Resources expose Blueprint data in a structured, queryable format:
         old form, the exact name of an open Blueprint. The read returns every graph, the document
         `get-blueprint-n2cjson` returns with no graph named (compact, inline, marked as untrusted data); an unknown
         Blueprint is **-32002**, a failed capture **-32603**.
+*   `N2CMcpPythonStubResource.h/.cpp` (card 0214): `nodetocode://python/unreal-stub`, `text/x-python`: this
+    editor's Python API stub, `<Project>/Intermediate/PythonStub/unreal.py` (written at startup by the Python Editor
+    Script Plugin when its Developer Mode is on), read from disk on each request; without it the text says how to
+    generate it. Several MB: an agent should search it, not read it whole
 *   URI templates (`FN2CMcpUriTemplate`, `N2CMcpUriTemplate.h`): the manager matches a URI against a template as a
     full match. `{var}` is exactly one non-empty segment, `{+var}` the rest of the path (one or more non-empty
     segments); neither spans `?` or `#`; captured values are percent-decoded (UTF-8), and a malformed escape or an
@@ -584,6 +605,8 @@ All four classes are in `N2CMcpCodeGenerationPrompt.h/.cpp`:
 Since card 0124 (`FN2CMcpBlueprintPrompts`; spec `NodeToCode.MCP.UntrustedContent`, live check
 `Tests/mcp_probe/live_untrusted_0124.py`):
 - Every prompt and argument has a `title`.
+- Every argument with a fixed set of values (`language`, `style`, `optimization`, `focus`, `detail`, `goal`) lists
+  them in `CompletionValues`, which `completion/complete` offers (card 0214); `task` has none.
 - `language` (generate-code, refactor-blueprint) is one of `cpp`, `python`, `csharp`, `javascript`, `swift`,
   `pseudocode` (case-insensitive, default `cpp`); anything else answers JSON-RPC -32602 listing those values.
 - generate-code's first message holds the CodeGen system prompt of that language, assembled by

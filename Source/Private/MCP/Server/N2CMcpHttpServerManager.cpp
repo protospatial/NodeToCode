@@ -1,6 +1,7 @@
 // Copyright (c) 2025 Nick McClure (Protospatial). All Rights Reserved.
 
 #include "MCP/Server/N2CMcpHttpServerManager.h"
+#include "MCP/Resources/Implementations/N2CMcpPythonStubResource.h"
 #include "MCP/Server/N2CMcpProtocol.h"
 #include "MCP/Server/N2CMcpAuthToken.h"
 #include "Core/N2CUserSettings.h"
@@ -906,13 +907,9 @@ void FN2CMcpHttpServerManager::RegisterMcpResources()
 	// Clear any existing resources first
 	FN2CMcpResourceManager::Get().ClearAllResources();
 	
-	// Register current blueprint resource
+	// Register current blueprint resource (its own definition: description and annotations, card 0214)
 	{
-		FMcpResourceDefinition CurrentBlueprintDef;
-		CurrentBlueprintDef.Uri = TEXT("nodetocode://blueprint/current");
-		CurrentBlueprintDef.Name = TEXT("Current Blueprint");
-		CurrentBlueprintDef.Description = TEXT("The currently focused Blueprint in N2CJSON format");
-		CurrentBlueprintDef.MimeType = TEXT("application/json");
+		const FMcpResourceDefinition CurrentBlueprintDef = FN2CMcpCurrentBlueprintResource().GetDefinition();
 		
 		auto Handler = FMcpResourceReadDelegate::CreateLambda([](const FString& Uri) -> FMcpResourceContents
 		{
@@ -925,11 +922,7 @@ void FN2CMcpHttpServerManager::RegisterMcpResources()
 	
 	// Register all blueprints resource
 	{
-		FMcpResourceDefinition AllBlueprintsDef;
-		AllBlueprintsDef.Uri = TEXT("nodetocode://blueprints/all");
-		AllBlueprintsDef.Name = TEXT("All Open Blueprints");
-		AllBlueprintsDef.Description = TEXT("List of all currently open Blueprints");
-		AllBlueprintsDef.MimeType = TEXT("application/json");
+		const FMcpResourceDefinition AllBlueprintsDef = FN2CMcpAllBlueprintsResource().GetDefinition();
 		
 		auto Handler = FMcpResourceReadDelegate::CreateLambda([](const FString& Uri) -> FMcpResourceContents
 		{
@@ -952,6 +945,10 @@ void FN2CMcpHttpServerManager::RegisterMcpResources()
 		
 		FN2CMcpResourceManager::Get().RegisterDynamicResource(BlueprintByNameTemplate, Handler, true);
 	}
+
+	// The engine's Python API stub (card 0214): read from disk, no game thread needed
+	FN2CMcpResourceManager::Get().RegisterStaticResource(FN2CMcpPythonStubResource::GetDefinition(),
+		FMcpResourceReadDelegate::CreateStatic(&FN2CMcpPythonStubResource::Read), false);
 	
 	FN2CLogger::Get().Log(TEXT("MCP resources registered successfully"), EN2CLogSeverity::Info);
 }
