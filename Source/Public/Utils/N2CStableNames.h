@@ -51,7 +51,9 @@ namespace N2CStableNames
 	/**
 	 * The pin's own display label in source text (the node's pin-name override or the pin's friendly name), empty when
 	 * it has none or the label says no more than PinName. Read from the pin, not from UEdGraphPin::GetDisplayName, which
-	 * blanks exec pins and spells names differently with the friendly-names preference.
+	 * blanks exec pins and spells names differently with the friendly-names preference. The key and value pins of For Each
+	 * (Map) and For Each (Set), whose labels the engine stores without a source, read "Map Key", "Map Value" and "Set
+	 * Value" in every editor language unless the user renamed them.
 	 */
 	NODETOCODE_API FString PinLabel(const UEdGraphPin* Pin);
 
