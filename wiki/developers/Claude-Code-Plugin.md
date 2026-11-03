@@ -84,7 +84,7 @@ the command when you type it.
 
 If Epic's Unreal MCP also answers, the first line says so. NodeToCode's tools are reachable there too when the MCP
 Client Toolset mounts NodeToCode (see [Using NodeToCode with Unreal MCP](Using-NodeToCode-with-Unreal-MCP)), but
-prefer the plugin's own server: Epic's route cuts a call off after about 30 seconds.
+prefer the plugin's own server: Epic's route shows no translation progress.
 
 ## Other agents
 

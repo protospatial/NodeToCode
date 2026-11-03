@@ -27,8 +27,10 @@ Epic's MCP server on its own port, all in the host's Saved/Config/WindowsEditor/
 The translations need the provider key: only that variable from the repo's .env is added to the editor's
 environment, never printed, and the logs and report are checked for it. `--no-translate` skips both translations
 (no key needed). `--activity-timeout N` starts the editor with [HTTP] HttpActivityTimeout=N (the engine default is
-30 s) to show what MCPClientToolset does when a tool call takes longer than that; NodeToCode's own provider requests
-set their own timeout, so only the registry hop is affected. `--eager` turns Epic's tool search off, so Epic's
+30 s): MCPClientToolset gives up on a call that sends no byte for that long. Since card 0437 a token-less long call
+streams with a `: keep-alive` comment every 2 s, so with N=3 the translation must still arrive through the registry
+(before 0437 it failed with `no response received`). NodeToCode's own provider requests set their own timeout, so
+only the registry hop is affected. `--eager` turns Epic's tool search off, so Epic's
 tools/list carries every registry tool as its own MCP tool (the report records the NodeToCode names it lists).
 Report: logs/live_mcpclienttoolset_<label>.json, editor log next to it.
 """
@@ -413,7 +415,10 @@ def main():
             report['replay_translate'] = dict(rc.trace[-1], isError=(translated or {}).get('result', {}).get('isError'),
                                               code_chars=chars, graphs=graphs)
             checks['replay_translate_has_code'] = chars > 0
-            checks['replay_translate_one_json_response'] = 'application/json' in (rc.trace[-1].get('content_type') or '')
+            # Card 0437: no progressToken, yet the call streams (keep-alive comments, then the response event), so its
+            # first bytes arrive within the 2 s keep-alive beat instead of when the translation ends
+            checks['replay_translate_streamed'] = 'text/event-stream' in (rc.trace[-1].get('content_type') or '') and \
+                (rc.trace[-1].get('seconds_to_headers') or 99) < 3.0
 
             status, rtrans, secs = registry_call('translate-focused-blueprint', translate_args)
             inner = unwrap_registry_text(result_text(rtrans))
@@ -421,11 +426,10 @@ def main():
             report['registry_translate'] = {'status': status, 'seconds': secs,
                                             'isError': (rtrans.get('result') or {}).get('isError'),
                                             'code_chars': chars, 'graphs': graphs, 'text_head': result_text(rtrans)[:300]}
-            if args.activity_timeout:
-                report['registry_translate_timed_out'] = (rtrans.get('result') or {}).get('isError') is True and \
-                    'no response received' in result_text(rtrans)
-            else:
-                checks['registry_translate_has_code'] = chars > 0
+            # Recorded: before card 0437 a short activity timeout ended the call with "no response received"
+            report['registry_translate_timed_out'] = (rtrans.get('result') or {}).get('isError') is True and \
+                'no response received' in result_text(rtrans)
+            checks['registry_translate_has_code'] = chars > 0
         report['replay_trace'] = rc.trace
         checks['editor_alive_at_end'] = s.health()
     except Exception as e:  # recorded in the report; the session still stops and restores

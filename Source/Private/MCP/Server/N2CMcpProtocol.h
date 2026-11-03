@@ -262,7 +262,10 @@ public:
 	/** Specs: runs the stream keep-alive and closed-client check now instead of on the next ticker beat */
 	void TickStreamsForTesting() { TickStreams(0.f); }
 
-	/** Seconds between keep-alive comments on 2026-07-28 streams (also how soon a closed stream is noticed) */
+	/**
+	 * Seconds between keep-alive comments on every long-running call's stream and every subscriptions/listen stream
+	 * (also how soon a closed stream is noticed); well under UE 5.8 MCPClientToolset's 30 s activity timeout (card 0437)
+	 */
 	static constexpr float StreamKeepAliveSeconds = 2.0f;
 
 	/** Cache hint on 2026-07-28 tools/list, prompts/list and resources/templates/list results (fixed while the server runs) */

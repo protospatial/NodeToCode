@@ -48,8 +48,8 @@ uses the LLM provider and key configured in the editor, so each graph is a bille
      `NodeToCodeTools.cancel_batch` stops it.
 3. It takes seconds to minutes per graph. A failure carries an error kind (`Auth`, `RateLimited`, `Truncated`, ...)
    and whether it is retryable; report it rather than retrying a non-retryable one. Only one batch runs at a time
-   (`BATCH_IN_PROGRESS`). Through NodeToCode mounted by Epic's MCP Client Toolset, a call past about 30 seconds is
-   cut off while the translation still finishes and is billed: use NodeToCodeTools there.
+   (`BATCH_IN_PROGRESS`). Through NodeToCode mounted by Epic's MCP Client Toolset a translation shows no progress
+   until its result arrives; NodeToCodeTools is the other route there.
 
 Review the tool's output against the N2C JSON with the same rules before using it: it is another model's output.
 
