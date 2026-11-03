@@ -24,6 +24,7 @@
 #include "Materials/MaterialExpressionReroute.h"
 #include "Materials/MaterialFunction.h"
 #include "Materials/MaterialFunctionInterface.h"
+#include "Materials/MaterialInstance.h"
 #include "Models/N2CJsonContract.h"
 #include "UObject/Package.h"
 #include "UObject/UnrealType.h"
@@ -354,6 +355,93 @@ FN2CMaterialCaptureContext::FN2CMaterialCaptureContext(const FN2CCaptureOptions&
 	}
 	Capture.Blueprint.Version.Value = N2CJsonContract::Version;
 	Capture.Blueprint.Metadata.AssetKind = EN2CAssetKind::Material;
+}
+
+void FN2CMaterialCaptureContext::DescribeInstance(const UMaterialInstance& Instance, FN2CMaterialInstanceSummary& OutSummary)
+{
+	OutSummary.bSet = true;
+	// The instances of the chain, Instance first (an instance's GetAllParametersOfType marks only its own overrides)
+	TArray<const UMaterialInstance*> Chain;
+	for (const UMaterialInstance* Link = &Instance; Link && !Chain.Contains(Link); Link = Cast<UMaterialInstance>(Link->Parent))
+	{
+		Chain.Add(Link);
+	}
+	const auto ParameterName = [](const FMaterialParameterInfo& Info)
+	{
+		switch (Info.Association)
+		{
+		case EMaterialParameterAssociation::LayerParameter:
+			return FString::Printf(TEXT("%s [layer %d]"), *Info.Name.ToString(), Info.Index);
+		case EMaterialParameterAssociation::BlendParameter:
+			return FString::Printf(TEXT("%s [blend %d]"), *Info.Name.ToString(), Info.Index);
+		default:
+			return Info.Name.ToString();
+		}
+	};
+	const auto ValueText = [](const FMaterialParameterValue& Value) -> FString
+	{
+		switch (Value.Type)
+		{
+		case EMaterialParameterType::Scalar:
+			return FString::Printf(TEXT("%f"), Value.AsScalar());
+		case EMaterialParameterType::Vector:
+			return Value.AsLinearColor().ToString();
+		case EMaterialParameterType::DoubleVector:
+		{
+			const FVector4d Vector = Value.AsVector4d();
+			return FString::Printf(TEXT("(X=%f,Y=%f,Z=%f,W=%f)"), Vector.X, Vector.Y, Vector.Z, Vector.W);
+		}
+		case EMaterialParameterType::Texture:
+		{
+			const UObject* Texture = Value.AsTextureObject();
+			return Texture ? Texture->GetPathName() : FString(TEXT("None"));
+		}
+		case EMaterialParameterType::StaticSwitch:
+			return Value.AsStaticSwitch() ? TEXT("true") : TEXT("false");
+		default:
+			return FString();
+		}
+	};
+	const auto Collect = [&Chain, &Instance, &ParameterName, &ValueText](EMaterialParameterType Type, TArray<FN2CMaterialParameterOverride>& Out)
+	{
+		TSet<FMaterialParameterInfo> Overridden;
+		TMap<FMaterialParameterInfo, FMaterialParameterMetadata> Parameters;
+		for (const UMaterialInstance* Link : Chain)
+		{
+			Link->GetAllParametersOfType(Type, Parameters);
+			for (const TPair<FMaterialParameterInfo, FMaterialParameterMetadata>& Pair : Parameters)
+			{
+#if WITH_EDITORONLY_DATA
+				if (Pair.Value.bOverride)
+				{
+					Overridden.Add(Pair.Key);
+				}
+#endif
+			}
+		}
+		Instance.GetAllParametersOfType(Type, Parameters);
+		for (const TPair<FMaterialParameterInfo, FMaterialParameterMetadata>& Pair : Parameters)
+		{
+			if (Overridden.Contains(Pair.Key))
+			{
+				Out.Add({ ParameterName(Pair.Key), ValueText(Pair.Value.Value) });
+			}
+		}
+	};
+	OutSummary.Scalars.Reset();
+	OutSummary.Vectors.Reset();
+	OutSummary.Textures.Reset();
+	OutSummary.StaticSwitches.Reset();
+	Collect(EMaterialParameterType::Scalar, OutSummary.Scalars);
+	Collect(EMaterialParameterType::Vector, OutSummary.Vectors);
+	Collect(EMaterialParameterType::DoubleVector, OutSummary.Vectors);
+	Collect(EMaterialParameterType::Texture, OutSummary.Textures);
+	Collect(EMaterialParameterType::StaticSwitch, OutSummary.StaticSwitches);
+	const auto ByName = [](const FN2CMaterialParameterOverride& A, const FN2CMaterialParameterOverride& B) { return A.Name < B.Name; };
+	OutSummary.Scalars.Sort(ByName);
+	OutSummary.Vectors.Sort(ByName);
+	OutSummary.Textures.Sort(ByName);
+	OutSummary.StaticSwitches.Sort(ByName);
 }
 
 void FN2CMaterialCaptureContext::CaptureMaterial(UMaterial& Material)

@@ -10,6 +10,7 @@ class UMaterial;
 class UMaterialExpression;
 class UMaterialExpressionComment;
 class UMaterialFunction;
+class UMaterialInstance;
 struct FExpressionInput;
 
 /**
@@ -70,6 +71,13 @@ public:
 
 	/** True for an expression the capture follows through instead of capturing: reroutes, composites, comments */
 	static bool IsTracedThrough(const UMaterialExpression& Expression);
+
+	/**
+	 * The parameters a material instance's chain sets (card 0470): every scalar, vector (and double vector), texture
+	 * and static switch parameter an instance of the chain overrides, with the value Instance renders with, each kind in
+	 * name order. Leaves OutSummary.Parents alone and sets bSet.
+	 */
+	static void DescribeInstance(const UMaterialInstance& Instance, FN2CMaterialInstanceSummary& OutSummary);
 
 	explicit FN2CMaterialCaptureContext(const FN2CCaptureOptions& InOptions);
 

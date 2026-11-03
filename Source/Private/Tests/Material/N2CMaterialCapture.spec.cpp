@@ -57,6 +57,8 @@
 #include "Materials/MaterialExpressionAdd.h"
 #include "Materials/MaterialExpressionConstant.h"
 #include "Materials/MaterialExpressionConstant3Vector.h"
+#include "Engine/Texture.h"
+#include "StaticParameterSet.h"
 #include "Materials/MaterialExpressionFunctionOutput.h"
 #include "Materials/MaterialFunction.h"
 #include "UObject/GarbageCollection.h"
@@ -172,6 +174,64 @@ BEGIN_DEFINE_SPEC(FN2CMaterialCaptureSpec, "NodeToCode.Material.Capture", N2C_TE
 		Call->SetMaterialFunction(Function);
 		M.ConnectToProperty(Call, 0, MP_Opacity);
 		return M.GetMaterial();
+	}
+
+	/**
+	 * Card 0470: the material has a texture parameter Albedo times a vector parameter Tint and a constant blue, chosen by
+	 * the static switch parameter UseRed, into BaseColor, and the scalar parameter Roughness into Roughness.
+	 * MI_N2CGolden_Parent sets Tint; MI_N2CGolden_Child, whose parent it is, sets Roughness, Albedo (the engine's default
+	 * texture) and UseRed (false). Returns the child.
+	 */
+	static UObject* BuildInstanceChain(N2CTest::FTestMaterial& M)
+	{
+		UMaterialExpressionTextureSampleParameter2D* Albedo = M.Add<UMaterialExpressionTextureSampleParameter2D>(nullptr, -600, -100);
+		UMaterialExpressionVectorParameter* Tint = M.Add<UMaterialExpressionVectorParameter>(nullptr, -600, 100);
+		UMaterialExpressionMultiply* Tinted = M.Add<UMaterialExpressionMultiply>(nullptr, -400, 0);
+		UMaterialExpressionConstant3Vector* Blue = M.Add<UMaterialExpressionConstant3Vector>(nullptr, -400, 200);
+		UMaterialExpressionStaticSwitchParameter* Switch = M.Add<UMaterialExpressionStaticSwitchParameter>(nullptr, -200, 0);
+		UMaterialExpressionScalarParameter* Rough = M.Add<UMaterialExpressionScalarParameter>(nullptr, -200, 300);
+		UTexture* DefaultTexture = LoadObject<UTexture>(nullptr, TEXT("/Engine/EngineResources/DefaultTexture.DefaultTexture"));
+		if (!Albedo || !Tint || !Tinted || !Blue || !Switch || !Rough || !DefaultTexture)
+		{
+			return nullptr;
+		}
+		Albedo->ParameterName = TEXT("Albedo");
+		Tint->ParameterName = TEXT("Tint");
+		Tint->DefaultValue = FLinearColor(1.0f, 1.0f, 1.0f);
+		Blue->Constant = FLinearColor(0.0f, 0.0f, 1.0f);
+		Switch->ParameterName = TEXT("UseRed");
+		Switch->DefaultValue = true;
+		Rough->ParameterName = TEXT("Roughness");
+		Rough->DefaultValue = 0.5f;
+		M.Connect(Albedo, 0, Tinted, TEXT("A"));
+		M.Connect(Tint, 0, Tinted, TEXT("B"));
+		M.Connect(Tinted, 0, Switch, TEXT("A"));
+		M.Connect(Blue, 0, Switch, TEXT("B"));
+		M.ConnectToProperty(Switch, 0, MP_BaseColor);
+		M.ConnectToProperty(Rough, 0, MP_Roughness);
+		// The parameters an instance reads come from the material's cached expression data, as after a save
+		M.GetMaterial()->UpdateCachedExpressionData();
+
+		UMaterialInstanceConstant* Parent = NewObject<UMaterialInstanceConstant>(M.GetPackage(), TEXT("MI_N2CGolden_Parent"), RF_Transactional);
+		UMaterialInstanceConstant* Child = NewObject<UMaterialInstanceConstant>(M.GetPackage(), TEXT("MI_N2CGolden_Child"), RF_Transactional);
+		Parent->SetParentEditorOnly(M.GetMaterial(), /*RecacheShader*/ false);
+		Parent->SetVectorParameterValueEditorOnly(FMaterialParameterInfo(TEXT("Tint")), FLinearColor(0.2f, 0.4f, 0.6f, 1.0f));
+		Child->SetParentEditorOnly(Parent, /*RecacheShader*/ false);
+		Child->SetScalarParameterValueEditorOnly(FMaterialParameterInfo(TEXT("Roughness")), 0.75f);
+		Child->SetTextureParameterValueEditorOnly(FMaterialParameterInfo(TEXT("Albedo")), DefaultTexture);
+		// A static switch is set as the instance editor sets it: the static parameter set, then the permutation
+		FStaticParameterSet Statics;
+		Child->GetStaticParameterValues(Statics);
+		for (FStaticSwitchParameter& Static : Statics.StaticSwitchParameters)
+		{
+			if (Static.ParameterInfo.Name == TEXT("UseRed"))
+			{
+				Static.Value = false;
+				Static.bOverride = true;
+			}
+		}
+		Child->UpdateStaticPermutation(Statics);
+		return Child;
 	}
 
 	/** The planted texts the untrusted-text spec looks for verbatim (card 0451) */
@@ -598,6 +658,9 @@ BEGIN_DEFINE_SPEC(FN2CMaterialCaptureSpec, "NodeToCode.Material.Capture", N2C_TE
 				M.ConnectToProperty(Sample, 0, MP_BaseColor);
 				return M.GetMaterial();
 			} });
+		// Card 0470
+		Cases.Add({ TEXT("InstanceOverrides"), TEXT("A material instance whose parent instance sets Tint and which sets Roughness, Albedo and the static switch UseRed: the base material's graph and settings, with the instance's name and metadata.material.instance (parent chain, the parameters the chain sets)"),
+			[](N2CTest::FTestMaterial& M) -> UObject* { return BuildInstanceChain(M); } });
 		Cases.Add({ TEXT("SubstrateSlab"), TEXT("A Substrate Slab BSDF into the material's FrontMaterial: captured like any expression, with no fallback warning"),
 			[](N2CTest::FTestMaterial& M) -> UObject*
 			{
@@ -931,6 +994,81 @@ void FN2CMaterialCaptureSpec::Define()
 
 	Describe(TEXT("Asset"), [this]()
 	{
+		It(TEXT("summarizes a material instance: its base material's graph, its name, the parent chain and the parameters the chain sets"), [this]()
+		{
+			N2CTest::FTestMaterial Material(TEXT("M_N2CTest_InstanceBase"));
+			UObject* Child = BuildInstanceChain(Material);
+			if (!NoFactoryErrors(Material) || !TestNotNull(TEXT("the instance"), Child))
+			{
+				return;
+			}
+			const TValueOrError<FN2CCapture, FString> Capture = N2C::CaptureMaterialAsset(*Child);
+			if (!TestTrue(TEXT("captured (") + (Capture.HasError() ? Capture.GetError() : FString()) + TEXT(")"), Capture.HasValue()))
+			{
+				return;
+			}
+			const FN2CMetadata& Metadata = Capture.GetValue().Blueprint.Metadata;
+			TestEqual(TEXT("the instance's name"), Metadata.Name, FString(TEXT("MI_N2CGolden_Child")));
+			TestEqual(TEXT("the instance's class"), Metadata.AssetClass, FString(TEXT("MaterialInstanceConstant")));
+			TestTrue(TEXT("asset_kind Material"), Metadata.AssetKind == EN2CAssetKind::Material);
+			TestTrue(TEXT("the base material's graph"), Capture.GetValue().Blueprint.Graphs.Num() == 1
+				&& Capture.GetValue().Blueprint.Graphs[0].Name == TEXT("M_N2CTest_InstanceBase"));
+			const FN2CMaterialInstanceSummary& Instance = Metadata.Material.Instance;
+			TestTrue(TEXT("instance is set"), Instance.bSet);
+			TestEqual(TEXT("parents, own parent first"), FString::Join(Instance.Parents, TEXT(",")), FString(TEXT("MI_N2CGolden_Parent,M_N2CTest_InstanceBase")));
+			const auto Find = [](const TArray<FN2CMaterialParameterOverride>& List, const TCHAR* Name)
+			{
+				const FN2CMaterialParameterOverride* Found = List.FindByPredicate([Name](const FN2CMaterialParameterOverride& O) { return O.Name == Name; });
+				return Found ? Found->Value : FString(TEXT("<none>"));
+			};
+			TestEqual(TEXT("Roughness, set by the instance"), Find(Instance.Scalars, TEXT("Roughness")), FString(TEXT("0.750000")));
+			TestTrue(TEXT("Tint, set by the parent instance"), Find(Instance.Vectors, TEXT("Tint")).StartsWith(TEXT("(R=0.200000,G=0.400000,B=0.600000")));
+			TestEqual(TEXT("Albedo"), Find(Instance.Textures, TEXT("Albedo")), FString(TEXT("/Engine/EngineResources/DefaultTexture.DefaultTexture")));
+			TestEqual(TEXT("UseRed"), Find(Instance.StaticSwitches, TEXT("UseRed")), FString(TEXT("false")));
+			TestEqual(TEXT("only the parameters the chain sets"), Instance.Scalars.Num() + Instance.Vectors.Num() + Instance.Textures.Num()
+				+ Instance.StaticSwitches.Num(), 4);
+		});
+
+		It(TEXT("refuses a material instance with no parent material, naming the problem"), [this]()
+		{
+			N2CTest::FTestMaterial Holder(TEXT("M_N2CTest_Orphan"));
+			UMaterialInstanceConstant* Orphan = Holder.GetPackage() ? NewObject<UMaterialInstanceConstant>(Holder.GetPackage(), TEXT("MI_N2CTest_Orphan")) : nullptr;
+			if (!TestNotNull(TEXT("an instance"), Orphan))
+			{
+				return;
+			}
+			const TValueOrError<FN2CCapture, FString> Capture = N2C::CaptureMaterialAsset(*Orphan);
+			TestTrue(TEXT("UNSUPPORTED_ASSET_TYPE, no parent material (got: ") + (Capture.HasError() ? Capture.GetError() : FString()) + TEXT(")"),
+				Capture.HasError() && Capture.GetError().StartsWith(TEXT("UNSUPPORTED_ASSET_TYPE: ")) && Capture.GetError().Contains(TEXT("no parent material")));
+		});
+
+		It(TEXT("reads and writes metadata.material.instance"), [this]()
+		{
+			const FString Text = TEXT("{\"version\":\"2.0.0\",\"metadata\":{\"name\":\"MI_A\",\"asset_class\":\"MaterialInstanceConstant\",\"asset_kind\":\"Material\",")
+				TEXT("\"material\":{\"domain\":\"Surface\",\"blend_mode\":\"Opaque\",\"shading_models\":[\"DefaultLit\"],\"instance\":{\"parents\":[\"MI_P\",\"M_B\"],")
+				TEXT("\"scalars\":{\"Roughness\":\"0.750000\"},\"vectors\":{\"Tint\":\"(R=0.2,G=0.4,B=0.6,A=1)\"},\"textures\":{\"Albedo\":\"None\"},")
+				TEXT("\"static_switches\":{\"UseRed\":\"false\"}}}},\"graphs\":[{\"name\":\"M_B\",\"graph_type\":\"Material\",\"nodes\":[{\"id\":\"N1\",")
+				TEXT("\"type\":\"MaterialOutput\",\"class\":\"Material\",\"input_pins\":[],\"output_pins\":[]}],\"flows\":{\"execution\":[],\"data\":{}}}],\"structs\":[],\"enums\":[]}");
+			FN2CBlueprint Read;
+			TArray<FN2CJsonReadWarning> Warnings;
+			if (!TestTrue(TEXT("FromJson reads it"), FN2CSerializer::FromJson(Text, Read, Warnings)))
+			{
+				return;
+			}
+			const FN2CMaterialInstanceSummary& Instance = Read.Metadata.Material.Instance;
+			TestTrue(TEXT("every field read"), Instance.bSet && Instance.Parents.Num() == 2 && Instance.Scalars.Num() == 1 && Instance.Vectors.Num() == 1
+				&& Instance.Textures.Num() == 1 && Instance.StaticSwitches.Num() == 1 && Instance.StaticSwitches[0].Value == TEXT("false"));
+			TestEqual(TEXT("no warning"), Warnings.Num(), 0);
+			const TSharedPtr<FJsonObject> Again = N2CTest::ParseJsonObject(FN2CSerializer::ToJson(Read, EN2CJsonStyle::Condensed));
+			const TSharedPtr<FJsonObject> Expected = N2CTest::ParseJsonObject(Text);
+			if (TestTrue(TEXT("both parse"), Again.IsValid() && Expected.IsValid()))
+			{
+				TestEqual(TEXT("metadata.material written back the same"),
+					N2CTest::PrettyJson(Again->GetObjectField(TEXT("metadata"))->GetObjectField(TEXT("material"))),
+					N2CTest::PrettyJson(Expected->GetObjectField(TEXT("metadata"))->GetObjectField(TEXT("material"))));
+			}
+		});
+
 		It(TEXT("captures the material whose editor graph CaptureGraph refuses, from the asset: asset_kind Material, graph_type Material"), [this]()
 		{
 			N2CTest::FTestMaterial Material(TEXT("M_N2CTest_FromAsset"));
@@ -975,7 +1113,6 @@ void FN2CMaterialCaptureSpec::Define()
 			{ UMaterialFunctionInstance::StaticClass(), TEXT("MaterialFunctionInstance") },
 			{ UMaterialFunctionMaterialLayerInstance::StaticClass(), TEXT("MaterialFunctionMaterialLayerInstance") },
 			{ UMaterialFunctionMaterialLayerBlendInstance::StaticClass(), TEXT("MaterialFunctionMaterialLayerBlendInstance") },
-			{ UMaterialInstanceConstant::StaticClass(), TEXT("MaterialInstanceConstant") },
 		};
 		for (const TPair<UClass*, const TCHAR*>& Refused : RefusedClasses)
 		{

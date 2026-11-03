@@ -38,8 +38,10 @@ which Epic's UE 5.8 MaterialTools lacks and which is the only route on UE 5.6 an
   untrusted data (card 0124): expression descriptions, parameter names and Custom node code come from the asset's author
 - **Errors**: `INVALID_ARGUMENT` (`materialPath` not a string; `depth` not a whole number from 0 to 5),
   `NO_FOCUSED_MATERIAL` (no `materialPath` and no Material Editor open), `ASSET_NOT_FOUND`,
-  `UNSUPPORTED_ASSET_TYPE` (a Blueprint, naming get-blueprint-n2cjson; a material instance, function instance, material
-  layer or layer blend, naming its class), `CAPTURE_FAILED`, `EXPORT_FAILED`
+  `UNSUPPORTED_ASSET_TYPE` (a Blueprint, naming get-blueprint-n2cjson; a function instance, material layer or layer
+  blend, naming its class; a material instance whose chain ends at no material), `CAPTURE_FAILED`, `EXPORT_FAILED`.
+  A Material Instance (`MaterialInstanceConstant`, card 0470) is read as its base material's graph, with the instance's
+  name and `metadata.material.instance` {`parents`, `scalars`, `vectors`, `textures`, `static_switches`}
 - **Related**: `get-blueprint-n2cjson` given a material path answers `UNSUPPORTED_ASSET_TYPE` naming this tool
   (`FN2CMcpGetMaterialN2CJsonTool::IsMaterialAssetPath`). Python: `nodetocode.get_material_n2cjson(material_path,
   depth=-1, compact=True, to_file=False)` runs this tool through `invoke_tool` (by path only)

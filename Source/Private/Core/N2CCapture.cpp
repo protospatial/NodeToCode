@@ -10,6 +10,7 @@
 #include "K2Node.h"
 #include "Materials/Material.h"
 #include "Materials/MaterialFunction.h"
+#include "Materials/MaterialInstanceConstant.h"
 #include "Utils/N2CGraphUtils.h"
 #include "Utils/Validators/N2CBlueprintValidator.h"
 
@@ -78,8 +79,9 @@ namespace N2C
 	/** "UNSUPPORTED_ASSET_TYPE: ..." for an asset that is not a UMaterial or UMaterialFunction (decision 0009 item 1) */
 	FString UnsupportedMaterialAsset(const UObject& Asset)
 	{
-		return FString::Printf(TEXT("UNSUPPORTED_ASSET_TYPE: %s is a %s. NodeToCode captures materials (Material) and material ")
-			TEXT("functions (MaterialFunction); material instances, function instances, material layers and layer blends are not supported."),
+		return FString::Printf(TEXT("UNSUPPORTED_ASSET_TYPE: %s is a %s. NodeToCode captures materials (Material), material ")
+			TEXT("functions (MaterialFunction) and material instances (MaterialInstanceConstant, as a summary over their base material); ")
+			TEXT("function instances, material layers and layer blends are not supported."),
 			*Asset.GetPathName(), *Asset.GetClass()->GetName());
 	}
 
@@ -115,7 +117,52 @@ namespace N2C
 		{
 			return CaptureMaterialFunction(*CastChecked<UMaterialFunction>(&Asset), Options);
 		}
+		if (Asset.GetClass() == UMaterialInstanceConstant::StaticClass())
+		{
+			return CaptureMaterialInstance(*CastChecked<UMaterialInstanceConstant>(&Asset), Options);
+		}
 		return MakeError(UnsupportedMaterialAsset(Asset));
+	}
+
+	TValueOrError<FN2CCapture, FString> CaptureMaterialInstance(UMaterialInstanceConstant& Instance, const FN2CCaptureOptions& Options)
+	{
+		if (Instance.GetClass() != UMaterialInstanceConstant::StaticClass())
+		{
+			return MakeError(UnsupportedMaterialAsset(Instance));
+		}
+		// The parent chain up to the base material (an instance has no graph of its own: decision 0009, card 0470)
+		TArray<FString> Parents;
+		TSet<const UMaterialInterface*> Seen{ &Instance };
+		UMaterialInterface* Parent = Instance.Parent;
+		while (const UMaterialInstance* ParentInstance = Cast<UMaterialInstance>(Parent))
+		{
+			if (Seen.Contains(ParentInstance))
+			{
+				return MakeError(FString::Printf(TEXT("UNSUPPORTED_ASSET_TYPE: %s has a parent chain that loops at %s"),
+					*Instance.GetPathName(), *ParentInstance->GetName()));
+			}
+			Seen.Add(ParentInstance);
+			Parents.Add(ParentInstance->GetName());
+			Parent = ParentInstance->Parent;
+		}
+		UMaterial* Base = Cast<UMaterial>(Parent);
+		if (!Base || Base->GetClass() != UMaterial::StaticClass())
+		{
+			return MakeError(FString::Printf(TEXT("UNSUPPORTED_ASSET_TYPE: %s has no parent material to summarize (its chain ends at %s)"),
+				*Instance.GetPathName(), Parent ? *Parent->GetPathName() : TEXT("nothing")));
+		}
+		Parents.Add(Base->GetName());
+
+		FN2CMaterialCaptureContext Context(Options);
+		Context.CaptureMaterial(*Base);
+		FN2CCapture Capture = Context.TakeCapture();
+		FN2CMetadata& Metadata = Capture.Blueprint.Metadata;
+		Metadata.Name = Instance.GetName();
+		Metadata.AssetClass = Instance.GetClass()->GetName();
+		FN2CMaterialInstanceSummary& Summary = Metadata.Material.Instance;
+		FN2CMaterialCaptureContext::DescribeInstance(Instance, Summary);
+		Summary.Parents = MoveTemp(Parents);
+		return MakeValue(Validated(MoveTemp(Capture)));
 	}
 
 	TValueOrError<FN2CCapture, FString> CaptureGraphs(TConstArrayView<UEdGraph*> Graphs, const FN2CCaptureOptions& Options)
