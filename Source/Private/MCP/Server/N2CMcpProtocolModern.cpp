@@ -10,10 +10,17 @@
 #include "MCP/Server/N2CMcpProtocol.h"
 #include "MCP/Server/N2CMcpTcpConnectionState.h"
 #include "MCP/Async/N2CToolAsyncTaskManager.h"
+#include "Core/N2CBlueprintEditorTracker.h"
+#include "MCP/Resources/Implementations/N2CMcpBlueprintResource.h"
+#include "BlueprintEditor.h"
+#include "Engine/Blueprint.h"
+#include "GenericPlatform/GenericPlatformHttp.h"
 #include "Utils/N2CLogger.h"
 #include "Dom/JsonObject.h"
 #include "Interfaces/IPluginManager.h"
 #include "Misc/Base64.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
 #include "Policies/CondensedJsonPrintPolicy.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
@@ -36,7 +43,7 @@ namespace N2CMcpModernPrivate
 		return Method == TEXT("server/discover") || Method == TEXT("subscriptions/listen")
 			|| Method == TEXT("tools/list") || Method == TEXT("tools/call")
 			|| Method == TEXT("resources/list") || Method == TEXT("resources/templates/list") || Method == TEXT("resources/read")
-			|| Method == TEXT("prompts/list") || Method == TEXT("prompts/get");
+			|| Method == TEXT("prompts/list") || Method == TEXT("prompts/get") || Method == TEXT("completion/complete");
 	}
 
 	FString Condensed(const TSharedRef<FJsonObject>& Object)
@@ -113,7 +120,7 @@ TOptional<FString> FN2CMcpProtocol::DecodeHeaderValue(const FString& Value)
 	return Value;
 }
 
-TSharedRef<FJsonObject> FN2CMcpProtocol::BuildServerCapabilities()
+TSharedRef<FJsonObject> FN2CMcpProtocol::BuildServerCapabilities(bool bResourceSubscriptions)
 {
 	const TSharedRef<FJsonObject> Capabilities = MakeShared<FJsonObject>();
 
@@ -123,8 +130,11 @@ TSharedRef<FJsonObject> FN2CMcpProtocol::BuildServerCapabilities()
 	Tools->SetBoolField(TEXT("listChanged"), false);
 	Capabilities->SetObjectField(TEXT("tools"), Tools);
 
+	// subscribe: a 2026-07-28 subscriptions/listen stream can name resourceSubscriptions and gets
+	// notifications/resources/updated (card 0214). A legacy session has no channel to send them on (GET /mcp is 405),
+	// so initialize says false. listChanged false: the resource list is fixed while the server runs.
 	const TSharedRef<FJsonObject> Resources = MakeShared<FJsonObject>();
-	Resources->SetBoolField(TEXT("subscribe"), false);
+	Resources->SetBoolField(TEXT("subscribe"), bResourceSubscriptions);
 	Resources->SetBoolField(TEXT("listChanged"), false);
 	Capabilities->SetObjectField(TEXT("resources"), Resources);
 
@@ -132,22 +142,60 @@ TSharedRef<FJsonObject> FN2CMcpProtocol::BuildServerCapabilities()
 	Prompts->SetBoolField(TEXT("listChanged"), false);
 	Capabilities->SetObjectField(TEXT("prompts"), Prompts);
 
+	// completion/complete: prompt argument values and the Blueprint path of the nodetocode://blueprint/{+path} template
+	Capabilities->SetObjectField(TEXT("completions"), MakeShared<FJsonObject>());
+
 	// No logging capability: the server sends no notifications/message and has no logging/setLevel, and both parties
 	// may "Only use capabilities that were successfully negotiated" (logging is deprecated in 2026-07-28)
 	return Capabilities;
 }
 
-TSharedRef<FJsonObject> FN2CMcpProtocol::BuildServerInfo()
+TSharedRef<FJsonObject> FN2CMcpProtocol::BuildServerInfo(bool bWithIcons)
 {
 	const TSharedRef<FJsonObject> ServerInfo = MakeShared<FJsonObject>();
 	ServerInfo->SetStringField(TEXT("name"), TEXT("NodeToCodeMCPServer"));
+	ServerInfo->SetStringField(TEXT("title"), TEXT("NodeToCode"));
 	FString PluginVersion = TEXT("Unknown");
 	if (const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("NodeToCode")))
 	{
 		PluginVersion = Plugin->GetDescriptor().VersionName;
 	}
 	ServerInfo->SetStringField(TEXT("version"), PluginVersion);
+	ServerInfo->SetStringField(TEXT("description"),
+		TEXT("Reads, edits and translates the Unreal Editor's Blueprints: N2C JSON, Blueprint graph tools and LLM translation to C++ and other languages."));
+	ServerInfo->SetStringField(TEXT("websiteUrl"), TEXT("https://github.com/protospatial/NodeToCode"));
+	if (bWithIcons)
+	{
+		const TArray<TSharedPtr<FJsonValue>> Icons = ServerIcons();
+		if (Icons.Num() > 0)
+		{
+			ServerInfo->SetArrayField(TEXT("icons"), Icons);
+		}
+	}
 	return ServerInfo;
+}
+
+TArray<TSharedPtr<FJsonValue>> FN2CMcpProtocol::ServerIcons()
+{
+	// Read once: the file ships with the plugin and does not change while the editor runs
+	static const TArray<TSharedPtr<FJsonValue>> Icons = []()
+	{
+		TArray<TSharedPtr<FJsonValue>> Out;
+		const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("NodeToCode"));
+		TArray<uint8> Png;
+		if (Plugin.IsValid() && FFileHelper::LoadFileToArray(Png, *(Plugin->GetBaseDir() / TEXT("Resources") / TEXT("Icon128.png"))) && Png.Num() > 8)
+		{
+			const TSharedRef<FJsonObject> Icon = MakeShared<FJsonObject>();
+			Icon->SetStringField(TEXT("src"), TEXT("data:image/png;base64,") + FBase64::Encode(Png));
+			Icon->SetStringField(TEXT("mimeType"), TEXT("image/png"));
+			TArray<TSharedPtr<FJsonValue>> Sizes;
+			Sizes.Add(MakeShared<FJsonValueString>(TEXT("128x128")));
+			Icon->SetArrayField(TEXT("sizes"), Sizes);
+			Out.Add(MakeShared<FJsonValueObject>(Icon));
+		}
+		return Out;
+	}();
+	return Icons;
 }
 
 void FN2CMcpProtocol::DecorateModernResult(const FString& Method, const TSharedPtr<FJsonObject>& Result)
@@ -341,9 +389,11 @@ void FN2CMcpProtocol::HandleModern(const FN2CMcpInbound& Inbound, const TSharedR
 			Versions.Add(MakeShared<FJsonValueString>(Each));
 		}
 		Result->SetArrayField(TEXT("supportedVersions"), Versions);
-		Result->SetObjectField(TEXT("capabilities"), BuildServerCapabilities());
+		Result->SetObjectField(TEXT("capabilities"), BuildServerCapabilities(Responder->CanStream()));
 		Result->SetStringField(TEXT("instructions"), GetServerInstructions());
 		DecorateModernResult(Method, Result);
+		// server/discover is where a client learns who the server is: its serverInfo carries the icons (card 0214)
+		Result->GetObjectField(TEXT("_meta"))->SetObjectField(MetaServerInfo, BuildServerInfo(/*bWithIcons=*/true));
 		Result->SetNumberField(TEXT("ttlMs"), ListTtlMs);
 		Result->SetStringField(TEXT("cacheScope"), TEXT("private"));
 
@@ -407,20 +457,44 @@ void FN2CMcpProtocol::HandleSubscriptionsListen(const TSharedRef<IN2CMcpResponde
 {
 	using namespace N2CMcpModernPrivate;
 
-	// basic/patterns/subscriptions: the server honours what it can and acknowledges that subset first. The only change
-	// notification this server sends is notifications/tools/list_changed; prompts, resources and resource updates never
-	// change while it runs, so those types are left out of the acknowledgement.
+	// basic/patterns/subscriptions: the server honours what it can and acknowledges that subset first: tools/list_changed
+	// and updates of the Blueprint resources (card 0214). The prompt and resource lists never change while it runs, so
+	// those types are left out of the acknowledgement.
 	bool bToolsListChanged = false;
+	TArray<FString> ResourceSubscriptions;
 	const TSharedPtr<FJsonObject>* Filter = nullptr;
 	if (Params.IsValid() && Params->TryGetObjectField(TEXT("notifications"), Filter) && Filter && Filter->IsValid())
 	{
 		(*Filter)->TryGetBoolField(TEXT("toolsListChanged"), bToolsListChanged);
+		// Resource updates (card 0214): the Blueprint resources, which change when a Blueprint is compiled or saved
+		// or the focus moves; other URIs (the open-Blueprint list, the Python stub, unknown ones) are left out
+		const TArray<TSharedPtr<FJsonValue>>* Uris = nullptr;
+		if ((*Filter)->TryGetArrayField(TEXT("resourceSubscriptions"), Uris))
+		{
+			for (const TSharedPtr<FJsonValue>& Value : *Uris)
+			{
+				FString Uri;
+				if (Value.IsValid() && Value->Type == EJson::String && Value->TryGetString(Uri) && IsUpdatableResourceUri(Uri))
+				{
+					ResourceSubscriptions.AddUnique(Uri);
+				}
+			}
+		}
 	}
 
 	const TSharedRef<FJsonObject> Accepted = MakeShared<FJsonObject>();
 	if (bToolsListChanged)
 	{
 		Accepted->SetBoolField(TEXT("toolsListChanged"), true);
+	}
+	if (ResourceSubscriptions.Num() > 0)
+	{
+		TArray<TSharedPtr<FJsonValue>> Uris;
+		for (const FString& Uri : ResourceSubscriptions)
+		{
+			Uris.Add(MakeShared<FJsonValueString>(Uri));
+		}
+		Accepted->SetArrayField(TEXT("resourceSubscriptions"), Uris);
 	}
 	const TSharedRef<FJsonObject> AckMeta = MakeShared<FJsonObject>();
 	AckMeta->SetField(MetaSubscriptionId, Id);
@@ -436,8 +510,16 @@ void FN2CMcpProtocol::HandleSubscriptionsListen(const TSharedRef<IN2CMcpResponde
 	Watched.Responder = Responder;
 	Watched.SubscriptionId = Id;
 	Watched.bToolsListChanged = bToolsListChanged;
+	Watched.ResourceSubscriptions = ResourceSubscriptions;
 	Watched.bDone = MakeShared<bool>(false);
 	Watched.bOpened = MakeShared<bool>(true);
+	if (ResourceSubscriptions.Num() > 0 && !HasResourceSubscriptions())
+	{
+		// The focus a change of nodetocode://blueprint/current is measured from
+		const TSharedPtr<FBlueprintEditor> Focused = FN2CBlueprintEditorTracker::Get().GetFocusedEditor();
+		const UBlueprint* Blueprint = Focused.IsValid() ? Focused->GetBlueprintObj() : nullptr;
+		LastFocusedBlueprintPath = Blueprint ? Blueprint->GetPathName() : FString();
+	}
 	WatchedStreams.Add(MoveTemp(Watched));
 	EnsureStreamTicker();
 	FN2CLogger::Get().Log(FString::Printf(TEXT("MCP subscriptions/listen opened (toolsListChanged %s), %d open"),
@@ -498,8 +580,96 @@ void FN2CMcpProtocol::EnsureStreamTicker()
 	}), StreamKeepAliveSeconds);
 }
 
+bool FN2CMcpProtocol::IsUpdatableResourceUri(const FString& Uri)
+{
+	return Uri == TEXT("nodetocode://blueprint/current")
+		|| (Uri.StartsWith(FN2CMcpBlueprintByNameResource::UriPrefix) && Uri.Len() > FCString::Strlen(FN2CMcpBlueprintByNameResource::UriPrefix));
+}
+
+bool FN2CMcpProtocol::HasResourceSubscriptions() const
+{
+	for (const FWatchedStream& Watched : WatchedStreams)
+	{
+		if (Watched.ResourceSubscriptions.Num() > 0 && Watched.bDone.IsValid() && !*Watched.bDone)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+void FN2CMcpProtocol::NoteBlueprintChanged(UBlueprint* Blueprint)
+{
+	if (Blueprint && HasResourceSubscriptions())
+	{
+		ChangedBlueprints.AddUnique(Blueprint);
+	}
+}
+
+void FN2CMcpProtocol::FlushResourceUpdates()
+{
+	using namespace N2CMcpModernPrivate;
+	if (!HasResourceSubscriptions())
+	{
+		ChangedBlueprints.Reset();
+		return;
+	}
+	const FString CurrentUri = TEXT("nodetocode://blueprint/current");
+	const TSharedPtr<FBlueprintEditor> Focused = FN2CBlueprintEditorTracker::Get().GetFocusedEditor();
+	const UBlueprint* FocusedBlueprint = Focused.IsValid() ? Focused->GetBlueprintObj() : nullptr;
+	const FString FocusedPath = FocusedBlueprint ? FocusedBlueprint->GetPathName() : FString();
+
+	TSet<FString> Updated;
+	if (FocusedPath != LastFocusedBlueprintPath)
+	{
+		Updated.Add(CurrentUri);
+		LastFocusedBlueprintPath = FocusedPath;
+	}
+	for (const TWeakObjectPtr<UBlueprint>& Weak : ChangedBlueprints)
+	{
+		if (const UBlueprint* Blueprint = Weak.Get())
+		{
+			Updated.Add(FGenericPlatformHttp::UrlDecode(FN2CMcpBlueprintByNameResource::UriFor(*Blueprint)));
+			if (Blueprint == FocusedBlueprint)
+			{
+				Updated.Add(CurrentUri);
+			}
+		}
+	}
+	ChangedBlueprints.Reset();
+	if (Updated.Num() == 0)
+	{
+		return;
+	}
+
+	for (const FWatchedStream& Watched : WatchedStreams)
+	{
+		if (!Watched.SubscriptionId.IsValid() || *Watched.bDone)
+		{
+			continue;
+		}
+		for (const FString& Uri : Watched.ResourceSubscriptions)
+		{
+			if (!Updated.Contains(FGenericPlatformHttp::UrlDecode(Uri)))
+			{
+				continue;
+			}
+			const TSharedRef<FJsonObject> Meta = MakeShared<FJsonObject>();
+			Meta->SetField(MetaSubscriptionId, Watched.SubscriptionId);
+			const TSharedRef<FJsonObject> NotificationParams = MakeShared<FJsonObject>();
+			NotificationParams->SetStringField(TEXT("uri"), Uri);
+			NotificationParams->SetObjectField(TEXT("_meta"), Meta);
+			FJsonRpcNotification Notification;
+			Notification.Method = TEXT("notifications/resources/updated");
+			Notification.Params = MakeShared<FJsonValueObject>(NotificationParams);
+			Watched.Responder->Stream(FJsonRpcUtils::SerializeNotification(Notification), FString());
+		}
+	}
+}
+
 bool FN2CMcpProtocol::TickStreams(float DeltaTime)
 {
+	FlushResourceUpdates();
 	for (int32 Index = WatchedStreams.Num() - 1; Index >= 0; --Index)
 	{
 		FWatchedStream& Watched = WatchedStreams[Index];

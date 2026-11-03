@@ -25,6 +25,13 @@ default (**Tool Profile** Default toolsets, **Tool Exposure** List every tool) l
 Settings → Plugins → Node to Code → MCP Server** ([Choosing a Tool Mode](Choosing-a-Tool-Mode)), restart the editor
 and reconnect the client.
 
+**Resources, prompts and completion.** Besides tools, NodeToCode serves resources (the focused Blueprint, the
+open Blueprints, any Blueprint by `nodetocode://blueprint/<asset path>`, and the editor's Python API stub when the
+Python plugin's Developer Mode has generated it) and four prompts. A client that offers argument completion can
+complete prompt values such as the target language and Blueprint asset paths in the resource address. On UE 5.8 a
+client on the 2026-07-28 revision can subscribe to a Blueprint resource and is told when that Blueprint compiles, is
+saved or, for the focused Blueprint, when the focus moves.
+
 ## Let NodeToCode write the config files
 
 In **Project Settings → Plugins → Node to Code → MCP Server**, the **MCP Client Config** row has a client list
