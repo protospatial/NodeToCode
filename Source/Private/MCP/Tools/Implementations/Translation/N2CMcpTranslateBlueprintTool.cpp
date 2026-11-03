@@ -2,6 +2,7 @@
 
 #include "N2CMcpTranslateBlueprintTool.h"
 #include "MCP/Tools/N2CMcpToolRegistry.h" // For REGISTER_MCP_TOOL
+#include "MCP/Resources/Implementations/N2CMcpAppResources.h"
 #include "Utils/N2CLogger.h"
 #include "Core/N2CEditorIntegration.h"
 #include "MCP/Utils/N2CMcpArgumentParser.h"
@@ -58,6 +59,8 @@ FMcpToolDefinition FN2CMcpTranslateBlueprintTool::GetDefinition() const
     Definition.bAllowedDuringPlaySession = true;
     // A session may run it as an MCP task (card 0211): CreateTaskResult now, then tasks/get, tasks/result, tasks/cancel
     Definition.TaskSupport = TEXT("optional");
+    // MCP Apps (card 0213): a client that supports them shows the translation in the translation viewer; others ignore it
+    Definition.Meta = FN2CMcpAppResources::ToolMeta(FN2CMcpAppResources::TranslationViewerUri);
 
     return Definition;
 }

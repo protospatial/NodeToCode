@@ -73,6 +73,7 @@
 
 * [Connecting an MCP Client](Connecting-an-MCP-Client)
 * [Requiring an MCP Token](Requiring-an-MCP-Token)
+* [MCP Apps: translation viewer and graph preview](MCP-Apps)
 * [Choosing a Tool Mode](Choosing-a-Tool-Mode)
 * [Using a Claude or Gemini Subscription](Using-a-Claude-or-Gemini-Subscription)
 * [Using NodeToCode with Unreal MCP (UE 5.8)](Using-NodeToCode-with-Unreal-MCP)

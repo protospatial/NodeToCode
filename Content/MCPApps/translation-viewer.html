@@ -1,0 +1,173 @@
+<!doctype html>
+<!--
+  NodeToCode translation viewer, an MCP App (card 0213): ui://nodetocode/translation-viewer, linked from
+  translate-focused-blueprint through _meta.ui.resourceUri. The host renders it in a sandboxed iframe and sends the
+  tool result over postMessage (MCP Apps 2026-01-26: ui/initialize, ui/notifications/initialized, then
+  ui/notifications/tool-result). Self-contained: no remote script, style or font. The translation is written from the
+  Blueprint's own text, so it is untrusted: every string goes in through textContent, never as HTML.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NodeToCode translation</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #ffffff; --panel: #f5f5f4; --border: #d6d3d1; --text: #1c1917; --muted: #57534e;
+    --accent: #b45309; --kw: #7c3aed; --type: #0369a1; --str: #15803d; --num: #b45309; --com: #78716c; --pre: #be185d;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1c1c1c; --panel: #262626; --border: #3f3f46; --text: #e7e5e4; --muted: #a8a29e;
+      --accent: #f2a93b; --kw: #c4a7ff; --type: #7dd3fc; --str: #86efac; --num: #fcd34d; --com: #8a8a8a; --pre: #f9a8d4;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 12px; background: var(--bg); color: var(--text);
+         font: 13px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px; margin-bottom: 8px; }
+  h1 { font-size: 15px; margin: 0; }
+  .muted { color: var(--muted); }
+  nav { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0; }
+  button { font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--border);
+           border-radius: 6px; padding: 3px 10px; cursor: pointer; }
+  button[aria-selected="true"] { border-color: var(--accent); color: var(--accent); }
+  .graph { border: 1px solid var(--border); border-radius: 8px; margin: 10px 0; overflow: hidden; }
+  .graph > h2 { font-size: 13px; margin: 0; padding: 6px 10px; background: var(--panel);
+                border-bottom: 1px solid var(--border); display: flex; gap: 8px; align-items: baseline; }
+  pre { margin: 0; padding: 10px; overflow-x: auto; font: 12px/1.5 ui-monospace, "Cascadia Code", Consolas, monospace;
+        white-space: pre; tab-size: 4; }
+  .notes { padding: 8px 10px; border-top: 1px solid var(--border); white-space: pre-wrap; color: var(--muted); }
+  .kw { color: var(--kw); } .ty { color: var(--type); } .st { color: var(--str); } .nu { color: var(--num); }
+  .co { color: var(--com); font-style: italic; } .pp { color: var(--pre); }
+  #status { color: var(--muted); }
+  .warn { color: var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <h1>NodeToCode translation</h1>
+  <span id="status">Waiting for the translation...</span>
+</header>
+<nav id="tabs" role="tablist" hidden></nav>
+<main id="graphs"></main>
+<script>
+"use strict";
+(function () {
+  const PROTOCOL_VERSION = "2026-01-26";
+  let nextId = 1;
+  const pending = new Map();
+  let view = "graphImplementation";
+  let lastResult = null;
+
+  function post(message) { window.parent.postMessage(Object.assign({ jsonrpc: "2.0" }, message), "*"); }
+  function request(method, params) {
+    const id = nextId++;
+    return new Promise(function (resolve, reject) { pending.set(id, { resolve: resolve, reject: reject }); post({ id: id, method: method, params: params }); });
+  }
+  function notifySize() { post({ method: "ui/notifications/size-changed", params: { height: document.documentElement.scrollHeight } }); }
+
+  // A small C-family / Python highlighter: tokens become spans whose text is set with textContent
+  const KEYWORDS = new Set(("if else for while do switch case default break continue return goto try catch throw new delete " +
+    "class struct enum union namespace using typedef template typename public private protected virtual override final " +
+    "static const constexpr inline extern friend operator this nullptr true false auto void def lambda pass import from as " +
+    "in is not and or None True False self elif with yield async await var let function null undefined func let guard " +
+    "UFUNCTION UPROPERTY UCLASS USTRUCT UENUM GENERATED_BODY").split(" "));
+  const TYPES = new Set(("bool int float double char int8 int16 int32 int64 uint8 uint16 uint32 uint64 size_t string " +
+    "FString FName FText FVector FRotator FTransform FLinearColor FColor TArray TMap TSet TSubclassOf TObjectPtr TWeakObjectPtr " +
+    "TSharedPtr AActor UObject UWorld APawn ACharacter UActorComponent USceneComponent").split(" "));
+  const TOKEN = /(\/\/[^\n]*|#[^\n]*|\/\*[\s\S]*?\*\/|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\b\d+(?:\.\d+)?f?\b|\b[A-Za-z_][A-Za-z0-9_]*\b)/g;
+
+  function highlight(code, pre, python) {
+    let last = 0;
+    code.replace(TOKEN, function (token, _g, offset) {
+      if (offset > last) { pre.appendChild(document.createTextNode(code.slice(last, offset))); }
+      let cls = null;
+      if (token.startsWith("//") || token.startsWith("/*") || (python && token.startsWith("#"))) { cls = "co"; }
+      else if (token.startsWith("#")) { cls = "pp"; }
+      else if (token[0] === '"' || token[0] === "'") { cls = "st"; }
+      else if (/^\d/.test(token)) { cls = "nu"; }
+      else if (KEYWORDS.has(token)) { cls = "kw"; }
+      else if (TYPES.has(token) || /^[UAFTE][A-Z][A-Za-z0-9]*$/.test(token)) { cls = "ty"; }
+      if (cls) { const span = document.createElement("span"); span.className = cls; span.textContent = token; pre.appendChild(span); }
+      else { pre.appendChild(document.createTextNode(token)); }
+      last = offset + token.length;
+      return token;
+    });
+    if (last < code.length) { pre.appendChild(document.createTextNode(code.slice(last))); }
+  }
+
+  function text(tag, value, cls) { const el = document.createElement(tag); el.textContent = value; if (cls) { el.className = cls; } return el; }
+
+  function render(result) {
+    lastResult = result;
+    const data = (result && (result.structuredContent || result)) || {};
+    const graphs = Array.isArray(data.graphs) ? data.graphs : [];
+    const main = document.getElementById("graphs");
+    const status = document.getElementById("status");
+    main.replaceChildren();
+    if (result && result.isError) {
+      const first = (result.content || []).find(function (c) { return c.type === "text"; });
+      status.textContent = "The translation failed" + (first ? ": " + first.text : ".");
+      notifySize();
+      return;
+    }
+    if (data.savedTo) {
+      status.textContent = "The translation was too large to show here; it was saved to " + data.savedTo;
+    } else {
+      status.textContent = graphs.length + (graphs.length === 1 ? " graph" : " graphs") + (data.run_folder ? " - " + data.run_folder : "");
+    }
+    const tabs = document.getElementById("tabs");
+    tabs.replaceChildren();
+    tabs.hidden = graphs.length === 0;
+    [["graphDeclaration", "Declaration"], ["graphImplementation", "Implementation"]].forEach(function (pair) {
+      const b = text("button", pair[1]);
+      b.setAttribute("role", "tab");
+      b.setAttribute("aria-selected", String(view === pair[0]));
+      b.addEventListener("click", function () { view = pair[0]; render(lastResult); });
+      tabs.appendChild(b);
+    });
+    const python = /python/i.test(JSON.stringify(data.target_language || ""));
+    graphs.forEach(function (g) {
+      const section = document.createElement("section");
+      section.className = "graph";
+      const h2 = document.createElement("h2");
+      h2.appendChild(text("span", g.graph_name || "(unnamed graph)"));
+      h2.appendChild(text("span", [g.graph_type, g.graph_class].filter(Boolean).join(" - "), "muted"));
+      section.appendChild(h2);
+      const code = (g.code && g.code[view]) || "";
+      const pre = document.createElement("pre");
+      if (code) { highlight(code, pre, python); } else { pre.appendChild(text("span", g.code ? "(empty)" : "(code saved to a file)", "muted")); }
+      section.appendChild(pre);
+      if (g.code && g.code.implementationNotes) { section.appendChild(text("div", g.code.implementationNotes, "notes")); }
+      main.appendChild(section);
+    });
+    (data.warnings || []).forEach(function (w) { main.appendChild(text("p", w, "warn")); });
+    notifySize();
+  }
+
+  window.addEventListener("message", function (event) {
+    const msg = event.data;
+    if (!msg || msg.jsonrpc !== "2.0") { return; }
+    if (msg.id != null && pending.has(msg.id) && !msg.method) {
+      const p = pending.get(msg.id); pending.delete(msg.id);
+      if (msg.error) { p.reject(msg.error); } else { p.resolve(msg.result); }
+      return;
+    }
+    if (msg.method === "ui/notifications/tool-result") { render(msg.params); }
+    else if (msg.method === "ui/notifications/tool-cancelled") { document.getElementById("status").textContent = "The translation was cancelled."; }
+    else if (msg.method === "ui/resource-teardown" && msg.id != null) { post({ id: msg.id, result: {} }); }
+    else if (msg.method === "ping" && msg.id != null) { post({ id: msg.id, result: {} }); }
+  });
+
+  request("ui/initialize", {
+    appInfo: { name: "nodetocode-translation-viewer", version: "1.0.0" },
+    appCapabilities: { availableDisplayModes: ["inline"] },
+    protocolVersion: PROTOCOL_VERSION
+  }).then(function () { post({ method: "ui/notifications/initialized", params: {} }); notifySize(); },
+          function (error) { document.getElementById("status").textContent = "The host did not start this viewer: " + (error && error.message || error); });
+})();
+</script>
+</body>
+</html>
