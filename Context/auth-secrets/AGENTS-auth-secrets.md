@@ -17,6 +17,14 @@ project file) can change, and the MCP server's bearer token. User pages: `wiki/S
 - `FN2CSecretStore::Get()` picks the backend. On Windows it moves the per-user file and a project's 1.x
   `Saved/NodeToCode/User/secrets.json` into Credential Manager once (`MigrateFileToBackend`: a differing value is
   kept as `<ProviderId>.Conflict.<n>`, the value is read back, and the file is deleted only on success).
+- Test prefix for hand checks (card 0523): a non-shipping build started with `-N2CSecretPrefix=NodeToCodeTest/<guid>/`
+  keeps keys under that target prefix instead of `NodeToCode/` (`FN2CCredentialManagerBackend::ResolveTargetPrefix`,
+  read once by `Get()`). Only prefixes under `NodeToCodeTest/` are accepted; anything else is ignored with a warning,
+  and shipping builds ignore the switch. With the override the per-user `secrets.json` is not migrated, the log says
+  "Secret store target prefix: ... (test override)", and the API Key Status rows read "Stored in Windows Credential
+  Manager (test prefix NodeToCodeTest/<guid>/) ...". Spec: `NodeToCode.Secrets.TestPrefix`. The macOS and Linux file
+  backend has no prefix (there is no keychain backend yet, decision 0001), so the switch changes nothing there.
+  How to run a windowed check with it: "Hand checks of API keys" in `Tests/mcp_probe/README.md`.
 - `GetApiKey` returns the stored key, else the first set environment variable: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`,
   `GEMINI_API_KEY` then `GOOGLE_API_KEY`, `DEEPSEEK_API_KEY` then `DEEPSEEK_API` (`GetEnvironmentVariableNames`).
   A variable is read, never saved; logs name the variable, never its value. `GetApiKeySource` says which

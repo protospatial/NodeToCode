@@ -5,7 +5,9 @@
 #include "HAL/FileManager.h"
 #include "HAL/PlatformMisc.h"
 #include "HAL/PlatformProcess.h"
+#include "Misc/CommandLine.h"
 #include "Misc/DateTime.h"
+#include "Misc/Parse.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "Misc/ScopeLock.h"
@@ -417,6 +419,40 @@ bool FN2CSecretFileBackend::StoreKey(const FString& ProviderId, const FString& K
 // FN2CCredentialManagerBackend
 
 const TCHAR* const FN2CCredentialManagerBackend::DefaultTargetPrefix = TEXT("NodeToCode/");
+const TCHAR* const FN2CCredentialManagerBackend::TestTargetRoot = TEXT("NodeToCodeTest/");
+
+FString FN2CCredentialManagerBackend::ResolveTargetPrefix(const TCHAR* CommandLine, FString* OutWarning)
+{
+#if UE_BUILD_SHIPPING
+    return DefaultTargetPrefix;
+#else
+    FString Value;
+    if (!CommandLine || !FParse::Value(CommandLine, TEXT("-N2CSecretPrefix="), Value))
+    {
+        return DefaultTargetPrefix;
+    }
+    Value.TrimStartAndEndInline();
+    Value.TrimQuotesInline();
+    Value.ReplaceInline(TEXT("\\"), TEXT("/"));
+    if (!Value.EndsWith(TEXT("/")))
+    {
+        Value += TEXT("/");
+    }
+    // Only a prefix below the test root, with something after it, keeps a hand check away from the user's own entries
+    const bool bUnderTestRoot = Value.StartsWith(TestTargetRoot, ESearchCase::CaseSensitive) && Value.Len() > FCString::Strlen(TestTargetRoot) + 1;
+    if (!bUnderTestRoot || Value.Contains(TEXT("*")) || Value.Contains(TEXT("..")))
+    {
+        if (OutWarning)
+        {
+            *OutWarning = FString::Printf(
+                TEXT("Ignored -N2CSecretPrefix=%s: a test prefix must start with %s and name a folder under it (for example %s<guid>/). API keys use %s."),
+                *Value, TestTargetRoot, TestTargetRoot, DefaultTargetPrefix);
+        }
+        return DefaultTargetPrefix;
+    }
+    return Value;
+#endif
+}
 
 #if PLATFORM_WINDOWS
 namespace
@@ -529,7 +565,10 @@ FString FN2CCredentialManagerBackend::Describe() const
 
 FString FN2CCredentialManagerBackend::GetDisplayName() const
 {
-    return TEXT("Windows Credential Manager");
+    // A test prefix is named, so the API Key Status rows and a screenshot show which entries were used
+    return TargetPrefix == DefaultTargetPrefix
+        ? FString(TEXT("Windows Credential Manager"))
+        : FString::Printf(TEXT("Windows Credential Manager (test prefix %s)"), *TargetPrefix);
 }
 
 FString FN2CCredentialManagerBackend::GetTargetName(const FString& ProviderId) const
@@ -718,8 +757,22 @@ FN2CSecretStore& FN2CSecretStore::Get()
     {
         if (FN2CCredentialManagerBackend::IsSupported())
         {
+            // A non-shipping build may point the store at NodeToCodeTest/<guid>/ for a hand check (card 0523)
+            FString Warning;
+            const FString Prefix = FN2CCredentialManagerBackend::ResolveTargetPrefix(FCommandLine::Get(), &Warning);
+            if (!Warning.IsEmpty())
+            {
+                FN2CLogger::Get().LogWarning(Warning, LogContext);
+            }
+            TUniquePtr<FN2CCredentialManagerBackend> Vault = MakeUnique<FN2CCredentialManagerBackend>(Prefix);
+            if (Prefix != FN2CCredentialManagerBackend::DefaultTargetPrefix)
+            {
+                // The user's secrets.json is not moved into a test prefix: it stays for the next normal start
+                FN2CLogger::Get().Log(FString::Printf(TEXT("Secret store target prefix: %s (test override, -N2CSecretPrefix)"), *Prefix),
+                    EN2CLogSeverity::Info, LogContext);
+                return Vault;
+            }
             // Windows: keys live in Credential Manager; a per-user or project secrets.json moves there once
-            TUniquePtr<FN2CCredentialManagerBackend> Vault = MakeUnique<FN2CCredentialManagerBackend>();
             MigrateFileToBackend(GetUserSecretsFilePath(), GetLegacyProjectSecretsFilePath(), *Vault);
             return Vault;
         }
