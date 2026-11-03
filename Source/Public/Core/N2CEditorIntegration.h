@@ -169,10 +169,19 @@ public:
     void SetTranslationInProgress(bool bInProgress);
 
     /**
-     * Request a translation from a graph overlay
-     * This broadcasts to the main window to show progress modal
+     * Requests a translation from a graph overlay (the N2C bar's Translate): broadcasts OnOverlayTranslationRequested,
+     * which the Node to Code window (SN2CMainWindow) handles by translating and showing the result. With the window
+     * closed nothing listens, so the window is opened first (OpenWindowForOverlayTranslation, card 0521); if it still
+     * does not listen, a warning and a notification say so.
+     * @return true when a listener received the request
      */
-    void RequestOverlayTranslation(const FGuid& GraphGuid, const FString& GraphName, const FString& BlueprintPath);
+    bool RequestOverlayTranslation(const FGuid& GraphGuid, const FString& GraphName, const FString& BlueprintPath);
+
+    /**
+     * Opens the Node to Code window, whose SN2CMainWindow subscribes to OnOverlayTranslationRequested while it exists.
+     * Unset: invokes the NodeToCodeEditor nomad tab (SN2CEditorWindow::TabId). Specs replace it.
+     */
+    TFunction<void()> OpenWindowForOverlayTranslation;
 
     /** Delegate fired when global translation state changes */
     FOnN2CTranslationStateChanged OnTranslationStateChanged;

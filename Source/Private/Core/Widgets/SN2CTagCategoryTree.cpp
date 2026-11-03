@@ -101,7 +101,7 @@ FText SN2CTagCategoryTree::GetEmptyText() const
 	{
 		return FText::Format(LOCTEXT("TreeEmptySearch", "No tag or category matches \"{0}\"."), FText::FromString(CurrentSearchFilter));
 	}
-	return LOCTEXT("TreeEmptyNoTags", "No tagged graphs yet.\n\nOpen a Blueprint, click the tag button on the N2C bar at the top right of a graph, and give the graph a tag. It shows up here.");
+	return LOCTEXT("TreeEmptyNoTags", "No tagged graphs yet.\n\nOpen a Blueprint, click the tag button on the N2C bar at the bottom left of a graph, and give the graph a tag. It shows up here.");
 }
 
 TArray<FN2CTaggedBlueprintGraph> SN2CTagCategoryTree::GetTags() const

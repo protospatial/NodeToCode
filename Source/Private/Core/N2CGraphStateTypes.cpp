@@ -48,6 +48,30 @@ TSharedPtr<FJsonObject> FN2CTranslationState::ToJson() const
 	JsonObject->SetStringField(TEXT("model"), Model);
 	JsonObject->SetStringField(TEXT("language"), Language);
 	JsonObject->SetObjectField(TEXT("summary"), Summary.ToJson());
+	// The archive run and its files (card 0253); records without them are read the old way
+	if (!RunId.IsEmpty())
+	{
+		JsonObject->SetStringField(TEXT("runId"), RunId);
+	}
+	if (!ManifestPath.IsEmpty())
+	{
+		JsonObject->SetStringField(TEXT("manifestPath"), ManifestPath);
+	}
+	if (!ImplementationFile.IsEmpty() || !DeclarationFile.IsEmpty() || !NotesFile.IsEmpty())
+	{
+		const TSharedPtr<FJsonObject> Files = MakeShared<FJsonObject>();
+		Files->SetStringField(TEXT("implementation"), ImplementationFile);
+		Files->SetStringField(TEXT("declaration"), DeclarationFile);
+		Files->SetStringField(TEXT("notes"), NotesFile);
+		JsonObject->SetObjectField(TEXT("files"), Files);
+	}
+	if (InputTokens > 0 || OutputTokens > 0)
+	{
+		const TSharedPtr<FJsonObject> Usage = MakeShared<FJsonObject>();
+		Usage->SetNumberField(TEXT("inputTokens"), InputTokens);
+		Usage->SetNumberField(TEXT("outputTokens"), OutputTokens);
+		JsonObject->SetObjectField(TEXT("usage"), Usage);
+	}
 	return JsonObject;
 }
 
@@ -73,6 +97,22 @@ FN2CTranslationState FN2CTranslationState::FromJson(const TSharedPtr<FJsonObject
 		if (JsonObject->TryGetObjectField(TEXT("summary"), SummaryObject))
 		{
 			State.Summary = FN2CTranslationSummary::FromJson(*SummaryObject);
+		}
+
+		JsonObject->TryGetStringField(TEXT("runId"), State.RunId);
+		JsonObject->TryGetStringField(TEXT("manifestPath"), State.ManifestPath);
+		const TSharedPtr<FJsonObject>* Files;
+		if (JsonObject->TryGetObjectField(TEXT("files"), Files))
+		{
+			(*Files)->TryGetStringField(TEXT("implementation"), State.ImplementationFile);
+			(*Files)->TryGetStringField(TEXT("declaration"), State.DeclarationFile);
+			(*Files)->TryGetStringField(TEXT("notes"), State.NotesFile);
+		}
+		const TSharedPtr<FJsonObject>* Usage;
+		if (JsonObject->TryGetObjectField(TEXT("usage"), Usage))
+		{
+			(*Usage)->TryGetNumberField(TEXT("inputTokens"), State.InputTokens);
+			(*Usage)->TryGetNumberField(TEXT("outputTokens"), State.OutputTokens);
 		}
 	}
 	return State;

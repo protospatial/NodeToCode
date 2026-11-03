@@ -6,6 +6,8 @@
 #include "Widgets/SCompoundWidget.h"
 #include "Models/N2CBatchTranslationTypes.h"
 
+struct FN2CTagInfo;
+
 /**
  * Status for a batch progress item
  */
@@ -23,6 +25,9 @@ enum class EN2CBatchProgressItemStatus : uint8
 struct FN2CBatchProgressItem
 {
 	FString GraphName;
+
+	/** Name of the Blueprint holding the graph, shown beside it so same-named graphs can be told apart; may be empty */
+	FString BlueprintName;
 	EN2CBatchProgressItemStatus Status;
 	/** Why a failed item failed (the typed translation error's display string); empty otherwise */
 	FString ErrorMessage;
@@ -65,7 +70,15 @@ public:
 	void Initialize(const TArray<FString>& GraphNames);
 
 	/**
-	 * Update progress to show current item being processed
+	 * Initialize the modal with a batch's graphs, one row per graph in batch order, each labelled with its Blueprint.
+	 * Rows are then addressed by item index (SetProgress, MarkItemCompleteAt), so graphs with the same name in different
+	 * Blueprints (EventGraph, a function name) each keep their own status (card 0489).
+	 */
+	void Initialize(const TArray<FN2CTagInfo>& Graphs);
+
+	/**
+	 * Update progress to show current item being processed: the row at CurrentIndex is marked in progress (rows are
+	 * addressed by index, not by name)
 	 * @param CurrentIndex Zero-based index of current item
 	 * @param TotalCount Total number of items
 	 * @param CurrentGraphName Name of the graph currently being processed
@@ -80,8 +93,20 @@ public:
 	 */
 	void MarkItemComplete(const FString& GraphName, bool bSuccess, const FString& ErrorMessage = FString());
 
+	/**
+	 * Mark the row at ItemIndex (the orchestrator's item index) as completed or failed. Use this for batches: the name
+	 * overload finds the first row with that name, which is wrong when several graphs share it.
+	 */
+	void MarkItemCompleteAt(int32 ItemIndex, bool bSuccess, const FString& ErrorMessage = FString());
+
 	/** The error message recorded for an item, empty if none (for tests and callers) */
 	FString GetItemErrorMessage(const FString& GraphName) const;
+
+	/** The rows in order (for tests and callers) */
+	const TArray<TSharedPtr<FN2CBatchProgressItem>>& GetItems() const { return ProgressItems; }
+
+	/** The label a row shows: "Graph (Blueprint)", or the graph name alone */
+	static FString GetItemLabel(const FN2CBatchProgressItem& Item);
 
 	/**
 	 * Set the final result when batch is complete

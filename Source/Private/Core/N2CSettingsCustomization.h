@@ -5,6 +5,7 @@
 
 #include "CoreMinimal.h"
 #include "IPropertyTypeCustomization.h"
+#include "LLM/N2CLLMTypes.h"
 #include "MCP/Server/N2CMcpClientConfig.h"
 
 /** What the Write MCP Client Config row in Project Settings writes: every client, one client, or the Claude Desktop snippet */
@@ -64,4 +65,27 @@ public:
 
 	/** The notification text for an outcome: each file written, unchanged or not written, and the token note */
 	static FText Summarize(const FN2CClientConfigOutcome& Outcome, bool bWithToken);
+};
+
+/**
+ * Project Settings > Plugins > Node to Code > LLM Services > <Provider> (card 0488): draws the Saved Key row, a
+ * UN2CSettings FN2CApiKeyRemover property, as a Remove Saved <Provider> Key button. The button is enabled while a key
+ * is saved for the provider (not one from the environment), removes it through UN2CSettings::SetApiKey (empty key) and
+ * says so in a notification. Registered beside FN2CSettingsCustomization.
+ */
+class FN2CApiKeyRemoverCustomization : public IPropertyTypeCustomization
+{
+public:
+	static TSharedRef<IPropertyTypeCustomization> MakeInstance();
+
+	virtual void CustomizeHeader(TSharedRef<IPropertyHandle> PropertyHandle, FDetailWidgetRow& HeaderRow,
+		IPropertyTypeCustomizationUtils& CustomizationUtils) override;
+	virtual void CustomizeChildren(TSharedRef<IPropertyHandle> PropertyHandle, IDetailChildrenBuilder& ChildBuilder,
+		IPropertyTypeCustomizationUtils& CustomizationUtils) override {}
+
+	/** The button's label: "Remove Saved <Provider> Key" */
+	static FText GetButtonLabel(EN2CLLMProvider Provider);
+
+	/** Whether there is a saved key to remove (the store holds one; an environment key is not removable here) */
+	static bool CanRemove(EN2CLLMProvider Provider);
 };

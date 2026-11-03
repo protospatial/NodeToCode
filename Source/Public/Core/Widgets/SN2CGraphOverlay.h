@@ -15,7 +15,7 @@ class SN2CCircularProgressBar;
 struct FN2CTagInfo;
 
 /**
- * Overlay widget that appears in the top-right corner of Blueprint graph editors
+ * Overlay widget (the N2C bar) that appears in the bottom-left corner of Blueprint graph editors
  * Provides quick access to:
  * - Copy graph JSON to clipboard
  * - Initiate LLM translation

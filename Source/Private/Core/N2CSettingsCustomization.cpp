@@ -3,6 +3,7 @@
 
 #include "Core/N2CSettingsCustomization.h"
 #include "Core/N2CSettings.h"
+#include "Core/N2CSecretStore.h"
 #include "Core/N2CUserSettings.h"
 #include "DetailLayoutBuilder.h"
 #include "PropertyHandle.h"
@@ -67,6 +68,8 @@ void FN2CSettingsCustomization::Register()
 	FPropertyEditorModule& PropertyEditor = FModuleManager::LoadModuleChecked<FPropertyEditorModule>(TEXT("PropertyEditor"));
 	PropertyEditor.RegisterCustomPropertyTypeLayout(FN2CMcpClientConfigWriter::StaticStruct()->GetFName(),
 		FOnGetPropertyTypeCustomizationInstance::CreateStatic(&FN2CSettingsCustomization::MakeInstance));
+	PropertyEditor.RegisterCustomPropertyTypeLayout(FN2CApiKeyRemover::StaticStruct()->GetFName(),
+		FOnGetPropertyTypeCustomizationInstance::CreateStatic(&FN2CApiKeyRemoverCustomization::MakeInstance));
 }
 
 void FN2CSettingsCustomization::Unregister()
@@ -74,7 +77,61 @@ void FN2CSettingsCustomization::Unregister()
 	if (FPropertyEditorModule* PropertyEditor = FModuleManager::GetModulePtr<FPropertyEditorModule>(TEXT("PropertyEditor")))
 	{
 		PropertyEditor->UnregisterCustomPropertyTypeLayout(FN2CMcpClientConfigWriter::StaticStruct()->GetFName());
+		PropertyEditor->UnregisterCustomPropertyTypeLayout(FN2CApiKeyRemover::StaticStruct()->GetFName());
 	}
+}
+
+TSharedRef<IPropertyTypeCustomization> FN2CApiKeyRemoverCustomization::MakeInstance()
+{
+	return MakeShared<FN2CApiKeyRemoverCustomization>();
+}
+
+FText FN2CApiKeyRemoverCustomization::GetButtonLabel(EN2CLLMProvider Provider)
+{
+	return FText::Format(LOCTEXT("RemoveSavedKey", "Remove Saved {0} Key"), FText::FromString(FN2CSecretStore::GetProviderId(Provider)));
+}
+
+bool FN2CApiKeyRemoverCustomization::CanRemove(EN2CLLMProvider Provider)
+{
+	return !FN2CSecretStore::GetProviderId(Provider).IsEmpty()
+		&& FN2CSecretStore::Get().GetApiKeySource(Provider) == EN2CApiKeySource::Store;
+}
+
+void FN2CApiKeyRemoverCustomization::CustomizeHeader(TSharedRef<IPropertyHandle> PropertyHandle, FDetailWidgetRow& HeaderRow,
+	IPropertyTypeCustomizationUtils& CustomizationUtils)
+{
+	// Which provider the row is for: the struct's only field
+	EN2CLLMProvider Provider = EN2CLLMProvider::Anthropic;
+	TArray<void*> RawData;
+	PropertyHandle->AccessRawData(RawData);
+	if (RawData.Num() > 0 && RawData[0])
+	{
+		Provider = static_cast<const FN2CApiKeyRemover*>(RawData[0])->Provider;
+	}
+
+	HeaderRow
+	.NameContent()
+	[
+		PropertyHandle->CreatePropertyNameWidget()
+	]
+	.ValueContent()
+	.MinDesiredWidth(220.0f)
+	[
+		SNew(SButton)
+		.Text(GetButtonLabel(Provider))
+		.ToolTipText(PropertyHandle->GetToolTipText())
+		.IsEnabled_Lambda([Provider]() { return CanRemove(Provider); })
+		.OnClicked_Lambda([Provider]()
+		{
+			const bool bRemoved = UN2CSettings::SetApiKey(Provider, FString());
+			const FString Id = FN2CSecretStore::GetProviderId(Provider);
+			N2CSettingsCustomizationPrivate::Notify(bRemoved
+				? FText::Format(LOCTEXT("KeyRemoved", "Removed the saved {0} key."), FText::FromString(Id))
+				: FText::Format(LOCTEXT("KeyNotRemoved", "Could not remove the saved {0} key; the Output Log says why."), FText::FromString(Id)),
+				bRemoved);
+			return FReply::Handled();
+		})
+	];
 }
 
 FText FN2CSettingsCustomization::GetChoiceLabel(EN2CClientConfigChoice Choice)

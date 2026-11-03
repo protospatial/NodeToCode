@@ -114,17 +114,19 @@ enum class EN2CMcpToolProfile : uint8
 
 /**
  * What the MCP server does with the NodeToCode tools that Epic's Unreal MCP also has on UE 5.8 (Project Settings:
- * Overlapping Tools; card 0174). Which tools overlap, and the default, are in N2CMcpEpicOverlap.h.
+ * Overlapping Tools; card 0174). Which tools overlap, and the default, are in N2CMcpEpicOverlap.h. Automatic follows
+ * N2CMcpEpicOverlap::bLeaveToUnrealMcpByDefault. The options carry ToolTip metadata for users and no comments, because
+ * UHT turns a comment above an enumerator into its tooltip (card 0487).
  */
 UENUM()
 enum class EN2CMcpOverlappingTools : uint8
 {
-	/** NodeToCode's default (N2CMcpEpicOverlap::bLeaveToUnrealMcpByDefault): on UE 5.8 with Unreal MCP and EditorToolset enabled, the Default toolsets profile leaves them out */
-	Automatic UMETA(DisplayName = "Automatic (leave them to Unreal MCP on UE 5.8)"),
+	Automatic UMETA(DisplayName = "Automatic (leave them to Unreal MCP on UE 5.8)",
+		ToolTip = "NodeToCode's default: on UE 5.8, when the Unreal MCP and EditorToolset plugins are enabled, the Default toolsets profile leaves these tools to Unreal MCP. A Custom profile serves its toolsets as chosen."),
 
-	/** Left out of every profile whenever Unreal MCP and EditorToolset are enabled (UE 5.8) */
-	LeaveToUnrealMcp UMETA(DisplayName = "Leave them to Unreal MCP when it is enabled"),
+	LeaveToUnrealMcp UMETA(DisplayName = "Leave them to Unreal MCP when it is enabled",
+		ToolTip = "Left out of every tool profile whenever the Unreal MCP and EditorToolset plugins are enabled (UE 5.8)."),
 
-	/** Always served, as on UE 5.6 and 5.7 */
-	AlwaysServe UMETA(DisplayName = "Always serve them"),
+	AlwaysServe UMETA(DisplayName = "Always serve them",
+		ToolTip = "Always served, as on UE 5.6 and 5.7."),
 };
