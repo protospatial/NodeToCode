@@ -8,10 +8,12 @@
 #include "MCP/Tools/N2CMcpToolTypes.h"
 #include "MCP/Tools/N2CToolCallContext.h"
 #include "Containers/Ticker.h"
+#include "Dom/JsonObject.h"
 #include <atomic>
 
 /**
- * One translate-focused-blueprint call.
+ * One long-running translation call: translate-focused-blueprint (the default request source, the focused Blueprint)
+ * and translate-material (card 0455, a material request source).
  *
  * Everything runs on the game thread: Start() collects the Blueprint JSON, builds the request and sends it, then
  * returns the call's future at once. The LLM completion (an HTTP completion, also on the game thread) sets the
@@ -30,12 +32,29 @@ public:
         const FString& /*LanguageId*/, const FOnLLMResponseReceived& /*OnComplete*/)>;
 
     /**
+     * Where a call's request comes from (card 0455). The default (no Start) translates the focused Blueprint;
+     * translate-material passes one that sends its captured material. Progress texts name the subject.
+     */
+    struct FRequestSource
+    {
+        /** Starts the request; unset: the focused Blueprint (FN2CEditorIntegration::TranslateFocusedBlueprintAsync) */
+        FRequestStarter Start;
+        /** Progress text before the request is started */
+        FString StartingMessage = TEXT("Collecting the focused Blueprint");
+        /** Progress text once the request is sent */
+        FString SentMessage = TEXT("Translation request sent to the LLM provider");
+        /** Fields added to a successful result's JSON (translate-material: target) */
+        TSharedPtr<FJsonObject> ResultFields;
+    };
+
+    /**
      * @param InContext The call's progress channel and cancellation signal
      * @param InProviderId, InModelId, InLanguageId Overrides as the client sent them (already checked; empty = default)
      * @param InWarnings Added as a "warnings" array to the result JSON (for example an unrecognised model ID)
+     * @param InSource Where the request comes from; the default is the focused Blueprint
      */
     FN2CTranslateBlueprintCall(const FN2CToolCallContextRef& InContext, const FString& InProviderId, const FString& InModelId,
-        const FString& InLanguageId, const TArray<FString>& InWarnings = TArray<FString>());
+        const FString& InLanguageId, const TArray<FString>& InWarnings = TArray<FString>(), FRequestSource InSource = FRequestSource());
 
     /** Sets a result if none was set (a call dropped before it started), so the promise is never broken */
     ~FN2CTranslateBlueprintCall();
@@ -49,7 +68,7 @@ public:
      */
     bool Tick(float DeltaTime);
 
-    /** Replaces the default request (translate the focused Blueprint). For tests that cannot focus a Blueprint headless. */
+    /** Replaces the request source's Start (tests: a fake provider, or no focused Blueprint headless) */
     void SetRequestStarter(FRequestStarter InStarter) { RequestStarter = MoveTemp(InStarter); }
 
     /** Overrides the 1-hour timeout (tests) */
@@ -111,8 +130,11 @@ private:
     /** Sets the call's result once, stops the ticker and lets the call go */
     void Finish(const FMcpToolCallResult& Result);
 
-    /** Adds the warnings array to a JSON object result text; other text is returned unchanged */
-    FString WithWarnings(const FString& Text) const;
+    /**
+     * Adds the warnings array (and, with bSuccess, the source's ResultFields) to a JSON object result text; other text
+     * is returned unchanged
+     */
+    FString WithWarnings(const FString& Text, bool bSuccess = false) const;
 
     /** Removes the progress ticker */
     void StopTicker();
@@ -122,6 +144,7 @@ private:
     FString ModelId;
     FString LanguageId;
     TArray<FString> Warnings;
+    FRequestSource Source;
 
     TPromise<FMcpToolCallResult> Promise;
     std::atomic<bool> bFinished{false};

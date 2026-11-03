@@ -104,6 +104,7 @@ namespace N2CToolPresentationSpecPrivate
 		{ TEXT("tag-blueprint-graph"), W, false, true, false },
 		{ TEXT("translate-batch"), W, false, false, true },
 		{ TEXT("translate-focused-blueprint"), W, false, false, true },
+		{ TEXT("translate-material"), R, false, true, true },
 	};
 
 	const FExpectedHints* FindExpected(const FString& Name)
@@ -121,7 +122,7 @@ namespace N2CToolPresentationSpecPrivate
 	/** The tools whose results can be large: _meta["anthropic/maxResultSizeChars"] = 200000 */
 	const TSet<FString>& LargeResultTools()
 	{
-		static const TSet<FString> Names = { TEXT("get-focused-blueprint"), TEXT("read-file"), TEXT("translate-focused-blueprint") };
+		static const TSet<FString> Names = { TEXT("get-focused-blueprint"), TEXT("read-file"), TEXT("translate-focused-blueprint"), TEXT("translate-material") };
 		return Names;
 	}
 
@@ -334,7 +335,7 @@ void FN2CToolPresentationSpec::Define()
 
 	It(TEXT("follows the hint rules by tool name"), [this]()
 	{
-		const TSet<FString> OpenWorld = { TEXT("translate-batch"), TEXT("translate-focused-blueprint"), TEXT("run-python"), TEXT("call_tool") };
+		const TSet<FString> OpenWorld = { TEXT("translate-batch"), TEXT("translate-focused-blueprint"), TEXT("translate-material"), TEXT("run-python"), TEXT("call_tool") };
 		for (const FN2CToolPresentation& Entry : FN2CToolCatalog::GetPresentations())
 		{
 			const FString& Name = Entry.Name;

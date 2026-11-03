@@ -77,6 +77,8 @@ namespace N2CToolPresentationPrivate
 			Read(TEXT("get-blueprint-dependencies"), TEXT("Read the dependency order of Blueprints")),
 			// Materials (decision 0009)
 			Read(TEXT("get-material-n2cjson"), TEXT("Read a Material as N2C JSON")),
+			// Writes nothing in the project (no archive run until card 0465); sends the material to the LLM provider
+			Large(Make(TEXT("translate-material"), TEXT("Explain a Material in pseudocode"), FMcpToolAnnotations(true, false, true, true))),
 			AlwaysLoad(Read(TEXT("get-blueprint-n2cjson"), TEXT("Read a Blueprint as N2C JSON"))),
 			Read(TEXT("get-editor-context"), TEXT("Read what the user is looking at")),
 			AlwaysLoad(Large(Read(TEXT("get-focused-blueprint"), TEXT("Read the focused Blueprint graph")))),

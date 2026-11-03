@@ -172,7 +172,7 @@ void FN2CMcpUntrustedContentSpec::Define()
 				TEXT("get-blueprint-n2cjson"), TEXT("list-blueprint-graphs"), TEXT("get-editor-context"),
 				TEXT("translate-focused-blueprint"), TEXT("export-n2cjson-batch"), TEXT("translate-batch"),
 				TEXT("get-blueprint-dependencies"), TEXT("create-migration-plan"),
-				TEXT("get-material-n2cjson")};
+				TEXT("get-material-n2cjson"), TEXT("translate-material")};
 			TSet<FString> Declared;
 			for (const TSharedPtr<IN2CMcpTool>& Tool : FN2CMcpToolRegistry::Get().GetTools())
 			{

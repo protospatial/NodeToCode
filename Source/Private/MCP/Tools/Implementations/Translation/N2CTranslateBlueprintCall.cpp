@@ -19,13 +19,15 @@
 #include "HAL/PlatformTime.h"
 
 FN2CTranslateBlueprintCall::FN2CTranslateBlueprintCall(const FN2CToolCallContextRef& InContext, const FString& InProviderId,
-    const FString& InModelId, const FString& InLanguageId, const TArray<FString>& InWarnings)
+    const FString& InModelId, const FString& InLanguageId, const TArray<FString>& InWarnings, FRequestSource InSource)
     : Context(InContext)
     , ProviderId(InProviderId)
     , ModelId(InModelId)
     , LanguageId(InLanguageId)
     , Warnings(InWarnings)
+    , Source(MoveTemp(InSource))
 {
+    RequestStarter = Source.Start;
 }
 
 FN2CTranslateBlueprintCall::~FN2CTranslateBlueprintCall()
@@ -66,7 +68,7 @@ TFuture<FMcpToolCallResult> FN2CTranslateBlueprintCall::Start()
     });
 
     StartTime = FPlatformTime::Seconds();
-    Context->ReportProgress(0.02f, TEXT("Collecting the focused Blueprint"));
+    Context->ReportProgress(0.02f, Source.StartingMessage);
 
     // The callback holds the call weakly: a callback that arrives after the result was set touches nothing
     FOnLLMResponseReceived OnLLMResponse = FOnLLMResponseReceived::CreateLambda([WeakCall](const FString& LLMResponse)
@@ -86,7 +88,7 @@ TFuture<FMcpToolCallResult> FN2CTranslateBlueprintCall::Start()
         // An error found before sending completed the request inside the call
         return Future;
     }
-    Context->ReportProgress(ProgressAfterSend, TEXT("Translation request sent to the LLM provider"));
+    Context->ReportProgress(ProgressAfterSend, Source.SentMessage);
 
     // Progress and timeout from the core ticker; nothing waits on a thread
     TickerHandle = FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda([WeakCall](float DeltaTime)
@@ -149,7 +151,7 @@ void FN2CTranslateBlueprintCall::HandleLLMResponse(const FString& LLMResponse)
     {
         Context->ReportProgress(ProgressParsing, TEXT("LLM response received; parsing the translation"));
     }
-    const FString Text = WithWarnings(LLMResponse);
+    const FString Text = WithWarnings(LLMResponse, !bIsError);
     FMcpToolCallResult Result = FMcpToolCallResult::CreateErrorResult(Text);
     if (!bIsError)
     {
@@ -320,7 +322,7 @@ TOptional<FMcpToolCallResult> FN2CTranslateBlueprintCall::BuildSuccessResult(con
         }
     }
     Summary->SetArrayField(TEXT("graphs"), Graphs);
-    for (const TCHAR* Field : { TEXT("usage"), TEXT("warnings"), TEXT("run_folder"), TEXT("files") })
+    for (const TCHAR* Field : { TEXT("usage"), TEXT("warnings"), TEXT("run_folder"), TEXT("files"), TEXT("target") })
     {
         if (const TSharedPtr<FJsonValue> Value = Translation->TryGetField(Field))
         {
@@ -344,9 +346,10 @@ TOptional<FMcpToolCallResult> FN2CTranslateBlueprintCall::BuildSuccessResult(con
     return Saved;
 }
 
-FString FN2CTranslateBlueprintCall::WithWarnings(const FString& Text) const
+FString FN2CTranslateBlueprintCall::WithWarnings(const FString& Text, bool bSuccess) const
 {
-    if (Warnings.Num() == 0)
+    const bool bAddFields = bSuccess && Source.ResultFields.IsValid() && Source.ResultFields->Values.Num() > 0;
+    if (Warnings.Num() == 0 && !bAddFields)
     {
         return Text;
     }
@@ -355,12 +358,22 @@ FString FN2CTranslateBlueprintCall::WithWarnings(const FString& Text) const
     {
         return Text;
     }
-    TArray<TSharedPtr<FJsonValue>> Values;
-    for (const FString& Warning : Warnings)
+    if (Warnings.Num() > 0)
     {
-        Values.Add(MakeShared<FJsonValueString>(Warning));
+        TArray<TSharedPtr<FJsonValue>> Values;
+        for (const FString& Warning : Warnings)
+        {
+            Values.Add(MakeShared<FJsonValueString>(Warning));
+        }
+        Object->SetArrayField(TEXT("warnings"), Values);
     }
-    Object->SetArrayField(TEXT("warnings"), Values);
+    if (bAddFields)
+    {
+        for (const TPair<FString, TSharedPtr<FJsonValue>>& Field : Source.ResultFields->Values)
+        {
+            Object->SetField(Field.Key, Field.Value);
+        }
+    }
 
     FString Out;
     const TSharedRef<TJsonWriter<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>> Writer =

@@ -1,7 +1,7 @@
 # Material Tools
 
-This directory holds `get-material-n2cjson` (card 0453), the first tool of the `MaterialTools` toolset and the
-agent-facing half of the Material MVP (decision 0009): a whole Material or Material Function as N2C JSON in one call,
+This directory holds `get-material-n2cjson` (card 0453) and `translate-material` (card 0455), the `MaterialTools`
+toolset and the agent-facing half of the Material MVP (decision 0009): a whole Material or Material Function as N2C JSON in one call,
 which Epic's UE 5.8 MaterialTools lacks and which is the only route on UE 5.6 and 5.7. The capture itself is lane-a's
 `N2C::CaptureMaterialAsset` (`Source/Public/Core/N2CCapture.h`, cards 0449-0451).
 
@@ -50,3 +50,34 @@ which Epic's UE 5.8 MaterialTools lacks and which is the only route on UE 5.6 an
   by a focus read and not by a path read, the fallback on close, a Material Function editor);
   `Tests/python/test_material_n2cjson.py`; live `Tests/mcp_probe/live_material_0453.py` and
   `Tests/mcp_probe/live_material_focus_0463.py`
+
+### translate-material
+- **Description**: Explains a Material or Material Function in Pseudocode with an LLM provider. Long-running and
+  cancellable. The material is resolved and captured exactly as `get-material-n2cjson` does
+  (`FN2CMcpGetMaterialN2CJsonTool::ResolveAndCapture`: by path the saved asset, with no path the focused Material
+  Editor's working copy), serialized with `FN2CSerializer::ToJson`, and sent through
+  `UN2CLLMModule::ProcessN2CJsonWithOverrides` in Pseudocode. The module picks the `MaterialGen` prompt from
+  `metadata.asset_kind` (card 0454)
+- **Request source**: `FN2CTranslateBlueprintCall` with an `FRequestSource` (card 0455): `Start` is
+  `FN2CMcpTranslateMaterialTool::StartMaterialRequest`, the progress texts name the material ("Captured material
+  WorldGridMaterial", "Explanation of material WorldGridMaterial requested from the LLM provider"), and `ResultFields`
+  adds `target` to a successful result. Tests replace only the starter (`SetRequestStarterForTesting`, which also gets
+  the N2C JSON)
+- **Arguments**: `materialPath` (optional, as get-material-n2cjson), `provider`, `model` (as
+  translate-focused-blueprint), `language` (optional, default and only value `pseudocode`)
+- **Progress**: streamed on the same POST on UE 5.8 with a progressToken; one held response on UE 5.6 and 5.7
+  (decision 0013). An MCP task when the client asks (`execution.taskSupport` optional, card 0211)
+- **Returns**: the explanation as translate-focused-blueprint returns a translation (`graphs` with `code`, `usage`,
+  `warnings`), plus `target` {`assetPath`, `kind`, `resolvedBy`, `workingCopy`, `workingCopyPath`}; marked untrusted.
+  **Nothing is written to the translation archive** (`bArchiveRun` false, so no `run_folder`/`files`) until card 0465;
+  a result over 200,000 characters goes to `Saved/NodeToCode/Exports/Translations` with a resource_link
+- **Errors, all before any provider is created**: `TARGET_NOT_AVAILABLE_FOR_MATERIALS` (any language but pseudocode),
+  an unknown provider or language ID (with the valid IDs), `NO_FOCUSED_MATERIAL`, `ASSET_NOT_FOUND`,
+  `UNSUPPORTED_ASSET_TYPE`, `CAPTURE_FAILED`. Provider failures come back as translate-focused-blueprint's
+  `TRANSLATION_<KIND>` codes
+- **Data sent**: the whole captured material, Custom node code and include paths among it (threat model, "Data sent to
+  an LLM")
+- **Hints**: read-only, idempotent, open world (it changes nothing in the project but calls the provider)
+- **Tests**: `NodeToCode.MCP.TranslateMaterial` (`Source/Private/Tests/MCP/N2CTranslateMaterial.spec.cpp`, a fake
+  provider: the request holds WorldGridMaterial's material document, progress names it, the result has `target` and no
+  `run_folder`, cancel, the refusals with no request); live `Tests/mcp_probe/live_translate_material_0455.py`

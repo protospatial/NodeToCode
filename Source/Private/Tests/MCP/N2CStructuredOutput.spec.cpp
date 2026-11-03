@@ -43,6 +43,8 @@ namespace N2CStructuredOutputSpec
 		TEXT("get-blueprint-dependencies"),
 		// Card 0323: its structured result is checked by NodeToCode.Migration.Plan (the dependency fixtures)
 		TEXT("create-migration-plan"),
+		// Card 0455: translate-focused-blueprint's schema plus target; its structured result is checked by NodeToCode.MCP.TranslateMaterial
+		TEXT("translate-material"),
 	};
 
 	FString Condensed(const TSharedPtr<FJsonObject>& Object)

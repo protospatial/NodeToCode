@@ -103,11 +103,16 @@ bool FN2CMcpBlueprintPrompts::ResolveLanguage(const FMcpPromptArguments& Argumen
 
 FString FN2CMcpBlueprintPrompts::CodeGenInstructions(EN2CCodeLanguage Language)
 {
-	// The same assembly as the in-editor translation: CodeGen_<Language>.md with the shared N2C JSON specification
+	return TranslationInstructions(N2C::BlueprintPromptFamily, Language);
+}
+
+FString FN2CMcpBlueprintPrompts::TranslationInstructions(const TCHAR* Family, EN2CCodeLanguage Language)
+{
+	// The same assembly as the in-editor translation: <Family>_<Language>.md with the shared N2C JSON specification
 	// and response format (card 0132)
 	const TStrongObjectPtr<UN2CSystemPromptManager> Manager(NewObject<UN2CSystemPromptManager>(GetTransientPackage()));
 	Manager->Initialize(FN2CLLMConfig());
-	return Manager->GetLanguageSpecificPrompt(N2C::BlueprintPromptFamily, Language);
+	return Manager->GetLanguageSpecificPrompt(Family, Language);
 }
 
 void FN2CMcpBlueprintPrompts::AppendBlueprint(FMcpPromptResult& Result, const FMcpResourceContents& Blueprint)
@@ -154,9 +159,31 @@ FMcpPromptResult FN2CMcpCodeGenerationPrompt::GetPrompt(const FMcpPromptArgument
 		return Error;
 	}
 
-	return ExecuteOnGameThread<FMcpPromptResult>([Arguments, Language]() -> FMcpPromptResult
+	return ExecuteOnGameThread<FMcpPromptResult>([Arguments, Language]() mutable -> FMcpPromptResult
 	{
 		FMcpPromptResult Result;
+
+		// The prompt family follows the document (card 0455): a material document gets the MaterialGen instructions,
+		// which explain in Pseudocode only (Pseudocode when no language was asked for)
+		const FMcpResourceContents Document = FN2CMcpResourceManager::Get().ReadResource(BlueprintUri);
+		const TCHAR* Family = N2C::GetPromptFamilyForDocument(Document.Text);
+		if (Family != N2C::BlueprintPromptFamily && Arguments.FindRef(TEXT("language")).TrimStartAndEnd().IsEmpty())
+		{
+			for (const FN2CMcpPromptLanguage& Candidate : FN2CMcpBlueprintPrompts::Languages())
+			{
+				if (N2C::IsLanguageAvailableForFamily(Family, Candidate.Language))
+				{
+					Language = Candidate;
+					break;
+				}
+			}
+		}
+		if (!N2C::IsLanguageAvailableForFamily(Family, Language.Language))
+		{
+			Result.ErrorCode = JsonRpcErrorCodes::InvalidParams;
+			Result.ErrorMessage = N2C::TargetNotAvailableForMaterialsMessage(Language.Language);
+			return Result;
+		}
 
 		FString Style = Arguments.FindRef(TEXT("style"));
 		if (Style.IsEmpty())
@@ -179,9 +206,9 @@ FMcpPromptResult FN2CMcpCodeGenerationPrompt::GetPrompt(const FMcpPromptArgument
 			TEXT("Translate the Unreal Engine Blueprint given at the end of this prompt to %s, following NodeToCode's ")
 			TEXT("translation instructions below. Make the code %s and optimize for %s.\n\n")
 			TEXT("<n2c_translation_instructions>\n%s\n</n2c_translation_instructions>"),
-			*Language.DisplayName, *Style, *Optimization, *FN2CMcpBlueprintPrompts::CodeGenInstructions(Language.Language))));
+			*Language.DisplayName, *Style, *Optimization, *FN2CMcpBlueprintPrompts::TranslationInstructions(Family, Language.Language))));
 
-		FN2CMcpBlueprintPrompts::AppendBlueprint(Result, FN2CMcpResourceManager::Get().ReadResource(BlueprintUri));
+		FN2CMcpBlueprintPrompts::AppendBlueprint(Result, Document);
 		return Result;
 	});
 }
