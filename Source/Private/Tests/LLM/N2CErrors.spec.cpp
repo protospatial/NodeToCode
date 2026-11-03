@@ -223,6 +223,7 @@ BEGIN_DEFINE_SPEC(FN2CErrorsSpec, "NodeToCode.LLM.Errors",
 	};
 
 	FStubProvider Stub;
+	int32 RetriesBefore = 3;
 
 END_DEFINE_SPEC(FN2CErrorsSpec)
 
@@ -360,10 +361,14 @@ void FN2CErrorsSpec::Define()
 		BeforeEach([this]()
 		{
 			TestTrue(TEXT("stub provider listening"), Stub.Start());
+			// The stub answers every attempt the same: no retries, so each answer is the result at once (card 0215)
+			RetriesBefore = GetMutableDefault<UN2CSettings>()->MaxRequestRetries;
+			GetMutableDefault<UN2CSettings>()->MaxRequestRetries = 0;
 		});
 
 		AfterEach([this]()
 		{
+			GetMutableDefault<UN2CSettings>()->MaxRequestRetries = RetriesBefore;
 			Stub.Stop();
 		});
 

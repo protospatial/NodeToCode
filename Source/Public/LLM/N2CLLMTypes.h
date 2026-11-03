@@ -68,6 +68,13 @@ struct FN2CLLMConfig
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Integration")
     float ActivityTimeoutSeconds = 300.0f;
 
+    /**
+     * How many times a 429, 529 or 5xx answer is retried after the first attempt (card 0215).
+     * UN2CSettings::ResolveRequestModel fills it from the Max Request Retries setting.
+     */
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Integration")
+    int32 MaxRetries = 3;
+
     UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "LLM Integration")
     bool bUseSystemPrompts = true;
 

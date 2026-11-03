@@ -26,7 +26,8 @@ NodeToCode keeps the provider's HTTP status and its own error message and sorts 
 gateway error such as 502), `Timeout` (nothing arrived within the HTTP Activity Timeout, or the request ran past
 3600 seconds), `Truncated`, `Refused`, `Blocked`, `Parse` (the answer arrived but could not be read as a translation)
 or `Unknown`. `RateLimited`, `Overloaded`, `Server`, `Network` and `Timeout` are marked retryable: the same request
-may work later.
+may work later. A 429, 529 or 5xx answer is already retried before it is reported, up to **Max Request Retries**
+times ([Provider Configuration](Provider-Configuration#request-retries)).
 
 A successful (HTTP 200) answer can still stop early. NodeToCode reads the provider's stop or finish reason before the
 answer and reports it by name, with the provider's reason in `provider_error_type`:

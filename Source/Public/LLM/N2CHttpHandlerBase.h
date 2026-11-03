@@ -8,6 +8,7 @@
 #include "Interfaces/IHttpRequest.h"
 #include "LLM/N2CLLMRequestHandle.h"
 #include "LLM/N2CCredentialSource.h"
+#include "LLM/N2CHttpTransport.h"
 #include "N2CHttpHandlerBase.generated.h"
 
 /**
@@ -73,6 +74,12 @@ public:
     /** True when Headers already carries a credential (Authorization, x-api-key or x-goog-api-key, any case) */
     static bool HasCredentialHeader(const TMap<FString, FString>& Headers);
 
+    /** The transport requests go through (card 0215); unset uses the engine's HTTP (FN2CHttpModuleTransport) */
+    void SetTransport(TSharedPtr<IN2CHttpTransport> InTransport) { Transport = MoveTemp(InTransport); }
+
+    /** When 429, 529 and 5xx answers are retried; MaxRetries comes from the Max Request Retries setting */
+    FN2CRetryPolicy RetryPolicy;
+
 protected:
     /** Validate request parameters */
     virtual bool ValidateRequest(
@@ -80,18 +87,21 @@ protected:
         const FString& Payload
     ) const;
 
-    /** Handle request completion */
-    virtual void OnRequestComplete(
-        FHttpRequestPtr Request,
-        FHttpResponsePtr Response,
-        bool bWasSuccessful,
-        FOnLLMResponseReceived OnComplete,
-        const FString& SecretToRedact
-    );
+    /**
+     * Sends attempt RetryIndex + 1 of Request. A 429, 529 or 5xx answer is sent again after the retry policy's delay
+     * (Retry-After or retry-after-ms when the provider gives one, else a capped exponential backoff with jitter) until
+     * the retries run out; a cancel during the wait sends nothing more. The last answer goes to HandleResponse.
+     */
+    void SendAttempt(const FN2CHttpRequestSpec& Request, const FN2CLLMRequestHandleRef& Handle,
+        const FOnLLMResponseReceived& OnComplete, const FString& SecretToRedact, int32 RetryIndex);
 
-    /** True when a failed request timed out (total or activity timeout); OutMessage says which, for the user */
-    bool IsTimeoutFailure(const FHttpRequestPtr& Request, FString& OutMessage) const;
+    /** Delivers an attempt's final answer: the body of a 2xx, else a typed error JSON (the key redacted from the body) */
+    virtual void HandleResponse(const FN2CHttpResponseData& Response, const FOnLLMResponseReceived& OnComplete,
+        const FString& SecretToRedact, int32 Attempts);
 
     /** Current configuration */
     FN2CLLMConfig Config;
+
+    /** Set by tests; null uses FN2CHttpModuleTransport::Get() */
+    TSharedPtr<IN2CHttpTransport> Transport;
 };

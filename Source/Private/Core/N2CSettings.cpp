@@ -1797,6 +1797,7 @@ void UN2CSettings::ResolveRequestModel(EN2CLLMProvider InProvider, const FString
 {
     InOutConfig.MaxOutputTokens = GetMaxOutputTokensForProvider(InProvider);
     InOutConfig.ActivityTimeoutSeconds = FMath::Clamp(HttpActivityTimeoutSeconds, 1.0f, 3600.0f);
+    InOutConfig.MaxRetries = FMath::Clamp(MaxRequestRetries, 0, 10);
     const FString SelectedModel = GetActiveModelForProvider(InProvider);
     if (ModelIdOverride.IsEmpty() || ModelIdOverride == SelectedModel)
     {

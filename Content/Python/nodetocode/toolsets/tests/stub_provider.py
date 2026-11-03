@@ -89,21 +89,24 @@ class StubProvider:
             'endpoint': ollama.get_editor_property('ollama_endpoint'),
             'output': output.get_editor_property('path'),
             'timeout': settings.get_editor_property('http_activity_timeout_seconds'),
+            'retries': settings.get_editor_property('max_request_retries'),
         }
-        self._apply(unreal.N2CLLMProvider.OLLAMA, self.endpoint, self.output_dir, 600.0)
+        # The stub answers every attempt the same, so a retried 500 would only be counted twice (card 0215)
+        self._apply(unreal.N2CLLMProvider.OLLAMA, self.endpoint, self.output_dir, 600.0, 0)
         return self
 
     def __exit__(self, *exc):
         self._release.set()
         if self._saved:
-            self._apply(self._saved['provider'], self._saved['endpoint'], self._saved['output'], self._saved['timeout'])
+            self._apply(self._saved['provider'], self._saved['endpoint'], self._saved['output'], self._saved['timeout'],
+                        self._saved['retries'])
         self._server.shutdown()
         self._server.server_close()
         shutil.rmtree(self.output_dir, ignore_errors=True)
         return False
 
     @staticmethod
-    def _apply(provider, endpoint, output_dir, timeout):
+    def _apply(provider, endpoint, output_dir, timeout, retries):
         never = unreal.PropertyAccessChangeNotifyMode.NEVER
         settings = unreal.get_default_object(unreal.N2CSettings)
         user = unreal.get_default_object(unreal.N2CUserSettings)
@@ -115,6 +118,7 @@ class StubProvider:
         output.set_editor_property('path', output_dir, never)
         user.set_editor_property('custom_translation_output_directory', output, never)
         settings.set_editor_property('http_activity_timeout_seconds', timeout, never)
+        settings.set_editor_property('max_request_retries', retries, never)
 
 
 def inside(path, folder):

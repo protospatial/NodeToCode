@@ -4,10 +4,13 @@
 #include "Utils/N2CLogger.h"
 #include "HttpModule.h"
 #include "Interfaces/IHttpResponse.h"
+#include "Containers/Ticker.h"
+#include "Math/UnrealMathUtility.h"
 
 void UN2CHttpHandlerBase::Initialize(const FN2CLLMConfig& InConfig)
 {
     Config = InConfig;
+    RetryPolicy.MaxRetries = FMath::Clamp(Config.MaxRetries, 0, 10);
     RequestTimeout = Config.TimeoutSeconds;
     ActivityTimeout = Config.ActivityTimeoutSeconds > 0.0f ? FMath::Min(Config.ActivityTimeoutSeconds, RequestTimeout) : RequestTimeout;
 }
@@ -58,68 +61,72 @@ FN2CLLMRequestHandleRef UN2CHttpHandlerBase::PostLLMRequest(
         return Handle;
     }
 
-    // Create HTTP request
-    TSharedRef<IHttpRequest, ESPMode::ThreadSafe> Request = FHttpModule::Get().CreateRequest();
-    Request->SetURL(Endpoint);
-    Request->SetVerb(TEXT("POST"));
-
     // The provider's non-secret headers, then the key in its one credential header (Anthropic x-api-key, Gemini
     // x-goog-api-key, the others Authorization)
-    for (const TPair<FString, FString>& Header : BuildRequestHeaders(ExtraHeaders, Credential))
-    {
-        Request->SetHeader(Header.Key, Header.Value);
-    }
-
-    Request->SetContentAsString(Payload);
-    Request->SetTimeout(RequestTimeout);
-
-    // A request that receives nothing for ActivityTimeout seconds fails (UE 5.4+; 5.6 is the floor)
-    Request->SetActivityTimeout(ActivityTimeout);
-    
-    // Create a weak pointer to this for safety
-    TWeakObjectPtr<UN2CHttpHandlerBase> WeakThis(this);
-
-    // The completion runs on the game thread. The handle gates OnComplete: once Cancel() has won, the cancelled
-    // request's failure completion is dropped here, before any logging or broadcast. The lambda holds the handle
-    // strongly; the handle holds the request only weakly, so there is no cycle.
-    // The completion keeps this request's key only to redact it from an error body
-    Request->OnProcessRequestComplete().BindLambda(
-        [WeakThis, OnComplete, Handle, SecretToRedact = Credential.Value](FHttpRequestPtr InRequest, FHttpResponsePtr InResponse, bool bWasSuccessful)
-        {
-            if (Handle->IsFinished())
-            {
-                return;
-            }
-
-            const FOnLLMResponseReceived GatedOnComplete = Handle->Wrap(OnComplete);
-
-            if (UN2CHttpHandlerBase* StrongThis = WeakThis.Get())
-            {
-                StrongThis->OnRequestComplete(InRequest, InResponse, bWasSuccessful, GatedOnComplete, SecretToRedact);
-            }
-            else
-            {
-                // Handler was destroyed, just call completion callback with error
-                GatedOnComplete.ExecuteIfBound(FN2CTranslationError::MakeErrorJson(TEXT("HTTP handler was destroyed")));
-            }
-        }
-    );
-
-    Handle->SetHttpRequest(Request);
-
-    // Send request
-    if (!Request->ProcessRequest())
-    {
-        FN2CLogger::Get().LogError(TEXT("Failed to send HTTP request"), TEXT("HttpHandler"));
-        // A failed ProcessRequest may also fire the completion delegate; the handle keeps OnComplete to one call
-        Handle->Complete(OnComplete, FN2CTranslationError::MakeErrorJson(TEXT("Failed to send request"),
-            EN2CTranslationErrorKind::Network));
-        return Handle;
-    }
+    FN2CHttpRequestSpec Request;
+    Request.Url = Endpoint;
+    Request.Headers = BuildRequestHeaders(ExtraHeaders, Credential);
+    Request.Body = Payload;
+    Request.TimeoutSeconds = RequestTimeout;
+    Request.ActivityTimeoutSeconds = ActivityTimeout;
 
     FN2CLogger::Get().Log(FString::Printf(TEXT("HTTP request sent to %s (%s), %d characters"),
         *UEnum::GetDisplayValueAsText(Config.Provider).ToString(), *Config.Model, Payload.Len()), EN2CLogSeverity::Info, TEXT("HttpHandler"));
+
+    // The completion keeps this request's key only to redact it from an error body
+    SendAttempt(Request, Handle, OnComplete, Credential.Value, 0);
     return Handle;
+}
+
+void UN2CHttpHandlerBase::SendAttempt(const FN2CHttpRequestSpec& Request, const FN2CLLMRequestHandleRef& Handle,
+    const FOnLLMResponseReceived& OnComplete, const FString& SecretToRedact, int32 RetryIndex)
+{
+    if (Handle->IsFinished())
+    {
+        return;
+    }
+    const TSharedRef<IN2CHttpTransport> Sender = Transport.IsValid() ? Transport.ToSharedRef() : FN2CHttpModuleTransport::Get();
+    TWeakObjectPtr<UN2CHttpHandlerBase> WeakThis(this);
+
+    // The handle gates OnComplete: once Cancel() has won, a late answer is dropped before any logging or broadcast
+    Sender->Send(Request, Handle, [WeakThis, Request, Handle, OnComplete, SecretToRedact, RetryIndex](const FN2CHttpResponseData& Response)
+    {
+        if (Handle->IsFinished())
+        {
+            return;
+        }
+        UN2CHttpHandlerBase* StrongThis = WeakThis.Get();
+        if (!StrongThis)
+        {
+            // Handler was destroyed, just call completion callback with error
+            Handle->Complete(OnComplete, FN2CTranslationError::MakeErrorJson(TEXT("HTTP handler was destroyed")));
+            return;
+        }
+
+        // Rate limited or overloaded: wait as the provider asks (or back off) and send the same request again
+        const float Delay = StrongThis->RetryPolicy.GetDelaySeconds(RetryIndex, Response, FMath::FRand(), FDateTime::UtcNow());
+        if (Delay >= 0.0f)
+        {
+            FN2CLogger::Get().LogWarning(FString::Printf(TEXT("HTTP %d from %s (%s): retrying in %.1f s (retry %d of %d)"),
+                Response.Status, *UEnum::GetDisplayValueAsText(StrongThis->Config.Provider).ToString(), *StrongThis->Config.Model,
+                Delay, RetryIndex + 1, StrongThis->RetryPolicy.MaxRetries), TEXT("HttpHandler"));
+            FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda(
+                [WeakThis, Request, Handle, OnComplete, SecretToRedact, RetryIndex](float)
+                {
+                    if (UN2CHttpHandlerBase* Handler = WeakThis.Get())
+                    {
+                        Handler->SendAttempt(Request, Handle, OnComplete, SecretToRedact, RetryIndex + 1);
+                    }
+                    else if (!Handle->IsFinished())
+                    {
+                        Handle->Complete(OnComplete, FN2CTranslationError::MakeErrorJson(TEXT("HTTP handler was destroyed")));
+                    }
+                    return false;
+                }), Delay);
+            return;
+        }
+        StrongThis->HandleResponse(Response, Handle->Wrap(OnComplete), SecretToRedact, RetryIndex + 1);
+    });
 }
 
 bool UN2CHttpHandlerBase::ValidateRequest(const FString& Endpoint, const FString& Payload) const
@@ -139,32 +146,20 @@ bool UN2CHttpHandlerBase::ValidateRequest(const FString& Endpoint, const FString
     return true;
 }
 
-void UN2CHttpHandlerBase::OnRequestComplete(
-    FHttpRequestPtr Request,
-    FHttpResponsePtr Response,
-    bool bWasSuccessful,
-    FOnLLMResponseReceived OnComplete,
-    const FString& SecretToRedact)
+void UN2CHttpHandlerBase::HandleResponse(const FN2CHttpResponseData& Response, const FOnLLMResponseReceived& OnComplete,
+    const FString& SecretToRedact, int32 Attempts)
 {
-    if (!bWasSuccessful || !Response.IsValid())
+    if (!Response.bReceived)
     {
         // No HTTP response at all: connection refused, DNS, TLS or timeout
-        const FString Reason = Request.IsValid() ? FString(LexToString(Request->GetFailureReason())) : FString(TEXT("Unknown"));
-        FString TimeoutMessage;
-        if (IsTimeoutFailure(Request, TimeoutMessage))
-        {
-            FN2CLogger::Get().LogError(FString::Printf(TEXT("HTTP request failed (%s): %s"), *Reason, *TimeoutMessage), TEXT("HttpHandler"));
-            OnComplete.ExecuteIfBound(FN2CTranslationError::MakeErrorJson(TimeoutMessage, EN2CTranslationErrorKind::Timeout));
-            return;
-        }
-        FN2CLogger::Get().LogError(FString::Printf(TEXT("HTTP request failed (%s)"), *Reason), TEXT("HttpHandler"));
-        OnComplete.ExecuteIfBound(FN2CTranslationError::MakeErrorJson(
-            FString::Printf(TEXT("No response from the provider (%s)"), *Reason), EN2CTranslationErrorKind::Network));
+        FN2CLogger::Get().LogError(FString::Printf(TEXT("HTTP request failed: %s"), *Response.FailureMessage), TEXT("HttpHandler"));
+        OnComplete.ExecuteIfBound(FN2CTranslationError::MakeErrorJson(Response.FailureMessage,
+            Response.bTimedOut ? EN2CTranslationErrorKind::Timeout : EN2CTranslationErrorKind::Network));
         return;
     }
 
-    const int32 ResponseCode = Response->GetResponseCode();
-    const FString ResponseContent = Response->GetContentAsString();
+    const int32 ResponseCode = Response.Status;
+    const FString& ResponseContent = Response.Body;
 
     // Provider, model, status and size only; the body is the model's answer (or the provider's error), logged in
     // full only with n2c.LogLLMPayloads 1
@@ -186,8 +181,9 @@ void UN2CHttpHandlerBase::OnRequestComplete(
     // 4xx and 5xx: the provider's JSON error gains the status; any other body (an HTML proxy page, plain text) is
     // wrapped as escaped JSON, so the parser always gets valid JSON and can report the status and the real message
     // (the parser logs that message as the translation error)
-    FN2CLogger::Get().LogError(FString::Printf(TEXT("HTTP %d error from %s (%s), %d characters"), ResponseCode,
-        *ProviderName, *Config.Model, ResponseContent.Len()), TEXT("HttpHandler"));
+    const FString Tries = Attempts > 1 ? FString::Printf(TEXT(" after %d attempts"), Attempts) : FString();
+    FN2CLogger::Get().LogError(FString::Printf(TEXT("HTTP %d error from %s (%s)%s, %d characters"), ResponseCode,
+        *ProviderName, *Config.Model, *Tries, ResponseContent.Len()), TEXT("HttpHandler"));
     FN2CLogger::Get().LogLLMContent(TEXT("HTTP error body"), TEXT("HTTP error body"), SafeContent.Left(2000), TEXT("HttpHandler"));
 
     OnComplete.ExecuteIfBound(FN2CTranslationError::WrapHttpErrorBody(ResponseCode, SafeContent));
@@ -201,30 +197,6 @@ bool UN2CHttpHandlerBase::HasCredentialHeader(const TMap<FString, FString>& Head
         {
             return true;
         }
-    }
-    return false;
-}
-
-bool UN2CHttpHandlerBase::IsTimeoutFailure(const FHttpRequestPtr& Request, FString& OutMessage) const
-{
-    if (!Request.IsValid())
-    {
-        return false;
-    }
-    const EHttpFailureReason Failure = Request->GetFailureReason();
-    const float Elapsed = Request->GetElapsedTime();
-    if (Failure == EHttpFailureReason::TimedOut)
-    {
-        OutMessage = FString::Printf(TEXT("The request ran past its total timeout of %.0f s (%.0f s elapsed)"), RequestTimeout, Elapsed);
-        return true;
-    }
-    // UE reports an activity timeout as ConnectionError (FHttpRequestCommon::HandleRequestFailed), so tell it from a
-    // refused or dropped connection by how long the request ran: a connection failure is immediate, an activity
-    // timeout takes at least ActivityTimeout seconds of silence
-    if (Failure == EHttpFailureReason::ConnectionError && ActivityTimeout > 0.0f && Elapsed >= ActivityTimeout * 0.95f)
-    {
-        OutMessage = FString::Printf(TEXT("No data from the provider for %.0f s (HTTP Activity Timeout). Raise Project Settings > Plugins > Node to Code > LLM Provider > HTTP Activity Timeout for very long translations or slow local models."), ActivityTimeout);
-        return true;
     }
     return false;
 }

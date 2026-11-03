@@ -265,6 +265,16 @@ public:
             ToolTip = "Seconds a translation request may go without receiving data before it fails with a Timeout error. Responses are not streamed, so the provider sends nothing until the answer is complete: raise this for very long translations or slow local models. Applies to the next request."))
     float HttpActivityTimeoutSeconds = 300.0f;
 
+    /**
+     * How many times a request the provider answers with 429 (rate limited), 529 (overloaded) or another 5xx error is
+     * sent again before it fails. The wait is what the provider asks for (Retry-After), else 1 s doubling each time,
+     * at most 60 s. 0 turns retries off. Applies to the next request.
+     */
+    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Provider",
+        meta = (DisplayName = "Max Request Retries", ClampMin = "0", ClampMax = "10", UIMin = "0", UIMax = "10",
+            ToolTip = "How many times a request the provider answers with 429 (rate limited), 529 (overloaded) or another server error is sent again before it fails. The wait is what the provider asks for, else 1 s doubling each time, at most 60 s. 0 turns retries off. Applies to the next request."))
+    int32 MaxRequestRetries = 3;
+
     /** Anthropic model ID - claude-sonnet-5-5 recommended for the best quality/cost balance, claude-opus-5-5 for the most capability, claude-haiku-5-5 for the lowest cost */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | Anthropic",
         meta = (DisplayName = "Model", GetOptions = "GetAnthropicModelOptions",
