@@ -160,6 +160,7 @@ BEGIN_DEFINE_SPEC(FN2CPromptAssemblySpec, "NodeToCode.LLM.Prompts", N2C_TEST_FLA
 		Pin.ValueSubType = TEXT("S_Thing");
 
 		FN2CNodeDefinition Node;
+		Node.Properties.Add(TEXT("R"), TEXT("0.500000"));
 		Node.ID = TEXT("N1");
 		Node.NodeType = EN2CNodeType::CallFunction;
 		Node.NodeClass = TEXT("K2Node_CallFunction");
@@ -299,6 +300,11 @@ void FN2CPromptAssemblySpec::Define()
 			// asset_kind is written only for a document that is not a Blueprint (card 0447)
 			FN2CBlueprint Material = MakeFullBlueprint();
 			Material.Metadata.AssetKind = EN2CAssetKind::Material;
+			Material.Metadata.Material.bSet = true;
+			Material.Metadata.Material.Domain = TEXT("Surface");
+			Material.Metadata.Material.BlendMode = TEXT("Opaque");
+			Material.Metadata.Material.ShadingModels = { TEXT("DefaultLit") };
+			Material.Metadata.Material.bTwoSided = true;
 			const TSharedPtr<FJsonObject> MaterialDocument = ToJsonObject(Material);
 			if (TestTrue(TEXT("the material document serialized"), MaterialDocument.IsValid()))
 			{

@@ -97,7 +97,6 @@ void FN2CSerializerForwardCompatSpec::Define()
 				TEXT("NEWER_VERSION version 2.1.0"),
 				TEXT("UNKNOWN_BLUEPRINT_TYPE metadata.blueprint_type Material"),
 				TEXT("UNKNOWN_GRAPH_TYPE graphs[0].graph_type MaterialGraph"),
-				TEXT("UNKNOWN_NODE_TYPE graphs[0].nodes[0].type MaterialExpression"),
 				TEXT("UNKNOWN_PIN_TYPE graphs[0].nodes[0].input_pins[0].type Float2"),
 				TEXT("UNKNOWN_PIN_TYPE graphs[0].nodes[0].output_pins[0].type Float3"),
 				TEXT("UNKNOWN_FIELD graphs[0].nodes[0].output_pins[0].channel_mask channel_mask"),
@@ -145,8 +144,9 @@ void FN2CSerializerForwardCompatSpec::Define()
 			if (TestEqual(TEXT("material nodes"), Material.Nodes.Num(), 2))
 			{
 				const FN2CNodeDefinition& Sample = Material.Nodes[0];
-				TestTrue(TEXT("node type is Unknown"), Sample.NodeType == EN2CNodeType::Unknown);
-				TestEqual(TEXT("node type text"), Sample.UnknownType, FString(TEXT("MaterialExpression")));
+				// MaterialExpression is a known node type since card 0449; the fixture's MaterialRoot still is not
+				TestTrue(TEXT("node type is MaterialExpression"), Sample.NodeType == EN2CNodeType::MaterialExpression);
+				TestTrue(TEXT("no unknown type text"), Sample.UnknownType.IsEmpty());
 				TestEqual(TEXT("node class"), Sample.NodeClass, FString(TEXT("MaterialExpressionTextureSample")));
 				TestEqual(TEXT("expression_guid kept"), Sample.UnknownFields.FindRef(TEXT("expression_guid")),
 					FString(TEXT("\"0A1B2C3D-0000-0000-0000-000000000001\"")));

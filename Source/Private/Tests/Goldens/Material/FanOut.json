@@ -1,0 +1,152 @@
+{
+	"case": "FanOut",
+	"description": "One scalar parameter feeds three inputs: Roughness, a Multiply into Metallic and a Lerp's alpha into BaseColor",
+	"depth": 0,
+	"warnings": [],
+	"capture":
+	{
+		"version": "2.0.0",
+		"metadata":
+		{
+			"name": "M_N2CGolden_FanOut",
+			"asset_class": "Material",
+			"asset_kind": "Material",
+			"material":
+			{
+				"domain": "Surface",
+				"blend_mode": "Opaque",
+				"shading_models": [
+					"DefaultLit"
+				]
+			}
+		},
+		"graphs": [
+			{
+				"name": "M_N2CGolden_FanOut",
+				"graph_type": "Material",
+				"nodes": [
+					{
+						"id": "N1",
+						"type": "MaterialExpression",
+						"class": "MaterialExpressionScalarParameter",
+						"member_name": "Amount",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P1",
+								"name": "Output",
+								"type": "Wildcard",
+								"connected": true
+							}
+						],
+						"properties":
+						{
+							"DefaultValue": "0.400000"
+						}
+					},
+					{
+						"id": "N2",
+						"type": "MaterialExpression",
+						"class": "MaterialExpressionMultiply",
+						"input_pins": [
+							{
+								"id": "P2",
+								"name": "A",
+								"type": "Wildcard",
+								"connected": true
+							},
+							{
+								"id": "P3",
+								"name": "B",
+								"type": "Wildcard",
+								"default_value": "2.000000"
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P4",
+								"name": "Output",
+								"type": "Wildcard",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N3",
+						"type": "MaterialExpression",
+						"class": "MaterialExpressionLinearInterpolate",
+						"input_pins": [
+							{
+								"id": "P5",
+								"name": "A",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P6",
+								"name": "B",
+								"type": "Wildcard",
+								"default_value": "1.000000"
+							},
+							{
+								"id": "P7",
+								"name": "Alpha",
+								"type": "Wildcard",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P8",
+								"name": "Output",
+								"type": "Wildcard",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N4",
+						"type": "MaterialOutput",
+						"class": "Material",
+						"input_pins": [
+							{
+								"id": "P9",
+								"name": "BaseColor",
+								"type": "Wildcard",
+								"connected": true
+							},
+							{
+								"id": "P10",
+								"name": "Metallic",
+								"type": "Wildcard",
+								"connected": true
+							},
+							{
+								"id": "P11",
+								"name": "Roughness",
+								"type": "Wildcard",
+								"connected": true
+							}
+						],
+						"output_pins": []
+					}
+				],
+				"flows":
+				{
+					"execution": [],
+					"data":
+					{
+						"N1.P1": [
+							"N2.P2",
+							"N3.P7",
+							"N4.P11"
+						],
+						"N3.P8": "N4.P9",
+						"N2.P4": "N4.P10"
+					}
+				}
+			}
+		],
+		"structs": [],
+		"enums": []
+	}
+}

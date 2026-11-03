@@ -10,6 +10,8 @@
 #include "MaterialGraph/MaterialGraphSchema.h"
 #include "Materials/Material.h"
 #include "Materials/MaterialExpression.h"
+#include "Materials/MaterialExpressionComment.h"
+#include "Materials/MaterialExpressionMaterialFunctionCall.h"
 #include "Materials/MaterialFunction.h"
 #include "Misc/Guid.h"
 #include "UObject/Package.h"
@@ -109,11 +111,43 @@ namespace N2CTest
 		return Expression;
 	}
 
+	UMaterialExpressionComment* FTestMaterial::AddComment(const FString& Text, int32 X, int32 Y, int32 SizeX, int32 SizeY)
+	{
+		if (!Material)
+		{
+			AddError(TEXT("AddComment: no material"));
+			return nullptr;
+		}
+		UMaterialExpressionComment* Comment = NewObject<UMaterialExpressionComment>(Material, NAME_None, RF_Transactional);
+		Material->GetExpressionCollection().AddComment(Comment);
+		Comment->Material = Material;
+		Comment->Text = Text;
+		Comment->MaterialExpressionEditorX = X;
+		Comment->MaterialExpressionEditorY = Y;
+		Comment->SizeX = SizeX;
+		Comment->SizeY = SizeY;
+		return Comment;
+	}
+
 	bool FTestMaterial::Connect(UMaterialExpression* From, int32 OutputIndex, UMaterialExpression* To, const FName InputName)
 	{
 		if (!From || !To)
 		{
 			AddError(TEXT("Connect: a null expression"));
+			return false;
+		}
+		// A function call's inputs are its function's inputs, by their names
+		if (UMaterialExpressionMaterialFunctionCall* Call = Cast<UMaterialExpressionMaterialFunctionCall>(To))
+		{
+			for (FFunctionExpressionInput& FunctionInput : Call->FunctionInputs)
+			{
+				if (FunctionInput.Input.InputName == InputName && OutputIndex >= 0 && OutputIndex < From->GetOutputs().Num())
+				{
+					From->ConnectExpression(&FunctionInput.Input, OutputIndex);
+					return true;
+				}
+			}
+			AddError(FString::Printf(TEXT("Connect: the function call has no input named %s"), *InputName.ToString()));
 			return false;
 		}
 		const FStructProperty* Property = FindFProperty<FStructProperty>(To->GetClass(), InputName);

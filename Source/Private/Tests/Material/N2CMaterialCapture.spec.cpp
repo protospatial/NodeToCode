@@ -8,6 +8,27 @@
 #include "Tests/N2CTestHelpers.h"
 #include "Tests/N2CTestMaterialFactory.h"
 #include "Core/N2CCapture.h"
+#include "Core/N2CSerializer.h"
+#include "MaterialEditor/PreviewMaterial.h"
+#include "Materials/MaterialExpressionComment.h"
+#include "Materials/MaterialExpressionFunctionInput.h"
+#include "Materials/MaterialExpressionLinearInterpolate.h"
+#include "Materials/MaterialExpressionMaterialFunctionCall.h"
+#include "Materials/MaterialExpressionMultiply.h"
+#include "Materials/MaterialExpressionNamedReroute.h"
+#include "Materials/MaterialExpressionOneMinus.h"
+#include "Materials/MaterialExpressionReroute.h"
+#include "Materials/MaterialExpressionScalarParameter.h"
+#include "Materials/MaterialExpressionStaticSwitchParameter.h"
+#include "Materials/MaterialExpressionTextureSampleParameter2D.h"
+#include "Materials/MaterialExpressionVectorParameter.h"
+#include "Materials/MaterialFunctionInstance.h"
+#include "Materials/MaterialFunctionMaterialLayer.h"
+#include "Materials/MaterialFunctionMaterialLayerBlend.h"
+#include "Materials/MaterialInstanceConstant.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
+#include "Runtime/Launch/Resources/Version.h"
 #include "EdGraph/EdGraph.h"
 #include "EdGraph/EdGraphSchema.h"
 #include "MaterialGraph/MaterialGraph.h"
@@ -26,8 +47,10 @@
  * Material capture (epic 0442, decision 0009). Card 0448: the FTestMaterial factory builds materials and material
  * functions in code, and N2C::CaptureGraph refuses a material graph (built as the Material Editor builds it) with
  * UNSUPPORTED_GRAPH_TYPE naming the graph class, as it refuses any other non-K2 graph, instead of "No nodes to capture".
- * Card 0449 turns material capture on through its own entry points (N2C::CaptureMaterial); CaptureGraph keeps refusing
- * a UMaterialGraph, since a material is captured from the asset, not from the editor graph.
+ * Card 0449 turns material capture on through its own entry points (N2C::CaptureMaterial, CaptureMaterialFunction,
+ * CaptureMaterialAsset); CaptureGraph keeps refusing a UMaterialGraph, since a material is captured from the asset, not
+ * from the editor graph. "Golden" compares each case's capture with Goldens/Material/<case>.json (package path and GUIDs
+ * normalised, the capture's warnings listed) and round-trips it; "Asset" checks the dispatch and its refusals.
  */
 BEGIN_DEFINE_SPEC(FN2CMaterialCaptureSpec, "NodeToCode.Material.Capture", N2C_TEST_FLAGS)
 
@@ -60,10 +83,329 @@ BEGIN_DEFINE_SPEC(FN2CMaterialCaptureSpec, "NodeToCode.Material.Capture", N2C_TE
 		}
 	}
 
+
+	/** One golden case: Build fills the material (and functions) and returns the asset to capture */
+	struct FMaterialCase
+	{
+		FString Name;
+		FString Description;
+		TFunction<UObject*(N2CTest::FTestMaterial&)> Build;
+		int32 Depth = 0;
+	};
+	TArray<FMaterialCase> Cases;
+
+	/** A function MF_N2CGolden_Half: input "In" times 0.5 into output "Out" */
+	static UMaterialFunction* BuildHalfFunction(N2CTest::FTestMaterial& M)
+	{
+		UMaterialFunction* Function = M.AddFunction(TEXT("MF_N2CGolden_Half"));
+		UMaterialExpressionFunctionInput* In = M.Add<UMaterialExpressionFunctionInput>(Function, -300, 0);
+		UMaterialExpressionMultiply* Half = M.Add<UMaterialExpressionMultiply>(Function, -150, 0);
+		UMaterialExpressionFunctionOutput* Out = M.Add<UMaterialExpressionFunctionOutput>(Function, 0, 0);
+		if (!Function || !In || !Half || !Out)
+		{
+			return nullptr;
+		}
+		In->InputName = TEXT("In");
+		In->ConditionallyGenerateId(true);
+		Out->OutputName = TEXT("Out");
+		Out->ConditionallyGenerateId(true);
+		Half->ConstB = 0.5f;
+		M.Connect(In, 0, Half, TEXT("A"));
+		M.Connect(Half, 0, Out, TEXT("A"));
+		return Function;
+	}
+
+	/** A material whose BaseColor is MF_N2CGolden_Half of a constant colour */
+	static UObject* BuildFunctionCall(N2CTest::FTestMaterial& M)
+	{
+		UMaterialFunction* Function = BuildHalfFunction(M);
+		UMaterialExpressionConstant3Vector* Colour = M.Add<UMaterialExpressionConstant3Vector>(nullptr, -400, 0);
+		UMaterialExpressionMaterialFunctionCall* Call = M.Add<UMaterialExpressionMaterialFunctionCall>(nullptr, -200, 0);
+		if (!Function || !Colour || !Call)
+		{
+			return nullptr;
+		}
+		Colour->Constant = FLinearColor(1.0f, 0.5f, 0.25f);
+		Call->SetMaterialFunction(Function);
+		M.Connect(Colour, 0, Call, TEXT("In"));
+		M.ConnectToProperty(Call, 0, MP_BaseColor);
+		return M.GetMaterial();
+	}
+
+	/** Captures Case's asset; the capture's warnings go to OutWarnings */
+	TSharedPtr<FJsonObject> CaptureCase(const FMaterialCase& Case, FString& OutJson, TArray<FN2CDiagnostic>& OutWarnings)
+	{
+		N2CTest::FTestMaterial Material(FString::Printf(TEXT("M_N2CGolden_%s"), *Case.Name));
+		UObject* Asset = Case.Build(Material);
+		if (!NoFactoryErrors(Material) || !TestNotNull(Case.Name + TEXT(": the asset"), Asset))
+		{
+			return nullptr;
+		}
+		FN2CCaptureOptions Options;
+		Options.Depth = Case.Depth;
+		const TValueOrError<FN2CCapture, FString> Result = N2C::CaptureMaterialAsset(*Asset, Options);
+		if (!TestTrue(Case.Name + TEXT(": captured (") + (Result.HasError() ? Result.GetError() : FString()) + TEXT(")"), Result.HasValue()))
+		{
+			return nullptr;
+		}
+		TestFalse(Case.Name + TEXT(": no error diagnostic"), Result.GetValue().HasErrors());
+		OutWarnings = Result.GetValue().Diagnostics;
+		const FString Raw = FN2CSerializer::ToJson(Result.GetValue().Blueprint, EN2CJsonStyle::Pretty);
+		const TSharedPtr<FJsonObject> Parsed = N2CTest::ParseJsonObject(N2CTest::NormaliseCapture(Raw, Material.GetPackagePath()));
+		if (TestTrue(Case.Name + TEXT(": ToJson parses"), Parsed.IsValid()))
+		{
+			OutJson = N2CTest::PrettyJson(Parsed);
+		}
+		return Parsed;
+	}
+
+	/** The golden file: the case's name, description, the capture's warning codes and the document */
+	static TSharedPtr<FJsonObject> GoldenObject(const FMaterialCase& Case, const TSharedPtr<FJsonObject>& Capture,
+		const TArray<FN2CDiagnostic>& Warnings)
+	{
+		const TSharedPtr<FJsonObject> Golden = MakeShared<FJsonObject>();
+		Golden->SetStringField(TEXT("case"), Case.Name);
+		Golden->SetStringField(TEXT("description"), Case.Description);
+		Golden->SetNumberField(TEXT("depth"), Case.Depth);
+		TArray<TSharedPtr<FJsonValue>> Codes;
+		for (const FN2CDiagnostic& Warning : Warnings)
+		{
+			Codes.Add(MakeShared<FJsonValueString>(Warning.Code + TEXT(" ") + Warning.Path));
+		}
+		Golden->SetArrayField(TEXT("warnings"), Codes);
+		Golden->SetObjectField(TEXT("capture"), Capture);
+		return Golden;
+	}
+
+	void RunGolden(const FMaterialCase& Case)
+	{
+		FString Json;
+		TArray<FN2CDiagnostic> Warnings;
+		const TSharedPtr<FJsonObject> Capture = CaptureCase(Case, Json, Warnings);
+		if (!Capture.IsValid())
+		{
+			return;
+		}
+		const FString Actual = N2CTest::PrettyJson(GoldenObject(Case, Capture, Warnings));
+		// A per-engine golden, <case>.<major>.<minor>.json, wins where the engine's own output differs: on UE 5.6 a Vector
+		// Parameter has no RGBA output (added in 5.7)
+		const FString Dir = N2CTest::GoldensDir(TEXT("Material"));
+		const FString EngineGolden = Dir / FString::Printf(TEXT("%s.%d.%d.json"), *Case.Name, ENGINE_MAJOR_VERSION, ENGINE_MINOR_VERSION);
+		const FString GoldenPath = FPaths::FileExists(EngineGolden) ? EngineGolden : Dir / (Case.Name + TEXT(".json"));
+		if (N2CTest::UpdateGoldens())
+		{
+			TestTrue(TEXT("golden written: ") + GoldenPath, FFileHelper::SaveStringToFile(Actual, *GoldenPath,
+				FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM));
+			return;
+		}
+		FString Expected;
+		if (!TestTrue(TEXT("golden exists (build.ps1 -Test -UpdateGoldens writes it): ") + GoldenPath,
+			FFileHelper::LoadFileToString(Expected, *GoldenPath)))
+		{
+			return;
+		}
+		TestEqual(Case.Name + TEXT(": the capture matches its golden"), Actual, Expected.Replace(TEXT("\r\n"), TEXT("\n")));
+	}
+
+	void RunRoundTrip(const FMaterialCase& Case)
+	{
+		FString Json;
+		TArray<FN2CDiagnostic> Warnings;
+		if (!CaptureCase(Case, Json, Warnings).IsValid())
+		{
+			return;
+		}
+		FN2CBlueprint Read;
+		TArray<FN2CJsonReadWarning> ReadWarnings;
+		if (TestTrue(Case.Name + TEXT(": FromJson reads it"), FN2CSerializer::FromJson(Json, Read, ReadWarnings)))
+		{
+			TestEqual(Case.Name + TEXT(": read without warnings"), ReadWarnings.Num(), 0);
+			const TSharedPtr<FJsonObject> Again = N2CTest::ParseJsonObject(FN2CSerializer::ToJson(Read, EN2CJsonStyle::Pretty));
+			TestEqual(Case.Name + TEXT(": ToJson -> FromJson -> ToJson is unchanged"), Again.IsValid() ? N2CTest::PrettyJson(Again) : FString(), Json);
+		}
+	}
+
+	void DefineCases()
+	{
+		Cases.Add({ TEXT("ConstantMath"), TEXT("A constant colour times a constant into BaseColor; 0.5 plus 0.25 into Roughness"),
+			[](N2CTest::FTestMaterial& M) -> UObject*
+			{
+				UMaterialExpressionConstant3Vector* Colour = M.Add<UMaterialExpressionConstant3Vector>(nullptr, -400, -100);
+				UMaterialExpressionConstant* Scale = M.Add<UMaterialExpressionConstant>(nullptr, -400, 0);
+				UMaterialExpressionMultiply* Tinted = M.Add<UMaterialExpressionMultiply>(nullptr, -200, -50);
+				UMaterialExpressionConstant* A = M.Add<UMaterialExpressionConstant>(nullptr, -400, 100);
+				UMaterialExpressionAdd* Sum = M.Add<UMaterialExpressionAdd>(nullptr, -200, 100);
+				if (!Colour || !Scale || !Tinted || !A || !Sum)
+				{
+					return nullptr;
+				}
+				Colour->Constant = FLinearColor(0.8f, 0.2f, 0.1f);
+				Scale->R = 2.0f;
+				A->R = 0.5f;
+				Sum->ConstB = 0.25f; // B unwired: its value is ConstB
+				M.Connect(Colour, 0, Tinted, TEXT("A"));
+				M.Connect(Scale, 0, Tinted, TEXT("B"));
+				M.Connect(A, 0, Sum, TEXT("A"));
+				M.ConnectToProperty(Tinted, 0, MP_BaseColor);
+				M.ConnectToProperty(Sum, 0, MP_Roughness);
+				return M.GetMaterial();
+			} });
+		Cases.Add({ TEXT("FanOut"), TEXT("One scalar parameter feeds three inputs: Roughness, a Multiply into Metallic and a Lerp's alpha into BaseColor"),
+			[](N2CTest::FTestMaterial& M) -> UObject*
+			{
+				UMaterialExpressionScalarParameter* Amount = M.Add<UMaterialExpressionScalarParameter>(nullptr, -400, 0);
+				UMaterialExpressionMultiply* Twice = M.Add<UMaterialExpressionMultiply>(nullptr, -200, 100);
+				UMaterialExpressionLinearInterpolate* Blend = M.Add<UMaterialExpressionLinearInterpolate>(nullptr, -200, -100);
+				if (!Amount || !Twice || !Blend)
+				{
+					return nullptr;
+				}
+				Amount->ParameterName = TEXT("Amount");
+				Amount->DefaultValue = 0.4f;
+				Twice->ConstB = 2.0f;
+				M.Connect(Amount, 0, Twice, TEXT("A"));
+				M.Connect(Amount, 0, Blend, TEXT("Alpha"));
+				M.ConnectToProperty(Amount, 0, MP_Roughness);
+				M.ConnectToProperty(Twice, 0, MP_Metallic);
+				M.ConnectToProperty(Blend, 0, MP_BaseColor);
+				return M.GetMaterial();
+			} });
+		Cases.Add({ TEXT("Reroutes"), TEXT("A constant through a reroute and a named reroute (declaration and usage) into BaseColor; the reroutes are traced, not captured"),
+			[](N2CTest::FTestMaterial& M) -> UObject*
+			{
+				UMaterialExpressionConstant3Vector* Colour = M.Add<UMaterialExpressionConstant3Vector>(nullptr, -600, 0);
+				UMaterialExpressionReroute* Reroute = M.Add<UMaterialExpressionReroute>(nullptr, -450, 0);
+				UMaterialExpressionNamedRerouteDeclaration* Declaration = M.Add<UMaterialExpressionNamedRerouteDeclaration>(nullptr, -300, 0);
+				UMaterialExpressionNamedRerouteUsage* Usage = M.Add<UMaterialExpressionNamedRerouteUsage>(nullptr, -150, 0);
+				UMaterialExpressionOneMinus* Invert = M.Add<UMaterialExpressionOneMinus>(nullptr, -50, 0);
+				if (!Colour || !Reroute || !Declaration || !Usage || !Invert)
+				{
+					return nullptr;
+				}
+				Colour->Constant = FLinearColor(0.1f, 0.6f, 0.3f);
+				Declaration->Name = TEXT("Tint");
+				Usage->Declaration = Declaration;
+				M.Connect(Colour, 0, Reroute, TEXT("Input"));
+				M.Connect(Reroute, 0, Declaration, TEXT("Input"));
+				M.Connect(Usage, 0, Invert, TEXT("Input"));
+				M.ConnectToProperty(Invert, 0, MP_BaseColor);
+				M.ConnectToProperty(Usage, 0, MP_EmissiveColor);
+				return M.GetMaterial();
+			} });
+		Cases.Add({ TEXT("Parameters"), TEXT("A texture sample parameter's RGB times a vector parameter into BaseColor; a scalar parameter into Roughness"),
+			[](N2CTest::FTestMaterial& M) -> UObject*
+			{
+				UMaterialExpressionTextureSampleParameter2D* Albedo = M.Add<UMaterialExpressionTextureSampleParameter2D>(nullptr, -500, -100);
+				UMaterialExpressionVectorParameter* Tint = M.Add<UMaterialExpressionVectorParameter>(nullptr, -500, 100);
+				UMaterialExpressionMultiply* Tinted = M.Add<UMaterialExpressionMultiply>(nullptr, -250, 0);
+				UMaterialExpressionScalarParameter* Rough = M.Add<UMaterialExpressionScalarParameter>(nullptr, -250, 200);
+				if (!Albedo || !Tint || !Tinted || !Rough)
+				{
+					return nullptr;
+				}
+				Albedo->ParameterName = TEXT("Albedo");
+				Tint->ParameterName = TEXT("Tint");
+				Tint->DefaultValue = FLinearColor(1.0f, 0.9f, 0.8f);
+				Rough->ParameterName = TEXT("Roughness");
+				Rough->DefaultValue = 0.3f;
+				M.Connect(Albedo, 0, Tinted, TEXT("A"));
+				M.Connect(Tint, 0, Tinted, TEXT("B"));
+				M.ConnectToProperty(Tinted, 0, MP_BaseColor);
+				M.ConnectToProperty(Rough, 0, MP_Roughness);
+				return M.GetMaterial();
+			} });
+		Cases.Add({ TEXT("Comment"), TEXT("A comment box around two expressions, one of them with a node comment"),
+			[](N2CTest::FTestMaterial& M) -> UObject*
+			{
+				UMaterialExpressionConstant* A = M.Add<UMaterialExpressionConstant>(nullptr, -400, 0);
+				UMaterialExpressionOneMinus* Invert = M.Add<UMaterialExpressionOneMinus>(nullptr, -200, 0);
+				UMaterialExpressionConstant* Outside = M.Add<UMaterialExpressionConstant>(nullptr, -400, 600);
+				UMaterialExpressionComment* Comment = M.AddComment(TEXT("Roughness from a constant"), -450, -50, 400, 200);
+				if (!A || !Invert || !Outside || !Comment)
+				{
+					return nullptr;
+				}
+				A->R = 0.2f;
+				Invert->Desc = TEXT("Invert the constant");
+				Outside->R = 1.0f;
+				M.Connect(A, 0, Invert, TEXT("Input"));
+				M.ConnectToProperty(Invert, 0, MP_Roughness);
+				M.ConnectToProperty(Outside, 0, MP_Metallic);
+				return M.GetMaterial();
+			} });
+		Cases.Add({ TEXT("UnusedAndDangling"), TEXT("An Add nothing reads (unused, with the constant it reads), an expression with no wires, and an input wired to an expression of another material (DANGLING_INPUT)"),
+			[](N2CTest::FTestMaterial& M) -> UObject*
+			{
+				UMaterialExpressionConstant* Used = M.Add<UMaterialExpressionConstant>(nullptr, -200, 0);
+				UMaterialExpressionConstant* Feeds = M.Add<UMaterialExpressionConstant>(nullptr, -400, 200);
+				UMaterialExpressionAdd* Orphan = M.Add<UMaterialExpressionAdd>(nullptr, -200, 200);
+				UMaterialExpressionConstant* Alone = M.Add<UMaterialExpressionConstant>(nullptr, -200, 400);
+				UMaterialExpressionOneMinus* Invert = M.Add<UMaterialExpressionOneMinus>(nullptr, -200, 600);
+				// An expression of another (transient) material, as a copy-paste between materials can leave behind
+				UMaterialExpressionConstant* Foreign = NewObject<UMaterialExpressionConstant>(GetTransientPackage());
+				if (!Used || !Feeds || !Orphan || !Alone || !Invert || !Foreign)
+				{
+					return nullptr;
+				}
+				Used->R = 0.7f;
+				Feeds->R = 3.0f;
+				Alone->R = 9.0f;
+				M.Connect(Feeds, 0, Orphan, TEXT("A"));
+				M.Connect(Foreign, 0, Invert, TEXT("Input"));
+				M.ConnectToProperty(Used, 0, MP_Roughness);
+				M.ConnectToProperty(Invert, 0, MP_Metallic);
+				return M.GetMaterial();
+			} });
+		Cases.Add({ TEXT("DuplicateGuid"), TEXT("Two constants share a MaterialExpressionGuid (a paste inside a composite keeps it): the capture derives a GUID for the second and warns DUPLICATE_EXPRESSION_GUID"),
+			[](N2CTest::FTestMaterial& M) -> UObject*
+			{
+				UMaterialExpressionConstant* A = M.Add<UMaterialExpressionConstant>(nullptr, -400, 0);
+				UMaterialExpressionConstant* B = M.Add<UMaterialExpressionConstant>(nullptr, -400, 100);
+				UMaterialExpressionAdd* Sum = M.Add<UMaterialExpressionAdd>(nullptr, -200, 50);
+				if (!A || !B || !Sum)
+				{
+					return nullptr;
+				}
+				A->R = 0.1f;
+				B->R = 0.2f;
+				B->MaterialExpressionGuid = A->MaterialExpressionGuid;
+				M.Connect(A, 0, Sum, TEXT("A"));
+				M.Connect(B, 0, Sum, TEXT("B"));
+				M.ConnectToProperty(Sum, 0, MP_Roughness);
+				return M.GetMaterial();
+			} });
+		Cases.Add({ TEXT("StaticSwitch"), TEXT("A static switch parameter between two colours: both branches are kept and live"),
+			[](N2CTest::FTestMaterial& M) -> UObject*
+			{
+				UMaterialExpressionConstant3Vector* Red = M.Add<UMaterialExpressionConstant3Vector>(nullptr, -400, -100);
+				UMaterialExpressionConstant3Vector* Blue = M.Add<UMaterialExpressionConstant3Vector>(nullptr, -400, 100);
+				UMaterialExpressionStaticSwitchParameter* Switch = M.Add<UMaterialExpressionStaticSwitchParameter>(nullptr, -200, 0);
+				if (!Red || !Blue || !Switch)
+				{
+					return nullptr;
+				}
+				Red->Constant = FLinearColor(1.0f, 0.0f, 0.0f);
+				Blue->Constant = FLinearColor(0.0f, 0.0f, 1.0f);
+				Switch->ParameterName = TEXT("UseRed");
+				M.Connect(Red, 0, Switch, TEXT("A"));
+				M.Connect(Blue, 0, Switch, TEXT("B"));
+				M.ConnectToProperty(Switch, 0, MP_BaseColor);
+				return M.GetMaterial();
+			} });
+		Cases.Add({ TEXT("FunctionCall_Depth0"), TEXT("A call to a material function at depth 0: the call is described by name, the function's graph is left out (DEPTH_LIMIT)"),
+			[](N2CTest::FTestMaterial& M) -> UObject* { return BuildFunctionCall(M); }, 0 });
+		Cases.Add({ TEXT("FunctionCall_Depth1"), TEXT("The same call at depth 1: the function's graph follows the material's"),
+			[](N2CTest::FTestMaterial& M) -> UObject* { return BuildFunctionCall(M); }, 1 });
+		Cases.Add({ TEXT("MaterialFunction"), TEXT("A material function captured as the asset: graph_type MaterialFunction, FunctionOutput is the boundary"),
+			[](N2CTest::FTestMaterial& M) -> UObject* { return BuildHalfFunction(M); } });
+	}
+
 END_DEFINE_SPEC(FN2CMaterialCaptureSpec)
 
 void FN2CMaterialCaptureSpec::Define()
 {
+	DefineCases();
+
 	Describe(TEXT("Factory"), [this]()
 	{
 		It(TEXT("builds a material's expressions in creation order, wired by input property name, each with its own GUID"), [this]()
@@ -180,6 +522,86 @@ void FN2CMaterialCaptureSpec::Define()
 			TestTrue(TEXT("UNSUPPORTED_GRAPH_TYPE naming the class and schema"), Capture.HasError()
 				&& Capture.GetError().StartsWith(TEXT("UNSUPPORTED_GRAPH_TYPE: "))
 				&& Capture.GetError().Contains(TEXT("EdGraph (schema EdGraphSchema)")));
+		});
+	});
+
+	// Card 0449: captures from the saved asset
+	Describe(TEXT("Golden"), [this]()
+	{
+		for (const FMaterialCase& Case : Cases)
+		{
+			Describe(Case.Name, [this, Case]()
+			{
+				It(TEXT("captures the golden N2C JSON"), [this, Case]() { RunGolden(Case); });
+				It(TEXT("survives ToJson -> FromJson -> ToJson unchanged"), [this, Case]() { RunRoundTrip(Case); });
+			});
+		}
+	});
+
+	Describe(TEXT("Asset"), [this]()
+	{
+		It(TEXT("captures the material whose editor graph CaptureGraph refuses, from the asset: asset_kind Material, graph_type Material"), [this]()
+		{
+			N2CTest::FTestMaterial Material(TEXT("M_N2CTest_FromAsset"));
+			BuildConstantMath(Material);
+			UMaterialGraph* Graph = Material.BuildGraph();
+			if (!NoFactoryErrors(Material) || !TestNotNull(TEXT("the material graph"), Graph))
+			{
+				return;
+			}
+			TestTrue(TEXT("CaptureGraph still refuses the editor graph"), N2C::CaptureGraph(*Graph).HasError());
+			const TValueOrError<FN2CCapture, FString> Capture = N2C::CaptureMaterial(*Material.GetMaterial());
+			if (!TestTrue(TEXT("CaptureMaterial captures the asset"), Capture.HasValue()))
+			{
+				return;
+			}
+			const FN2CBlueprint& Document = Capture.GetValue().Blueprint;
+			TestTrue(TEXT("asset_kind Material"), Document.Metadata.AssetKind == EN2CAssetKind::Material);
+			TestEqual(TEXT("asset_class"), Document.Metadata.AssetClass, FString(TEXT("Material")));
+			TestTrue(TEXT("material metadata"), Document.Metadata.Material.bSet);
+			TestEqual(TEXT("domain"), Document.Metadata.Material.Domain, FString(TEXT("Surface")));
+			TestEqual(TEXT("blend mode"), Document.Metadata.Material.BlendMode, FString(TEXT("Opaque")));
+			TestTrue(TEXT("DefaultLit"), Document.Metadata.Material.ShadingModels.Contains(TEXT("DefaultLit")));
+			if (TestEqual(TEXT("one graph"), Document.Graphs.Num(), 1))
+			{
+				TestTrue(TEXT("graph_type Material"), Document.Graphs[0].GraphType == EN2CGraphType::Material);
+				TestEqual(TEXT("four expressions and the output node"), Document.Graphs[0].Nodes.Num(), 5);
+			}
+			TestFalse(TEXT("no error"), Capture.GetValue().HasErrors());
+
+			// Node IDs map to the expressions' GUIDs
+			const TConstArrayView<TObjectPtr<UMaterialExpression>> Expressions = Material.GetMaterial()->GetExpressions();
+			const FGuid* First = Capture.GetValue().NodeGuids.Find(TEXT("N1"));
+			TestTrue(TEXT("N1 is the first expression's GUID"), First && Expressions.Num() > 0 && *First == Expressions[0]->MaterialExpressionGuid);
+		});
+
+		It(TEXT("refuses a material subclass, a material layer, a function instance and a material instance with UNSUPPORTED_ASSET_TYPE naming the class"), [this]()
+		{
+			N2CTest::FTestMaterial Holder(TEXT("M_N2CTest_Refused"));
+			UPackage* Package = Holder.GetPackage();
+			if (!TestNotNull(TEXT("a package"), Package))
+			{
+				return;
+			}
+			const TPair<UClass*, const TCHAR*> Refused[] = {
+				{ UPreviewMaterial::StaticClass(), TEXT("PreviewMaterial") },
+				{ UMaterialFunctionMaterialLayer::StaticClass(), TEXT("MaterialFunctionMaterialLayer") },
+				{ UMaterialFunctionMaterialLayerBlend::StaticClass(), TEXT("MaterialFunctionMaterialLayerBlend") },
+				{ UMaterialFunctionInstance::StaticClass(), TEXT("MaterialFunctionInstance") },
+				{ UMaterialInstanceConstant::StaticClass(), TEXT("MaterialInstanceConstant") },
+			};
+			for (const TPair<UClass*, const TCHAR*>& Each : Refused)
+			{
+				UObject* Asset = NewObject<UObject>(Package, Each.Key, FName(FString(TEXT("Refused_")) + Each.Value));
+				const TValueOrError<FN2CCapture, FString> Capture = N2C::CaptureMaterialAsset(*Asset);
+				TestTrue(FString::Printf(TEXT("%s: UNSUPPORTED_ASSET_TYPE naming the class"), Each.Value), Capture.HasError()
+					&& Capture.GetError().StartsWith(TEXT("UNSUPPORTED_ASSET_TYPE: ")) && Capture.GetError().Contains(FString(TEXT("is a ")) + Each.Value));
+			}
+			// The typed entry points check the exact class too
+			UMaterial* Preview = NewObject<UPreviewMaterial>(Package, TEXT("PreviewByType"));
+			TestTrue(TEXT("CaptureMaterial refuses a UPreviewMaterial"), N2C::CaptureMaterial(*Preview).HasError());
+			UMaterialFunction* Layer = NewObject<UMaterialFunctionMaterialLayer>(Package, TEXT("LayerByType"));
+			TestTrue(TEXT("CaptureMaterialFunction refuses a material layer"), N2C::CaptureMaterialFunction(*Layer).HasError());
 		});
 	});
 

@@ -1,0 +1,197 @@
+{
+	"case": "FunctionCall_Depth1",
+	"description": "The same call at depth 1: the function's graph follows the material's",
+	"depth": 1,
+	"warnings": [],
+	"capture":
+	{
+		"version": "2.0.0",
+		"metadata":
+		{
+			"name": "M_N2CGolden_FunctionCall_Depth1",
+			"asset_class": "Material",
+			"asset_kind": "Material",
+			"material":
+			{
+				"domain": "Surface",
+				"blend_mode": "Opaque",
+				"shading_models": [
+					"DefaultLit"
+				]
+			}
+		},
+		"graphs": [
+			{
+				"name": "M_N2CGolden_FunctionCall_Depth1",
+				"graph_type": "Material",
+				"nodes": [
+					{
+						"id": "N1",
+						"type": "MaterialExpression",
+						"class": "MaterialExpressionConstant3Vector",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P1",
+								"name": "RGB",
+								"type": "Wildcard",
+								"connected": true
+							},
+							{
+								"id": "P2",
+								"name": "R",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P3",
+								"name": "G",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P4",
+								"name": "B",
+								"type": "Wildcard"
+							}
+						],
+						"properties":
+						{
+							"Constant": "(R=1.000000,G=0.500000,B=0.250000,A=1.000000)"
+						}
+					},
+					{
+						"id": "N2",
+						"type": "MaterialFunctionCall",
+						"class": "MaterialExpressionMaterialFunctionCall",
+						"member_parent": "<PACKAGE>",
+						"member_name": "MF_N2CGolden_Half",
+						"input_pins": [
+							{
+								"id": "P5",
+								"name": "In",
+								"type": "Wildcard",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P6",
+								"name": "Out",
+								"type": "Wildcard",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N3",
+						"type": "MaterialOutput",
+						"class": "Material",
+						"input_pins": [
+							{
+								"id": "P7",
+								"name": "BaseColor",
+								"type": "Wildcard",
+								"connected": true
+							}
+						],
+						"output_pins": []
+					}
+				],
+				"flows":
+				{
+					"execution": [],
+					"data":
+					{
+						"N1.P1": "N2.P5",
+						"N2.P6": "N3.P7"
+					}
+				}
+			},
+			{
+				"name": "MF_N2CGolden_Half",
+				"graph_type": "MaterialFunction",
+				"nodes": [
+					{
+						"id": "N4",
+						"type": "MaterialExpression",
+						"class": "MaterialExpressionFunctionInput",
+						"member_name": "In",
+						"input_pins": [
+							{
+								"id": "P8",
+								"name": "Preview",
+								"type": "Wildcard"
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P9",
+								"name": "Output",
+								"type": "Wildcard",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N5",
+						"type": "MaterialExpression",
+						"class": "MaterialExpressionMultiply",
+						"input_pins": [
+							{
+								"id": "P10",
+								"name": "A",
+								"type": "Wildcard",
+								"connected": true
+							},
+							{
+								"id": "P11",
+								"name": "B",
+								"type": "Wildcard",
+								"default_value": "0.500000"
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P12",
+								"name": "Output",
+								"type": "Wildcard",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N6",
+						"type": "MaterialExpression",
+						"class": "MaterialExpressionFunctionOutput",
+						"member_name": "Out",
+						"input_pins": [
+							{
+								"id": "P13",
+								"name": "A",
+								"type": "Wildcard",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P14",
+								"name": "Output",
+								"type": "Wildcard"
+							}
+						]
+					}
+				],
+				"flows":
+				{
+					"execution": [],
+					"data":
+					{
+						"N4.P9": "N5.P10",
+						"N5.P12": "N6.P13"
+					}
+				}
+			}
+		],
+		"structs": [],
+		"enums": []
+	}
+}

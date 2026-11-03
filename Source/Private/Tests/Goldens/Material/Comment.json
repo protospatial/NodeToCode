@@ -1,0 +1,131 @@
+{
+	"case": "Comment",
+	"description": "A comment box around two expressions, one of them with a node comment",
+	"depth": 0,
+	"warnings": [],
+	"capture":
+	{
+		"version": "2.0.0",
+		"metadata":
+		{
+			"name": "M_N2CGolden_Comment",
+			"asset_class": "Material",
+			"asset_kind": "Material",
+			"material":
+			{
+				"domain": "Surface",
+				"blend_mode": "Opaque",
+				"shading_models": [
+					"DefaultLit"
+				]
+			}
+		},
+		"graphs": [
+			{
+				"name": "M_N2CGolden_Comment",
+				"graph_type": "Material",
+				"nodes": [
+					{
+						"id": "N1",
+						"type": "MaterialExpression",
+						"class": "MaterialExpressionConstant",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P1",
+								"name": "Output",
+								"type": "Wildcard",
+								"connected": true
+							}
+						],
+						"properties":
+						{
+							"R": "0.200000"
+						}
+					},
+					{
+						"id": "N2",
+						"type": "MaterialExpression",
+						"class": "MaterialExpressionOneMinus",
+						"comment": "Invert the constant",
+						"input_pins": [
+							{
+								"id": "P2",
+								"name": "Input",
+								"type": "Wildcard",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P3",
+								"name": "Output",
+								"type": "Wildcard",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N3",
+						"type": "MaterialExpression",
+						"class": "MaterialExpressionConstant",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P4",
+								"name": "Output",
+								"type": "Wildcard",
+								"connected": true
+							}
+						],
+						"properties":
+						{
+							"R": "1.000000"
+						}
+					},
+					{
+						"id": "N4",
+						"type": "MaterialOutput",
+						"class": "Material",
+						"input_pins": [
+							{
+								"id": "P5",
+								"name": "Metallic",
+								"type": "Wildcard",
+								"connected": true
+							},
+							{
+								"id": "P6",
+								"name": "Roughness",
+								"type": "Wildcard",
+								"connected": true
+							}
+						],
+						"output_pins": []
+					}
+				],
+				"flows":
+				{
+					"execution": [],
+					"data":
+					{
+						"N1.P1": "N2.P2",
+						"N3.P4": "N4.P5",
+						"N2.P3": "N4.P6"
+					}
+				},
+				"comments": [
+					{
+						"text": "Roughness from a constant",
+						"nodes": [
+							"N1",
+							"N2"
+						]
+					}
+				]
+			}
+		],
+		"structs": [],
+		"enums": []
+	}
+}

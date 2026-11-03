@@ -1,0 +1,201 @@
+{
+	"case": "Parameters",
+	"description": "A texture sample parameter's RGB times a vector parameter into BaseColor; a scalar parameter into Roughness",
+	"depth": 0,
+	"warnings": [],
+	"capture":
+	{
+		"version": "2.0.0",
+		"metadata":
+		{
+			"name": "M_N2CGolden_Parameters",
+			"asset_class": "Material",
+			"asset_kind": "Material",
+			"material":
+			{
+				"domain": "Surface",
+				"blend_mode": "Opaque",
+				"shading_models": [
+					"DefaultLit"
+				]
+			}
+		},
+		"graphs": [
+			{
+				"name": "M_N2CGolden_Parameters",
+				"graph_type": "Material",
+				"nodes": [
+					{
+						"id": "N1",
+						"type": "MaterialExpression",
+						"class": "MaterialExpressionTextureSampleParameter2D",
+						"member_name": "Albedo",
+						"input_pins": [
+							{
+								"id": "P1",
+								"name": "Coordinates",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P2",
+								"name": "AutomaticViewMipBiasValue",
+								"type": "Wildcard"
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P3",
+								"name": "RGB",
+								"type": "Wildcard",
+								"connected": true
+							},
+							{
+								"id": "P4",
+								"name": "R",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P5",
+								"name": "G",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P6",
+								"name": "B",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P7",
+								"name": "A",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P8",
+								"name": "RGBA",
+								"type": "Wildcard"
+							}
+						]
+					},
+					{
+						"id": "N2",
+						"type": "MaterialExpression",
+						"class": "MaterialExpressionVectorParameter",
+						"member_name": "Tint",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P9",
+								"name": "RGB",
+								"type": "Wildcard",
+								"connected": true
+							},
+							{
+								"id": "P10",
+								"name": "R",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P11",
+								"name": "G",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P12",
+								"name": "B",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P13",
+								"name": "A",
+								"type": "Wildcard"
+							}
+						],
+						"properties":
+						{
+							"DefaultValue": "(R=1.000000,G=0.900000,B=0.800000,A=1.000000)"
+						}
+					},
+					{
+						"id": "N3",
+						"type": "MaterialExpression",
+						"class": "MaterialExpressionMultiply",
+						"input_pins": [
+							{
+								"id": "P14",
+								"name": "A",
+								"type": "Wildcard",
+								"connected": true
+							},
+							{
+								"id": "P15",
+								"name": "B",
+								"type": "Wildcard",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P16",
+								"name": "Output",
+								"type": "Wildcard",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N4",
+						"type": "MaterialExpression",
+						"class": "MaterialExpressionScalarParameter",
+						"member_name": "Roughness",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P17",
+								"name": "Output",
+								"type": "Wildcard",
+								"connected": true
+							}
+						],
+						"properties":
+						{
+							"DefaultValue": "0.300000"
+						}
+					},
+					{
+						"id": "N5",
+						"type": "MaterialOutput",
+						"class": "Material",
+						"input_pins": [
+							{
+								"id": "P18",
+								"name": "BaseColor",
+								"type": "Wildcard",
+								"connected": true
+							},
+							{
+								"id": "P19",
+								"name": "Roughness",
+								"type": "Wildcard",
+								"connected": true
+							}
+						],
+						"output_pins": []
+					}
+				],
+				"flows":
+				{
+					"execution": [],
+					"data":
+					{
+						"N1.P3": "N3.P14",
+						"N2.P9": "N3.P15",
+						"N3.P16": "N5.P18",
+						"N4.P17": "N5.P19"
+					}
+				}
+			}
+		],
+		"structs": [],
+		"enums": []
+	}
+}
