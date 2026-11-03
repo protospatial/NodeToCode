@@ -25,6 +25,7 @@ Source/Private/Tests/
   Goldens/<Area>/         checked-in expected outputs a spec compares against (N2CTest::GoldensDir(Area))
   Perf/                   the perf fixture generator and NodeToCode.Perf.Fixtures (assets in Tests/NodeToCodeTestContent)
   Dependencies/           the dependency fixture generator and NodeToCode.Dependencies.Index (assets in Tests/NodeToCodeTestContent)
+  Migration/              NodeToCode.Migration.Plan (migration plans over the dependency fixtures)
 ```
 
 - New tests are Automation Specs (`BEGIN_DEFINE_SPEC`) named `NodeToCode.<Area>.<Thing>`, for example
@@ -538,6 +539,11 @@ The fixtures are generated in C++ (`Dependencies/N2CDependencyFixtures.cpp`). Re
 `$env:N2C_GENERATE_DEPENDENCY_FIXTURES = '1'; .\build.ps1 -UEVersion 5.6 -Test -TestFilter NodeToCode.Dependencies`.
 Then remove the variable, run the filter again (the run that generates checks before it saves) and commit the
 `.uasset` files.
+
+`NodeToCode.Migration.Plan` (`Migration/N2CMigrationPlan.spec.cpp`, card 0323) and
+`NodeToCode.MCP.BlueprintDependencies` (`MCP/N2CBlueprintDependencies.spec.cpp`, card 0319) use the same fixtures:
+the plan's seven steps (the cycle {B, C} as one) with the host project's module as the target, and the index as
+get-blueprint-dependencies returns it. Both point their output folders at a scratch folder.
 
 ## Running the tests
 
