@@ -1,0 +1,237 @@
+<!doctype html>
+<!--
+  NodeToCode graph preview, an MCP App (card 0213): ui://nodetocode/graph-preview, linked from get-focused-blueprint
+  through _meta.ui.resourceUri. The host renders it in a sandboxed iframe and sends the tool result (the N2C JSON
+  document of the focused graph) over postMessage (MCP Apps 2026-01-26). It draws each graph's nodes in columns by
+  their place in the execution and data flow, with execution wires in white and data wires in color. Self-contained:
+  no remote script, style or font. Node and pin names come from the Blueprint, so they go in as SVG/DOM text only.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NodeToCode graph preview</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #ffffff; --panel: #f5f5f4; --border: #d6d3d1; --text: #1c1917; --muted: #57534e;
+    --node: #fafaf9; --node-head: #e7e5e4; --exec: #44403c; --data: #0284c7; --accent: #b45309;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1c1c1c; --panel: #262626; --border: #3f3f46; --text: #e7e5e4; --muted: #a8a29e;
+      --node: #2a2a2a; --node-head: #3a3a3a; --exec: #e7e5e4; --data: #38bdf8; --accent: #f2a93b;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 12px; background: var(--bg); color: var(--text);
+         font: 13px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  h1 { font-size: 15px; margin: 0 0 4px; }
+  .muted { color: var(--muted); }
+  .graph { border: 1px solid var(--border); border-radius: 8px; margin: 10px 0; overflow: hidden; }
+  .graph > h2 { font-size: 13px; margin: 0; padding: 6px 10px; background: var(--panel); border-bottom: 1px solid var(--border);
+                display: flex; gap: 8px; align-items: baseline; }
+  .canvas { overflow: auto; max-height: 70vh; }
+  svg text { font: 11px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; fill: var(--text); }
+  svg .title { font-weight: 600; }
+  svg .pin { fill: var(--muted); }
+  svg .box { fill: var(--node); stroke: var(--border); }
+  svg .head { fill: var(--node-head); }
+  svg .exec { stroke: var(--exec); stroke-width: 2.5; fill: none; }
+  svg .data { stroke: var(--data); stroke-width: 1.4; fill: none; opacity: 0.85; }
+  .warn { color: var(--accent); }
+</style>
+</head>
+<body>
+<h1 id="title">NodeToCode graph preview</h1>
+<div id="status" class="muted">Waiting for the graph...</div>
+<main id="graphs"></main>
+<script>
+"use strict";
+(function () {
+  const SVGNS = "http://www.w3.org/2000/svg";
+  const NODE_W = 190, HEAD_H = 22, PIN_H = 16, COL_GAP = 70, ROW_GAP = 22, PAD = 16, MAX_PINS = 10;
+  let nextId = 1;
+  const pending = new Map();
+
+  function post(message) { window.parent.postMessage(Object.assign({ jsonrpc: "2.0" }, message), "*"); }
+  function request(method, params) {
+    const id = nextId++;
+    return new Promise(function (resolve, reject) { pending.set(id, { resolve: resolve, reject: reject }); post({ id: id, method: method, params: params }); });
+  }
+  function notifySize() { post({ method: "ui/notifications/size-changed", params: { height: document.documentElement.scrollHeight } }); }
+  function el(tag, cls, value) { const e = document.createElement(tag); if (cls) { e.className = cls; } if (value != null) { e.textContent = value; } return e; }
+  function svg(tag, attrs, value) {
+    const e = document.createElementNS(SVGNS, tag);
+    Object.keys(attrs || {}).forEach(function (k) { e.setAttribute(k, attrs[k]); });
+    if (value != null) { e.textContent = value; }
+    return e;
+  }
+  function clip(s, n) { s = String(s == null ? "" : s); return s.length > n ? s.slice(0, n - 1) + "…" : s; }
+
+  // The node's display name (as the graph shows it), else its member, else its type; member_name can be "None"
+  function nodeTitle(n) {
+    const member = n.member_name && n.member_name !== "None" ? n.member_name : "";
+    return n.name || n.title || member || n.type || n.id;
+  }
+  function nodeDetail(n) {
+    const member = n.member_name && n.member_name !== "None" ? n.member_name : "";
+    return [n.type, n.member_parent && member ? n.member_parent + "::" + member : n.member_parent, n.comment].filter(Boolean).join(" - ");
+  }
+
+  // A node's or pin's short id: "id" (N2C 1.x) or "ids.short" (2.x)
+  function idOf(x) { return x ? (x.id != null ? String(x.id) : (x.ids && x.ids.short != null ? String(x.ids.short) : "")) : ""; }
+
+  // Edges from the N2C flows: execution chains "N1->N2->N3" (1.x) or "N4.P10->N5.P11" (2.x, through the pins) and
+  // data links "N1.P2": "N2.P1"
+  function edgesOf(graph) {
+    const flows = graph.flows || {};
+    const exec = [], data = [];
+    (flows.execution || []).forEach(function (chain) {
+      const steps = String(chain).split("->").map(function (s) { return s.trim(); }).filter(Boolean)
+        .map(function (s) { const parts = s.split("."); return { node: parts[0], pin: parts[1] }; });
+      for (let i = 1; i < steps.length; i++) { exec.push({ from: steps[i - 1].node, fromPin: steps[i - 1].pin, to: steps[i].node, toPin: steps[i].pin }); }
+    });
+    Object.keys(flows.data || {}).forEach(function (from) {
+      const to = flows.data[from];
+      const f = from.split("."), t = String(to).split(".");
+      data.push({ from: f[0], fromPin: f[1], to: t[0], toPin: t[1] });
+    });
+    return { exec: exec, data: data };
+  }
+
+  // Columns by longest path over execution and data edges (a cycle stops at the node it came back to)
+  function layout(nodes, edges) {
+    const byId = new Map(nodes.map(function (n) { return [idOf(n), n]; }));
+    const preds = new Map(nodes.map(function (n) { return [idOf(n), []]; }));
+    edges.exec.forEach(function (e) { if (byId.has(e.from) && byId.has(e.to) && e.from !== e.to) { preds.get(e.to).push(e.from); } });
+    edges.data.forEach(function (e) { if (byId.has(e.from) && byId.has(e.to) && e.from !== e.to) { preds.get(e.to).push(e.from); } });
+    const depth = new Map(), visiting = new Set();
+    function depthOf(id) {
+      if (depth.has(id)) { return depth.get(id); }
+      if (visiting.has(id)) { return 0; }
+      visiting.add(id);
+      let d = 0;
+      preds.get(id).forEach(function (p) { d = Math.max(d, depthOf(p) + 1); });
+      visiting.delete(id);
+      depth.set(id, d);
+      return d;
+    }
+    nodes.forEach(function (n) { depthOf(idOf(n)); });
+    const columns = [];
+    nodes.forEach(function (n) { const d = depth.get(idOf(n)); (columns[d] = columns[d] || []).push(n); });
+    const pos = new Map();
+    let height = 0;
+    columns.forEach(function (col, c) {
+      let y = PAD;
+      (col || []).forEach(function (n) {
+        const pins = Math.min(Math.max((n.input_pins || []).length, (n.output_pins || []).length), MAX_PINS);
+        const h = HEAD_H + Math.max(1, pins) * PIN_H + 6;
+        pos.set(idOf(n), { x: PAD + c * (NODE_W + COL_GAP), y: y, h: h, node: n });
+        y += h + ROW_GAP;
+      });
+      height = Math.max(height, y);
+    });
+    return { pos: pos, width: PAD * 2 + columns.length * (NODE_W + COL_GAP) - COL_GAP, height: height + PAD };
+  }
+
+  function pinY(p, pins, pinId) {
+    const i = pinId ? (pins || []).findIndex(function (x) { return idOf(x) === pinId; }) : -1;
+    return p.y + HEAD_H + (i < 0 || i >= MAX_PINS ? 0.5 : i + 0.5) * PIN_H + 3;
+  }
+
+  function drawGraph(graph) {
+    const nodes = Array.isArray(graph.nodes) ? graph.nodes : [];
+    const edges = edgesOf(graph);
+    const L = layout(nodes, edges);
+    const root = svg("svg", { width: Math.max(L.width, 200), height: Math.max(L.height, 60), role: "img" });
+    root.appendChild(svg("title", {}, (graph.name || "graph") + ": " + nodes.length + " nodes"));
+    const wires = svg("g", {}), boxes = svg("g", {});
+    root.appendChild(wires); root.appendChild(boxes);
+    function wire(cls, x1, y1, x2, y2) {
+      const dx = Math.max(30, (x2 - x1) / 2);
+      wires.appendChild(svg("path", { "class": cls, d: "M" + x1 + "," + y1 + " C" + (x1 + dx) + "," + y1 + " " + (x2 - dx) + "," + y2 + " " + x2 + "," + y2 }));
+    }
+    edges.exec.forEach(function (e) {
+      const a = L.pos.get(e.from), b = L.pos.get(e.to);
+      if (a && b) {
+        wire("exec", a.x + NODE_W, e.fromPin ? pinY(a, a.node.output_pins, e.fromPin) : a.y + HEAD_H / 2,
+          b.x, e.toPin ? pinY(b, b.node.input_pins, e.toPin) : b.y + HEAD_H / 2);
+      }
+    });
+    edges.data.forEach(function (e) {
+      const a = L.pos.get(e.from), b = L.pos.get(e.to);
+      if (a && b) { wire("data", a.x + NODE_W, pinY(a, a.node.output_pins, e.fromPin), b.x, pinY(b, b.node.input_pins, e.toPin)); }
+    });
+    L.pos.forEach(function (p) {
+      const n = p.node;
+      const g = svg("g", {});
+      g.appendChild(svg("title", {}, nodeTitle(n) + (nodeDetail(n) ? " - " + nodeDetail(n) : "")));
+      g.appendChild(svg("rect", { "class": "box", x: p.x, y: p.y, width: NODE_W, height: p.h, rx: 5 }));
+      g.appendChild(svg("rect", { "class": "head", x: p.x, y: p.y, width: NODE_W, height: HEAD_H, rx: 5 }));
+      g.appendChild(svg("text", { "class": "title", x: p.x + 8, y: p.y + 15 }, clip(nodeTitle(n), 30)));
+      (n.input_pins || []).slice(0, MAX_PINS).forEach(function (pin, i) {
+        const label = (pin.name || pin.type || "") + (pin.default_value != null && pin.default_value !== "" ? " = " + pin.default_value : "");
+        g.appendChild(svg("text", { "class": "pin", x: p.x + 8, y: p.y + HEAD_H + i * PIN_H + 13 }, clip(label, 18)));
+      });
+      (n.output_pins || []).slice(0, MAX_PINS).forEach(function (pin, i) {
+        g.appendChild(svg("text", { "class": "pin", x: p.x + NODE_W - 8, y: p.y + HEAD_H + i * PIN_H + 13, "text-anchor": "end" }, clip(pin.name || pin.type || "", 14)));
+      });
+      boxes.appendChild(g);
+    });
+    return root;
+  }
+
+  function render(result) {
+    const data = (result && (result.structuredContent || result)) || {};
+    const main = document.getElementById("graphs");
+    const status = document.getElementById("status");
+    main.replaceChildren();
+    if (result && result.isError) {
+      const first = (result.content || []).find(function (c) { return c.type === "text"; });
+      status.textContent = "No graph to show" + (first ? ": " + first.text : ".");
+      notifySize();
+      return;
+    }
+    const meta = data.metadata || {};
+    document.getElementById("title").textContent = meta.name ? meta.name + (meta.blueprint_class ? " (" + meta.blueprint_class + ")" : "") : "NodeToCode graph preview";
+    const graphs = Array.isArray(data.graphs) ? data.graphs : [];
+    status.textContent = graphs.length + (graphs.length === 1 ? " graph" : " graphs") + ". Execution wires are drawn thick, data wires thin.";
+    graphs.forEach(function (graph) {
+      const section = el("section", "graph");
+      const h2 = el("h2");
+      h2.appendChild(el("span", null, graph.name || "(unnamed graph)"));
+      h2.appendChild(el("span", "muted", [graph.graph_type, (graph.nodes || []).length + " nodes"].filter(Boolean).join(" - ")));
+      section.appendChild(h2);
+      const canvas = el("div", "canvas");
+      canvas.appendChild(drawGraph(graph));
+      section.appendChild(canvas);
+      main.appendChild(section);
+    });
+    (data.warnings || []).forEach(function (w) { main.appendChild(el("p", "warn", typeof w === "string" ? w : (w.message || JSON.stringify(w)))); });
+    notifySize();
+  }
+
+  window.addEventListener("message", function (event) {
+    const msg = event.data;
+    if (!msg || msg.jsonrpc !== "2.0") { return; }
+    if (msg.id != null && pending.has(msg.id) && !msg.method) {
+      const p = pending.get(msg.id); pending.delete(msg.id);
+      if (msg.error) { p.reject(msg.error); } else { p.resolve(msg.result); }
+      return;
+    }
+    if (msg.method === "ui/notifications/tool-result") { render(msg.params); }
+    else if (msg.method === "ui/resource-teardown" && msg.id != null) { post({ id: msg.id, result: {} }); }
+    else if (msg.method === "ping" && msg.id != null) { post({ id: msg.id, result: {} }); }
+  });
+
+  request("ui/initialize", {
+    appInfo: { name: "nodetocode-graph-preview", version: "1.0.0" },
+    appCapabilities: { availableDisplayModes: ["inline"] },
+    protocolVersion: "2026-01-26"
+  }).then(function () { post({ method: "ui/notifications/initialized", params: {} }); notifySize(); },
+          function (error) { document.getElementById("status").textContent = "The host did not start this preview: " + (error && error.message || error); });
+})();
+</script>
+</body>
+</html>

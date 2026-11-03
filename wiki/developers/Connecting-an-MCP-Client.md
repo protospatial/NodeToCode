@@ -140,7 +140,8 @@ bridge finds the editor through the file the server writes, so it follows a port
 editor; `--project` picks one editor when several are open, and `--url http://127.0.0.1:27000/mcp` names one
 directly. The bridge only follows a file whose address is this computer (`127.0.0.1`, `localhost` or `[::1]`) and
 ignores any other, with a line in its log; to reach an editor on another machine, pass `--url` yourself. Any other
-stdio-only client takes the same command and arguments.
+stdio-only client takes the same command and arguments. Claude Desktop shows the translation and focused graph in
+[MCP Apps](MCP-Apps).
 
 ## Epic's MCP Client Toolset (UE 5.8)
 
