@@ -79,6 +79,9 @@ public class NodeToCode : ModuleRules
 			// GetExtendedTcpTable: whether the client of a held MCP call is still connected (N2CMcpTcpConnectionState,
 			// card 0512)
 			PublicSystemLibraries.Add("iphlpapi.lib");
+
+			// ILiveCodingModule::Compile: the C++ compile check's Live Coding backend (FN2CCppCompileDriver, card 0315)
+			PrivateDependencyModuleNames.Add("LiveCoding");
 		}
 
 		// --- httplib.h Integration (unused today, see the include path above) ---
