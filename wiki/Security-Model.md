@@ -60,8 +60,11 @@ on for everyone; it does not protect you from a hostile project, which can run i
 **Allow MCP Python Execution** is off by default. Off, the `run-python` tool does not exist on the server, whatever
 the tool profile says. On, any connected client can run
 any Python in the editor as you: read and write any file you can, read your API keys from Credential Manager and the
-environment, and change the project. A Python call has no undo step and no timeout. Turn it on only while you use it,
-with an agent you trust.
+environment, and change the project. Each call is one undo step (**Edit → Undo** shows it as `MCP: run-python`), but
+only for changes the editor records: properties set through the editor's own functions and the actors you have
+selected; a script can also write files or delete assets, which undo does not bring back. Its timeout (60 seconds by
+default) stops a loop of Python code, but an engine call already running finishes first, and the editor waits while a
+script runs. Turn it on only while you use it, with an agent you trust.
 
 ## Which tools a client sees
 

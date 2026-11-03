@@ -1143,7 +1143,7 @@ Run Python in the editor with the unreal module (only when the user allows MCP P
 
 **Run Python in the editor**
 
-Execute Python code in Unreal Engine's Python environment. WORKFLOW: 1) Use a loaded Agent Skill's script when one fits the task, 2) Use Context7 MCP to look up UE Python APIs (resolve-library-id with 'unreal-python-stubhub', then query-docs) - never guess signatures, 3) Use 'import nodetocode as n2c' for Blueprint utilities (get_focused_blueprint, compile_blueprint, save_blueprint, tag_graph) and n2c.invoke_tool(name, arguments) for any other NodeToCode tool, 4) Set 'result' variable to return structured data.
+Execute Python code in Unreal Engine's Python environment. WORKFLOW: 1) Use a loaded Agent Skill's script when one fits the task, 2) Use Context7 MCP to look up UE Python APIs (resolve-library-id with 'unreal-python-stubhub', then query-docs) - never guess signatures, 3) Use 'import nodetocode as n2c' for Blueprint utilities (get_focused_blueprint, compile_blueprint, save_blueprint, tag_graph) and n2c.invoke_tool(name, arguments) for any other NodeToCode tool, 4) Set 'result' variable to return structured data. Each call is one undo step, 'MCP: run-python' (Ctrl+Z reverts it): edits through set_editor_property, editor subsystems, asset tools and NodeToCode's tools are recorded, and so are the actors selected in the level; for any other object a plain setter changes (set_actor_location on an unselected actor), call obj.modify() first. A call that changes nothing adds no undo step. The timeout is checked between Python bytecodes: a loop of Python code is stopped with a timeout error, but a native engine call on the game thread (an asset scan, a level load, time.sleep) cannot be interrupted and runs to its end first; the editor is busy for as long as the script runs.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
@@ -1154,7 +1154,7 @@ Served only when the per-user Allow MCP Python Execution is on (off by default).
 | Argument | Type | Required | Default | Description |
 |---|---|---|---|---|
 | `code` | `string` | yes |  | Python code to execute. Use 'import unreal' for UE APIs (verify signatures with Context7). Use 'import nodetocode as n2c' for Blueprint utilities. Set 'result = {...}' to return structured data. |
-| `timeout` | `number` | no |  | Timeout in seconds (default: 60, max: 300) |
+| `timeout` | `number` | no |  | Seconds the script may run (default: 60, max: 300). Past it the script is stopped at its next Python bytecode and the call fails with timed_out true; a native engine call in progress runs to its end first. |
 
 ## TranslationTools
 

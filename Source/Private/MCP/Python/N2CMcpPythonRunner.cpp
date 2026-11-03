@@ -13,7 +13,7 @@
 
 namespace N2CMcpPythonRunner
 {
-	static FRun Run(const TCHAR* Entry, const FString& Text)
+	static FRun Run(const TCHAR* Entry, const FString& Text, float TimeoutSeconds)
 	{
 		check(IsInGameThread());
 		FRun Out;
@@ -35,8 +35,8 @@ namespace N2CMcpPythonRunner
 		const FString CallId = FGuid::NewGuid().ToString(EGuidFormats::Digits);
 
 		FPythonCommandEx Command;
-		Command.Command = FString::Printf(TEXT("__import__('nodetocode._mcp_runner', fromlist=['%s']).%s('%s', '%s')"),
-			Entry, Entry, *CallId, *Encoded);
+		Command.Command = FString::Printf(TEXT("__import__('nodetocode._mcp_runner', fromlist=['%s']).%s('%s', '%s', %s)"),
+			Entry, Entry, *CallId, *Encoded, *FString::SanitizeFloat(FMath::Max(TimeoutSeconds, 0.0f)));
 		Command.ExecutionMode = EPythonCommandExecutionMode::ExecuteStatement;
 		Command.Flags = EPythonCommandFlags::Unattended;
 		const bool bRan = PythonPlugin->ExecPythonCommandEx(Command);
@@ -68,8 +68,8 @@ namespace N2CMcpPythonRunner
 		return Out;
 	}
 
-	FRun RunCode(const FString& Source)
+	FRun RunCode(const FString& Source, float TimeoutSeconds)
 	{
-		return Run(TEXT("run_code"), Source);
+		return Run(TEXT("run_code"), Source, TimeoutSeconds);
 	}
 }
