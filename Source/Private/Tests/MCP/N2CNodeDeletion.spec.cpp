@@ -251,15 +251,23 @@ void FN2CNodeDeletionSpec::Define()
 
 	Describe(TEXT("the Python bridge's DeleteNodes"), [this]()
 	{
-		It(TEXT("bridges the exec chain with preserve_connections and lists a GUID it did not delete under skipped"), [this]()
+		// The bridge forwards to delete-blueprint-node (card 0343): an unknown GUID refuses the whole call, as the tool
+		// does, where the bridge's own copy deleted the rest and listed it under "skipped"
+		It(TEXT("refuses an unknown GUID as the tool does, then bridges the exec chain with preserve_connections"), [this]()
 		{
 			if (!Build(TEXT("BP_N2CDeleteSpecBridge")) || !Test->OpenInEditor(*this, Graph))
 			{
 				return;
 			}
 			const FString Unknown = FGuid::NewGuid().ToString();
+			const TSharedPtr<FJsonObject> Refused = N2CTest::ParseJsonObject(UN2CPythonBridge::DeleteNodes(
+				FString::Printf(TEXT("[\"%s\",\"%s\"]"), *PrintB->NodeGuid.ToString(), *Unknown), /*bPreserveConnections*/ true, /*bForce*/ false));
+			TestTrue(TEXT("the call with an unknown GUID fails"), Refused.IsValid() && !Refused->GetBoolField(TEXT("success")));
+			TestTrue(TEXT("naming the GUID"), Refused.IsValid() && Refused->GetStringField(TEXT("error")).Contains(Unknown));
+			TestTrue(TEXT("and deletes nothing"), Graph->Nodes.Contains(PrintB));
+
 			const FString Json = UN2CPythonBridge::DeleteNodes(
-				FString::Printf(TEXT("[\"%s\",\"%s\"]"), *PrintB->NodeGuid.ToString(), *Unknown), /*bPreserveConnections*/ true, /*bForce*/ false);
+				FString::Printf(TEXT("[\"%s\"]"), *PrintB->NodeGuid.ToString()), /*bPreserveConnections*/ true, /*bForce*/ false);
 			TSharedPtr<FJsonObject> Parsed;
 			const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Json);
 			const TSharedPtr<FJsonObject>* Data = nullptr;
@@ -273,9 +281,6 @@ void FN2CNodeDeletionSpec::Define()
 			const TArray<TSharedPtr<FJsonValue>> Links = N2CNodeDeletionSpec::Bridged(*Data);
 			TestTrue(TEXT("one preserved connection: ") + Json.Left(600),
 				Links.Num() == 1 && N2CNodeDeletionSpec::IsLink(Links[0], N2CTest::ExecOut(PrintA), N2CTest::ExecIn(PrintC)));
-			const TArray<TSharedPtr<FJsonValue>>* Skipped = nullptr;
-			TestTrue(TEXT("the unknown GUID is skipped: ") + Json.Left(600), (*Data)->TryGetArrayField(TEXT("skipped"), Skipped)
-				&& Skipped->Num() == 1 && (*Skipped)[0]->AsObject()->GetStringField(TEXT("guid")) == Unknown);
 			N2CTest::ExpectSymmetricLinks(*this, TEXT("after bridge delete"), Blueprint);
 		});
 	});

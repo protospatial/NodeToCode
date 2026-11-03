@@ -40,6 +40,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python")
 	static FString InvokeTool(const FString& ToolName, const FString& ArgumentsJson = TEXT("{}"));
 
+	/** InvokeTool with the arguments as an object (not reflected): what the forwarding functions below call */
+	static FString InvokeToolWith(const FString& ToolName, const TSharedRef<FJsonObject>& Arguments);
+
 	/**
 	 * Get the currently focused Blueprint graph as N2CJSON format.
 	 *
@@ -240,218 +243,133 @@ public:
 	// ========== Blueprint Editor Navigation ==========
 
 	/**
-	 * Open a Blueprint asset in the editor.
-	 *
-	 * @param BlueprintPath Asset path of the Blueprint (e.g., "/Game/Blueprints/BP_MyActor")
-	 * @param FocusGraph Optional graph to focus: the name of one of the Blueprint's event, function, macro, interface or
-	 *        delegate graphs, matched case-insensitively (e.g., "EventGraph", "ConstructionScript" or
-	 *        "UserConstructionScript" for the construction script, or a function name). A name that matches no graph
-	 *        fails with "GRAPH_NOT_FOUND: ..." listing the Blueprint's graphs, and the Blueprint is not opened. Empty
-	 *        opens the Blueprint without focusing a graph.
-	 * @return JSON with success status and Blueprint info: {"blueprintName", "blueprintPath", "focusedGraph",
-	 *         "eventGraphCount", "functionCount"}
+	 * Deprecated (card 0343): runs the MCP tool open-blueprint-asset through InvokeToolWith and returns InvokeTool's answer,
+	 * {"success", "data": <the tool's result>, "error"}; "success" is false also when the tool's result says
+	 * "success": false. Arguments: asset_path, focus_graph when FocusGraph is given. Result fields: Context/mcp-server/tools.generated.md#open-blueprint-asset
 	 */
-	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python")
+	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python", meta = (DeprecatedFunction, DeprecationMessage = "Use nodetocode.open_blueprint, or InvokeTool with its MCP tool; this function forwards to that tool and returns InvokeTool's answer (card 0343)"))
 	static FString OpenBlueprint(const FString& BlueprintPath, const FString& FocusGraph = TEXT(""));
 
 	/**
-	 * Open/focus a function graph in the currently open Blueprint.
-	 *
-	 * @param FunctionName Name of the function to open
-	 * @return JSON with success status and function info
+	 * Deprecated (card 0343): runs the MCP tool open-blueprint-function through InvokeToolWith and returns InvokeTool's answer,
+	 * {"success", "data": <the tool's result>, "error"}; "success" is false also when the tool's result says
+	 * "success": false. Arguments: graphName. Result fields: Context/mcp-server/tools.generated.md#open-blueprint-function
 	 */
-	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python")
+	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python", meta = (DeprecatedFunction, DeprecationMessage = "Use nodetocode.open_blueprint_function, or InvokeTool with its MCP tool; this function forwards to that tool and returns InvokeTool's answer (card 0343)"))
 	static FString OpenBlueprintFunction(const FString& FunctionName);
 
 	// ========== Blueprint Graph Editing ==========
 
 	/**
-	 * Search for Blueprint nodes/actions matching a search term.
-	 *
-	 * @param SearchTerm The text query to search for
-	 * @param bContextSensitive Kept for compatibility: true and false search the focused graph's action list (the
-	 *        editor's node menu with Context Sensitive off) and only set isContextSensitive. Needs a focused graph
-	 * @param MaxResults Maximum number of results to return (1-100)
-	 * @param CategoryFilter Optional category filter (e.g., "flowcontrol", "operators", "struct")
-	 * @param bExcludeVMFunctions If true (default), excludes low-level VM math functions
-	 * @param BlueprintPath Optional Blueprint asset path; empty: the focused Blueprint (card 0274)
-	 * @param Graph Optional graph of that Blueprint (or of the focused one): its GUID or its name; empty: the
-	 *        focused graph, or with BlueprintPath alone its focused graph, else its event graph
-	 * @return JSON {"nodes": [{"name", "displayName", "menuName", "category", "tooltip", "keywords",
-	 *         "spawnMetadata": {"actionIdentifier", "nodeName", "isContextSensitive"}}], "count"}. name, displayName and
-	 *         menuName are the menu name ("Print String"); category is the menu category ("Development|String");
-	 *         actionIdentifier is the stable action ID, the node spawner's signature (card 0277). Pass nodeName and
-	 *         actionIdentifier to AddNodeToGraph. CategoryFilter matches category, ignoring case and spaces.
+	 * Deprecated (card 0343): runs the MCP tool search-blueprint-nodes through InvokeToolWith and returns InvokeTool's answer,
+	 * {"success", "data": <the tool's result>, "error"}; "success" is false also when the tool's result says
+	 * "success": false. Arguments: searchTerm, contextSensitive, maxResults, category, excludeVMFunctions and the target. BlueprintPath and Graph (a GraphGuid or a graph name) are the target;
+	 * both empty act on the focused graph. Result fields: Context/mcp-server/tools.generated.md#search-blueprint-nodes
 	 */
-	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python")
+	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python", meta = (DeprecatedFunction, DeprecationMessage = "Use nodetocode.search_blueprint_nodes, or InvokeTool with its MCP tool; this function forwards to that tool and returns InvokeTool's answer (card 0343)"))
 	static FString SearchBlueprintNodes(const FString& SearchTerm, bool bContextSensitive = true, int32 MaxResults = 20,
 		const FString& CategoryFilter = TEXT(""), bool bExcludeVMFunctions = true,
 		const FString& BlueprintPath = TEXT(""), const FString& Graph = TEXT(""));
 
 	/**
-	 * Add a Blueprint node to the focused graph.
-	 *
-	 * @param NodeName The search result's spawnMetadata.nodeName (menu name); only breaks a tie between actions that
-	 *        share an ActionIdentifier
-	 * @param ActionIdentifier spawnMetadata.actionIdentifier of a search result (the stable spawner-signature ID);
-	 *        a pre-0277 search-text identifier is still accepted
-	 * @param LocationX X position for node placement
-	 * @param LocationY Y position for node placement
-	 * @param BlueprintPath Optional Blueprint asset path; empty: the focused Blueprint (card 0274)
-	 * @param Graph Optional graph of that Blueprint (or of the focused one): its GUID or its name; empty: the
-	 *        focused graph, or with BlueprintPath alone its focused graph, else its event graph
-	 * @return JSON with spawned node info including nodeGuid
+	 * Deprecated (card 0343): runs the MCP tool add-bp-node-to-active-graph through InvokeToolWith and returns InvokeTool's answer,
+	 * {"success", "data": <the tool's result>, "error"}; "success" is false also when the tool's result says
+	 * "success": false. Arguments: nodeName, actionIdentifier, location {x, y} and the target. BlueprintPath and Graph (a GraphGuid or a graph name) are the target;
+	 * both empty act on the focused graph. Result fields: Context/mcp-server/tools.generated.md#add-bp-node-to-active-graph
 	 */
-	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python")
+	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python", meta = (DeprecatedFunction, DeprecationMessage = "Use nodetocode.add_node_to_graph, or InvokeTool with its MCP tool; this function forwards to that tool and returns InvokeTool's answer (card 0343)"))
 	static FString AddNodeToGraph(const FString& NodeName, const FString& ActionIdentifier, float LocationX = 0.0f, float LocationY = 0.0f,
 		const FString& BlueprintPath = TEXT(""), const FString& Graph = TEXT(""));
 
 	/**
-	 * Connect pins between Blueprint nodes.
-	 *
-	 * @param ConnectionsJson JSON array of connection specs: [{"from":{"nodeGuid":"...","pinGuid":"..."},"to":{...}},...]
-	 * @param bBreakExistingLinks If true, a connection may replace an existing link (a linked data input, also through a
-	 *        conversion node, or a linked exec output); if false such a connection fails and names the existing link
-	 * @param BlueprintPath Optional Blueprint asset path; empty: the focused Blueprint (card 0274)
-	 * @param Graph Optional graph of that Blueprint (or of the focused one): its GUID or its name; empty: the
-	 *        focused graph, or with BlueprintPath alone its focused graph, else its event graph
-	 * @return JSON with succeeded/failed connections, each with its array index; a made one names the schema's response
-	 *         and any conversion node placed, a failed or malformed one an errorCode; summary.totalRequested counts every entry
+	 * Deprecated (card 0343): runs the MCP tool connect-pins through InvokeToolWith and returns InvokeTool's answer,
+	 * {"success", "data": <the tool's result>, "error"}; "success" is false also when the tool's result says
+	 * "success": false. Arguments: connections (ConnectionsJson, a JSON array), options.breakExistingLinks and the target. BlueprintPath and Graph (a GraphGuid or a graph name) are the target;
+	 * both empty act on the focused graph. Result fields: Context/mcp-server/tools.generated.md#connect-pins
 	 */
-	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python")
+	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python", meta = (DeprecatedFunction, DeprecationMessage = "Use nodetocode.connect_pins, or InvokeTool with its MCP tool; this function forwards to that tool and returns InvokeTool's answer (card 0343)"))
 	static FString ConnectPins(const FString& ConnectionsJson, bool bBreakExistingLinks = false,
 		const FString& BlueprintPath = TEXT(""), const FString& Graph = TEXT(""));
 
 	/**
-	 * Set the default value of an input pin on a Blueprint node.
-	 *
-	 * @param NodeGuid GUID of the node containing the pin
-	 * @param PinGuid GUID of the pin to modify
-	 * @param Value The value to set (as string); checked by the K2 schema first (card 0278), "" resets the pin
-	 * @param PinName Optional pin name for fallback lookup
-	 * @param BlueprintPath Optional Blueprint asset path; empty: the focused Blueprint (card 0274)
-	 * @param Graph Optional graph of that Blueprint (or of the focused one): its GUID or its name; empty: the
-	 *        focused graph, or with BlueprintPath alone its focused graph, else its event graph
-	 * @return JSON with old/new values (newValue read back), or an error with the schema's reason when the pin refuses the value
+	 * Deprecated (card 0343): runs the MCP tool set-input-pin-value through InvokeToolWith and returns InvokeTool's answer,
+	 * {"success", "data": <the tool's result>, "error"}; "success" is false also when the tool's result says
+	 * "success": false. Arguments: nodeGuid, pinGuid, value, pinName and the target. BlueprintPath and Graph (a GraphGuid or a graph name) are the target;
+	 * both empty act on the focused graph. Result fields: Context/mcp-server/tools.generated.md#set-input-pin-value
 	 */
-	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python")
+	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python", meta = (DeprecatedFunction, DeprecationMessage = "Use nodetocode.set_pin_value, or InvokeTool with its MCP tool; this function forwards to that tool and returns InvokeTool's answer (card 0343)"))
 	static FString SetPinValue(const FString& NodeGuid, const FString& PinGuid, const FString& Value, const FString& PinName = TEXT(""),
 		const FString& BlueprintPath = TEXT(""), const FString& Graph = TEXT(""));
 
 	/**
-	 * Delete nodes from the focused Blueprint graph.
-	 *
-	 * @param NodeGuidsJson JSON array of node GUIDs to delete: ["guid1","guid2",...]
-	 * Deletes as the editor's Delete does (N2CNodeDeletion, shared with delete-blueprint-node): FBlueprintEditorUtils::RemoveNode,
-	 * one structural compile, protection by the node's CanUserDeleteNode.
-	 *
-	 * @param bPreserveConnections If true, reconnects the links that pass through each deleted node (exec in-sources to
-	 *        exec out-targets on a node with one exec input and output, and through reroute knots); each node lists
-	 *        the links made under preservedConnections
-	 * @param bForce If true, also deletes nodes the editor protects (a function entry, a collapsed graph's tunnels)
-	 * @param BlueprintPath Optional Blueprint asset path; empty: the focused Blueprint (card 0274)
-	 * @param Graph Optional graph of that Blueprint (or of the focused one): its GUID or its name; empty: the
-	 *        focused graph, or with BlueprintPath alone its focused graph, else its event graph
-	 * @return JSON with deleted node info; GUIDs not deleted are listed under 'skipped' with the reason
+	 * Deprecated (card 0343): runs the MCP tool delete-blueprint-node through InvokeToolWith and returns InvokeTool's answer,
+	 * {"success", "data": <the tool's result>, "error"}; "success" is false also when the tool's result says
+	 * "success": false. Arguments: nodeGuids (NodeGuidsJson, a JSON array), preserveConnections, force and the target. BlueprintPath and Graph (a GraphGuid or a graph name) are the target;
+	 * both empty act on the focused graph. Result fields: Context/mcp-server/tools.generated.md#delete-blueprint-node
 	 */
-	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python")
+	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python", meta = (DeprecatedFunction, DeprecationMessage = "Use nodetocode.delete_nodes, or InvokeTool with its MCP tool; this function forwards to that tool and returns InvokeTool's answer (card 0343)"))
 	static FString DeleteNodes(const FString& NodeGuidsJson, bool bPreserveConnections = false, bool bForce = false,
 		const FString& BlueprintPath = TEXT(""), const FString& Graph = TEXT(""));
 
 	/**
-	 * Find nodes in the focused graph by keywords or GUIDs.
-	 *
-	 * @param SearchTermsJson JSON array of search terms: ["term1","term2",...] or ["guid1","guid2",...]; a node matches
-	 *        when any term is a substring of its title (as shown and in source text), its class or its member name
-	 * @param SearchType Either "keyword" or "guid"
-	 * @param bCaseSensitive Whether keyword search is case-sensitive
-	 * @param MaxResults Maximum nodes to return (1-200)
-	 * @param BlueprintPath Optional Blueprint asset path; empty: the focused Blueprint (card 0274)
-	 * @param Graph Optional graph of that Blueprint (or of the focused one): its GUID or its name; empty: the
-	 *        focused graph, or with BlueprintPath alone its focused graph, else its event graph
-	 * @return JSON with matching nodes in N2C format
+	 * Deprecated (card 0343): runs the MCP tool find-nodes-in-graph through InvokeToolWith and returns InvokeTool's answer,
+	 * {"success", "data": <the tool's result>, "error"}; "success" is false also when the tool's result says
+	 * "success": false. Arguments: searchTerms (SearchTermsJson, a JSON array), searchType, caseSensitive, maxResults and the target. BlueprintPath and Graph (a GraphGuid or a graph name) are the target;
+	 * both empty act on the focused graph. Result fields: Context/mcp-server/tools.generated.md#find-nodes-in-graph
 	 */
-	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python")
+	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python", meta = (DeprecatedFunction, DeprecationMessage = "Use nodetocode.find_nodes_in_graph, or InvokeTool with its MCP tool; this function forwards to that tool and returns InvokeTool's answer (card 0343)"))
 	static FString FindNodesInGraph(const FString& SearchTermsJson, const FString& SearchType = TEXT("keyword"), bool bCaseSensitive = false, int32 MaxResults = 50,
 		const FString& BlueprintPath = TEXT(""), const FString& Graph = TEXT(""));
 
 	/**
-	 * Create a comment node around specified nodes.
-	 *
-	 * @param NodeGuidsJson JSON array of node GUIDs to encompass
-	 * @param CommentText Text for the comment
-	 * @param ColorR Red color component (0-1)
-	 * @param ColorG Green color component (0-1)
-	 * @param ColorB Blue color component (0-1)
-	 * @param FontSize Font size (1-1000)
-	 * @param MoveMode "group" or "none" for movement behavior
-	 * @param Padding Extra padding around nodes
-	 * @param BlueprintPath Optional Blueprint asset path; empty: the focused Blueprint (card 0274)
-	 * @param Graph Optional graph of that Blueprint (or of the focused one): its GUID or its name; empty: the
-	 *        focused graph, or with BlueprintPath alone its focused graph, else its event graph
-	 * @return JSON with comment node info
+	 * Deprecated (card 0343): runs the MCP tool create-comment-node through InvokeToolWith and returns InvokeTool's answer,
+	 * {"success", "data": <the tool's result>, "error"}; "success" is false also when the tool's result says
+	 * "success": false. Arguments: nodeGuids (NodeGuidsJson, a JSON array), commentText, color {r, g, b}, fontSize, moveMode, padding and the target. BlueprintPath and Graph (a GraphGuid or a graph name) are the target;
+	 * both empty act on the focused graph. Result fields: Context/mcp-server/tools.generated.md#create-comment-node
 	 */
-	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python")
+	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python", meta = (DeprecatedFunction, DeprecationMessage = "Use nodetocode.create_comment_node, or InvokeTool with its MCP tool; this function forwards to that tool and returns InvokeTool's answer (card 0343)"))
 	static FString CreateCommentNode(const FString& NodeGuidsJson, const FString& CommentText = TEXT("Comment"), float ColorR = 0.075f, float ColorG = 0.075f, float ColorB = 0.075f, int32 FontSize = 18, const FString& MoveMode = TEXT("group"), float Padding = 50.0f,
 		const FString& BlueprintPath = TEXT(""), const FString& Graph = TEXT(""));
 
 	// ========== Function Pin Management ==========
 
 	/**
-	 * Add an input parameter to the focused Blueprint function.
-	 *
-	 * @param PinName Name for the new parameter
-	 * @param TypeIdentifier Type identifier (e.g., "bool", "/Script/Engine.Actor")
-	 * @param DefaultValue Optional default value
-	 * @param bIsPassByReference Whether the parameter is passed by reference
-	 * @param Tooltip Optional tooltip description
-	 * @param BlueprintPath Optional Blueprint asset path; empty: the focused Blueprint (card 0274)
-	 * @param Graph Optional graph of that Blueprint (or of the focused one): its GUID or its name; empty: the
-	 *        focused graph, or with BlueprintPath alone its focused graph, else its event graph
-	 * @return JSON with created pin info
+	 * Deprecated (card 0343): runs the MCP tool add-function-input-pin through InvokeToolWith and returns InvokeTool's answer,
+	 * {"success", "data": <the tool's result>, "error"}; "success" is false also when the tool's result says
+	 * "success": false. Arguments: pinName, typeIdentifier, defaultValue, isPassByReference, tooltip and the target. BlueprintPath and Graph (a GraphGuid or a graph name) are the target;
+	 * both empty act on the focused graph. Result fields: Context/mcp-server/tools.generated.md#add-function-input-pin
 	 */
-	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python")
+	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python", meta = (DeprecatedFunction, DeprecationMessage = "Use nodetocode.add_function_input_pin, or InvokeTool with its MCP tool; this function forwards to that tool and returns InvokeTool's answer (card 0343)"))
 	static FString AddFunctionInputPin(const FString& PinName, const FString& TypeIdentifier, const FString& DefaultValue = TEXT(""), bool bIsPassByReference = false, const FString& Tooltip = TEXT(""),
 		const FString& BlueprintPath = TEXT(""), const FString& Graph = TEXT(""));
 
 	/**
-	 * Add a return value to the focused Blueprint function.
-	 *
-	 * @param PinName Name for the new return value
-	 * @param TypeIdentifier Type identifier (e.g., "bool", "/Script/Engine.Actor")
-	 * @param Tooltip Optional tooltip description
-	 * @param BlueprintPath Optional Blueprint asset path; empty: the focused Blueprint (card 0274)
-	 * @param Graph Optional graph of that Blueprint (or of the focused one): its GUID or its name; empty: the
-	 *        focused graph, or with BlueprintPath alone its focused graph, else its event graph
-	 * @return JSON with created pin info
+	 * Deprecated (card 0343): runs the MCP tool add-function-return-pin through InvokeToolWith and returns InvokeTool's answer,
+	 * {"success", "data": <the tool's result>, "error"}; "success" is false also when the tool's result says
+	 * "success": false. Arguments: pinName, typeIdentifier, tooltip and the target. BlueprintPath and Graph (a GraphGuid or a graph name) are the target;
+	 * both empty act on the focused graph. Result fields: Context/mcp-server/tools.generated.md#add-function-return-pin
 	 */
-	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python")
+	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python", meta = (DeprecatedFunction, DeprecationMessage = "Use nodetocode.add_function_return_pin, or InvokeTool with its MCP tool; this function forwards to that tool and returns InvokeTool's answer (card 0343)"))
 	static FString AddFunctionReturnPin(const FString& PinName, const FString& TypeIdentifier, const FString& Tooltip = TEXT(""),
 		const FString& BlueprintPath = TEXT(""), const FString& Graph = TEXT(""));
 
 	/**
-	 * Remove an input parameter from the focused Blueprint function.
-	 *
-	 * @param PinName Name of the pin to remove
-	 * @param BlueprintPath Optional Blueprint asset path; empty: the focused Blueprint (card 0274)
-	 * @param Graph Optional graph of that Blueprint (or of the focused one): its GUID or its name; empty: the
-	 *        focused graph, or with BlueprintPath alone its focused graph, else its event graph
-	 * @return JSON with removal status
+	 * Deprecated (card 0343): runs the MCP tool remove-function-entry-pin through InvokeToolWith and returns InvokeTool's answer,
+	 * {"success", "data": <the tool's result>, "error"}; "success" is false also when the tool's result says
+	 * "success": false. Arguments: pinName and the target. BlueprintPath and Graph (a GraphGuid or a graph name) are the target;
+	 * both empty act on the focused graph. Result fields: Context/mcp-server/tools.generated.md#remove-function-entry-pin
 	 */
-	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python")
+	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python", meta = (DeprecatedFunction, DeprecationMessage = "Use nodetocode.remove_function_entry_pin, or InvokeTool with its MCP tool; this function forwards to that tool and returns InvokeTool's answer (card 0343)"))
 	static FString RemoveFunctionEntryPin(const FString& PinName,
 		const FString& BlueprintPath = TEXT(""), const FString& Graph = TEXT(""));
 
 	/**
-	 * Remove a return value from the focused Blueprint function.
-	 *
-	 * @param PinName Name of the return pin to remove
-	 * @param BlueprintPath Optional Blueprint asset path; empty: the focused Blueprint (card 0274)
-	 * @param Graph Optional graph of that Blueprint (or of the focused one): its GUID or its name; empty: the
-	 *        focused graph, or with BlueprintPath alone its focused graph, else its event graph
-	 * @return JSON with removal status
+	 * Deprecated (card 0343): runs the MCP tool remove-function-return-pin through InvokeToolWith and returns InvokeTool's answer,
+	 * {"success", "data": <the tool's result>, "error"}; "success" is false also when the tool's result says
+	 * "success": false. Arguments: pinName and the target. BlueprintPath and Graph (a GraphGuid or a graph name) are the target;
+	 * both empty act on the focused graph. Result fields: Context/mcp-server/tools.generated.md#remove-function-return-pin
 	 */
-	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python")
+	UFUNCTION(BlueprintCallable, Category = "NodeToCode|Python", meta = (DeprecatedFunction, DeprecationMessage = "Use nodetocode.remove_function_return_pin, or InvokeTool with its MCP tool; this function forwards to that tool and returns InvokeTool's answer (card 0343)"))
 	static FString RemoveFunctionReturnPin(const FString& PinName,
 		const FString& BlueprintPath = TEXT(""), const FString& Graph = TEXT(""));
 

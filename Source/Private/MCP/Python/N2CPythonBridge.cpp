@@ -2,9 +2,9 @@
 
 #include "N2CPythonBridge.h"
 #include "Core/N2CEditorIntegration.h"
-#include "Core/N2CBlueprintEditorTracker.h"
 #include "Core/N2CSettings.h"
 #include "Core/N2CUserSettings.h"
+#include "LLM/N2CModelCatalog.h"
 #include "Core/N2CGraphStateManager.h"
 #include "Subsystems/N2CEditorSubsystem.h"
 #include "Core/N2CCapture.h"
@@ -15,76 +15,28 @@
 #include "MCP/Tools/N2CMcpToolsets.h"
 #include "MCP/Tools/N2CToolCatalog.h"
 #include "MCP/Utils/N2CMcpGraphTarget.h"
-#include "MCP/Utils/N2CMcpNodeDeletion.h"
 #include "MCP/Utils/N2CMcpBlueprintExport.h"
 #include "MCP/Utils/N2CMcpUntrustedContent.h"
 #include "MCP/Tools/Implementations/Translation/N2CMcpGetAvailableTranslationTargetsTool.h"
 #include "MCP/Tools/Implementations/Dependencies/N2CMcpDependencies.h"
-#include "MCP/Tools/N2CMcpFunctionGuidUtils.h"
-#include "MCP/Utils/N2CMcpFunctionPinUtils.h"
-#include "MCP/Utils/N2CPinConnectPolicy.h"
-#include "MCP/Utils/N2CMcpTypeResolver.h"
-#include "MCP/Utils/N2CMcpNodeActions.h"
-#include "MCP/Utils/N2CMcpNodeSpawnUtils.h"
-#include "MCP/Utils/N2CMcpPinDefaultUtils.h"
 #include "Models/N2CBlueprint.h"
 #include "Models/N2CJsonContract.h"
-#include "Utils/N2CStableNames.h"
 #include "Models/N2CTaggedBlueprintGraph.h"
 #include "Utils/N2CLogger.h"
 #include "Engine/Blueprint.h"
-#include "Kismet2/BlueprintEditorUtils.h"
-#include "Kismet2/KismetEditorUtilities.h"
 #include "Editor.h"
 #include "Misc/PackageName.h"
-#include "BlueprintActionFilter.h"
-#include "BlueprintActionMenuBuilder.h"
-#include "BlueprintEditor.h"
-#include "EdGraphSchema_K2.h"
 #include "EdGraph/EdGraph.h"
 #include "EdGraph/EdGraphNode.h"
 #include "EdGraph/EdGraphPin.h"
-#include "EdGraphNode_Comment.h"
-#include "K2Node.h"
-#include "K2Node_FunctionEntry.h"
-#include "K2Node_FunctionResult.h"
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonWriter.h"
 #include "Policies/CondensedJsonPrintPolicy.h"
-#include "ScopedTransaction.h"
-#include "Framework/Notifications/NotificationManager.h"
-#include "Widgets/Notifications/SNotificationList.h"
 #include "Misc/Optional.h"
 
 #define LOCTEXT_NAMESPACE "NodeToCode"
-
-namespace N2CPythonBridgePrivate
-{
-	/** Adds a call's compile diagnostics to a bridge result as "compile" (nothing when the call compiled nothing) */
-	void AddCompileResult(const TSharedPtr<FJsonObject>& Data, const TArray<FN2CCompileDiagnostics>& Compiles)
-	{
-		if (const TSharedPtr<FJsonObject> CompileJson = FN2CMcpBlueprintUtils::CompileDiagnosticsToJson(Compiles))
-		{
-			if (Data.IsValid())
-			{
-				Data->SetObjectField(TEXT("compile"), CompileJson);
-			}
-		}
-	}
-
-	/**
-	 * The target arguments of a bridge call (card 0274): BlueprintPath, and Graph as a graph GUID (a function's
-	 * functionGuid) or else a graph name. Both empty: the focused graph, as before.
-	 */
-	FN2CGraphTargetArgs BridgeTargetArgs(const FString& BlueprintPath, const FString& Graph)
-	{
-		return FN2CGraphTargetArgs::FromPathAndGraph(BlueprintPath, Graph);
-	}
-}
-using N2CPythonBridgePrivate::AddCompileResult;
-using N2CPythonBridgePrivate::BridgeTargetArgs;
 
 namespace N2CPythonBridgePrivate
 {
@@ -186,6 +138,16 @@ FString UN2CPythonBridge::InvokeTool(const FString& ToolName, const FString& Arg
 		Arguments = Parsed->AsObject();
 	}
 
+	return InvokeToolWith(Name, Arguments.ToSharedRef());
+}
+
+FString UN2CPythonBridge::InvokeToolWith(const FString& Name, const TSharedRef<FJsonObject>& Arguments)
+{
+	using namespace N2CPythonBridgePrivate;
+	if (!IsInGameThread())
+	{
+		return InvokeToolError(EN2CToolErrorCode::NotRunnableHere, TEXT("InvokeTool runs on the game thread only"));
+	}
 	const FN2CToolOutcome Outcome = FN2CToolCatalog(InvokeToolManager()).InvokeNow(Name, Arguments);
 	if (Outcome.IsError() && Outcome.Error->Code == EN2CToolErrorCode::UnknownTool && IsPythonToolsetTool(Name))
 	{
@@ -224,54 +186,50 @@ FString UN2CPythonBridge::GetFocusedBlueprintJson()
 
 FString UN2CPythonBridge::GraphToJson(UBlueprint* OwningBlueprint, UEdGraph* FocusedGraph)
 {
-	// Collect nodes
-	TArray<UK2Node*> CollectedNodes;
-	if (!FN2CEditorIntegration::Get().CollectNodesFromGraph(FocusedGraph, CollectedNodes) || CollectedNodes.IsEmpty())
-	{
-		return MakeErrorJson(TEXT("Failed to collect nodes or no nodes found in the focused graph."));
-	}
-
-	// Capture the nodes. The default events the editor placed stay visible (marked disabled), as in the MCP
-	// get-focused-blueprint tool, so a script finds and wires a new Blueprint's BeginPlay instead of adding a second
+	// The capture get-focused-blueprint and get-blueprint-n2cjson run (card 0343): the default events the editor placed
+	// stay visible, marked disabled, so a script finds and wires a new Blueprint's BeginPlay instead of adding a second
 	// one; a graph of only those events is three disabled nodes, not an error (cards 0137, 0433)
-	FN2CCapture Capture;
-	FN2CCaptureOptions Options;
-	Options.bIncludeGhostNodes = true;
-	FString CaptureError;
-	if (!FN2CEditorIntegration::Get().TranslateNodesToN2CBlueprintWithMaps(CollectedNodes, Capture, Options, &CaptureError))
+	if (!FocusedGraph)
 	{
-		return MakeErrorJson(FString::Printf(TEXT("Could not capture the focused graph: %s"), *CaptureError));
+		return MakeErrorJson(TEXT("NO_FOCUSED_GRAPH: no graph is focused"));
 	}
-
-	// Serialize to JSON
-	FString JsonOutput = FN2CEditorIntegration::Get().SerializeN2CBlueprintToJson(Capture.Blueprint, false);
-	if (JsonOutput.IsEmpty())
+	const TValueOrError<FN2CCapture, FString> Captured = N2CMcpBlueprintExport::CaptureGraph(*FocusedGraph);
+	if (Captured.HasError())
 	{
-		return MakeErrorJson(TEXT("Failed to serialize N2CBlueprint to JSON."));
+		return MakeErrorJson(Captured.GetError());
 	}
+	const FN2CCapture& Capture = Captured.GetValue();
 
-	// Build metadata response
-	FString BlueprintName = OwningBlueprint ? OwningBlueprint->GetName() : TEXT("Unknown");
-	FString BlueprintPath = OwningBlueprint ? OwningBlueprint->GetPathName() : TEXT("");
-	FString GraphName = FocusedGraph ? FocusedGraph->GetName() : TEXT("Unknown");
-
-	// The N2CJSON goes in as an object, so the response is one document the writer escapes throughout
+	// This document keeps the serializer's own form (each node's and pin's "id"), unlike the tools' "ids" objects
+	const FString JsonOutput = FN2CEditorIntegration::Get().SerializeN2CBlueprintToJson(Capture.Blueprint, false);
 	TSharedPtr<FJsonObject> N2CJsonObject;
 	const TSharedRef<TJsonReader<>> N2CJsonReader = TJsonReaderFactory<>::Create(JsonOutput);
-	if (!FJsonSerializer::Deserialize(N2CJsonReader, N2CJsonObject) || !N2CJsonObject.IsValid())
+	if (JsonOutput.IsEmpty() || !FJsonSerializer::Deserialize(N2CJsonReader, N2CJsonObject) || !N2CJsonObject.IsValid())
 	{
-		return MakeErrorJson(TEXT("The serialized N2CBlueprint is not a JSON object."));
+		return MakeErrorJson(TEXT("CAPTURE_FAILED: the captured graph could not be written as N2C JSON"));
 	}
 
-	// Create a simplified metadata response along with the full N2CJSON
-	const TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
-	Data->SetStringField(TEXT("name"), BlueprintName);
-	Data->SetStringField(TEXT("path"), BlueprintPath);
-	Data->SetStringField(TEXT("graph_name"), GraphName);
-	Data->SetNumberField(TEXT("node_count"), CollectedNodes.Num());
-	Data->SetObjectField(TEXT("n2c_json"), N2CJsonObject);
+	// node_count: the nodes of the focused graph itself (graphs it calls, captured at depth, are not counted)
+	int32 NodeCount = 0;
+	for (const FN2CGraph& Graph : Capture.Blueprint.Graphs)
+	{
+		if (Graph.Name == FocusedGraph->GetName())
+		{
+			NodeCount = Graph.Nodes.Num();
+			break;
+		}
+	}
+	if (NodeCount == 0 && Capture.Blueprint.Graphs.Num() > 0)
+	{
+		NodeCount = Capture.Blueprint.Graphs[0].Nodes.Num();
+	}
 
-	FN2CLogger::Get().Log(FString::Printf(TEXT("GetFocusedBlueprintJson: Retrieved %s with %d nodes"), *BlueprintName, CollectedNodes.Num()), EN2CLogSeverity::Info);
+	const TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
+	Data->SetStringField(TEXT("name"), OwningBlueprint ? OwningBlueprint->GetName() : TEXT("Unknown"));
+	Data->SetStringField(TEXT("path"), OwningBlueprint ? OwningBlueprint->GetPathName() : TEXT(""));
+	Data->SetStringField(TEXT("graph_name"), FocusedGraph->GetName());
+	Data->SetNumberField(TEXT("node_count"), NodeCount);
+	Data->SetObjectField(TEXT("n2c_json"), N2CJsonObject);
 	return MakeSuccessJson(Data);
 }
 
@@ -590,142 +548,92 @@ FString UN2CPythonBridge::RemoveTag(const FString& GraphGuid, const FString& Tag
 
 // ========== LLM Provider Info ==========
 
+namespace N2CPythonBridgePrivate
+{
+	/** The model catalog's profile of a provider (Content/Data/N2CModelCatalog.json, card 0343: no table of its own) */
+	const FN2CProviderProfile* ProviderProfile(EN2CLLMProvider Provider)
+	{
+		for (const FN2CProviderProfile& Profile : FN2CModelCatalog::Get().Providers())
+		{
+			if (Profile.Provider == Provider)
+			{
+				return &Profile;
+			}
+		}
+		return nullptr;
+	}
+
+	/** The provider's name as the settings enum spells it: OpenAI, Anthropic, Gemini, Ollama, DeepSeek, LMStudio */
+	FString ProviderName(EN2CLLMProvider Provider)
+	{
+		return StaticEnum<EN2CLLMProvider>()->GetNameStringByValue(static_cast<int64>(Provider));
+	}
+
+	/**
+	 * Where the provider's requests go: the catalog's base URL and path, or for Ollama and LM Studio the user's endpoint
+	 * with the path added when it lacks it (as their services do)
+	 */
+	FString ProviderEndpoint(EN2CLLMProvider Provider, const FN2CProviderProfile& Profile)
+	{
+		FString Override;
+		if (Provider == EN2CLLMProvider::Ollama)
+		{
+			Override = GetDefault<UN2CSettings>()->OllamaConfig.OllamaEndpoint;
+		}
+		else if (Provider == EN2CLLMProvider::LMStudio)
+		{
+			Override = GetDefault<UN2CUserSettings>()->LMStudioEndpoint;
+		}
+		Override.TrimStartAndEndInline();
+		if (Override.IsEmpty())
+		{
+			return Profile.BaseUrl + Profile.Path;
+		}
+		Override.RemoveFromEnd(TEXT("/"));
+		return Override.EndsWith(Profile.Path) ? Override : Override + Profile.Path;
+	}
+}
+
 FString UN2CPythonBridge::GetLLMProviders()
 {
-	const UN2CSettings* Settings = GetDefault<UN2CSettings>();
-	if (!Settings)
-	{
-		return MakeErrorJson(TEXT("Failed to get NodeToCode settings"));
-	}
-
-	// Build providers array
+	using namespace N2CPythonBridgePrivate;
+	const EN2CLLMProvider Current = GetDefault<UN2CUserSettings>()->Provider;
 	TArray<TSharedPtr<FJsonValue>> ProvidersArray;
-
-	// Define provider info (matching EN2CLLMProvider enum)
-	struct FProviderInfo
+	const UEnum* Enum = StaticEnum<EN2CLLMProvider>();
+	for (int32 Index = 0; Index < Enum->NumEnums() - 1; ++Index)
 	{
-		FString Name;
-		FString DisplayName;
-		bool bIsLocal;
-	};
-
-	TArray<FProviderInfo> Providers = {
-		{TEXT("OpenAI"), TEXT("OpenAI"), false},
-		{TEXT("Anthropic"), TEXT("Anthropic"), false},
-		{TEXT("Gemini"), TEXT("Google Gemini"), false},
-		{TEXT("Ollama"), TEXT("Ollama (Local)"), true},
-		{TEXT("DeepSeek"), TEXT("DeepSeek"), false},
-		{TEXT("LMStudio"), TEXT("LM Studio (Local)"), true}
-	};
-
-	EN2CLLMProvider CurrentProvider = GetDefault<UN2CUserSettings>()->Provider;
-
-	for (int32 i = 0; i < Providers.Num(); ++i)
-	{
+		const EN2CLLMProvider Provider = static_cast<EN2CLLMProvider>(Enum->GetValueByIndex(Index));
+		const FN2CProviderProfile* Profile = ProviderProfile(Provider);
 		const TSharedPtr<FJsonObject> ProviderObject = MakeShared<FJsonObject>();
-		ProviderObject->SetStringField(TEXT("name"), Providers[i].Name);
-		ProviderObject->SetStringField(TEXT("display_name"), Providers[i].DisplayName);
-		ProviderObject->SetBoolField(TEXT("is_local"), Providers[i].bIsLocal);
-		ProviderObject->SetBoolField(TEXT("is_current"), i == static_cast<int32>(CurrentProvider));
+		ProviderObject->SetStringField(TEXT("name"), ProviderName(Provider));
+		ProviderObject->SetStringField(TEXT("display_name"), Profile ? Profile->DisplayName : Enum->GetDisplayNameTextByIndex(Index).ToString());
+		ProviderObject->SetBoolField(TEXT("is_local"), Profile && Profile->bIsLocal);
+		ProviderObject->SetBoolField(TEXT("is_current"), Provider == Current);
 		ProvidersArray.Add(MakeShared<FJsonValueObject>(ProviderObject));
-	}
-
-	// Get current provider name
-	FString CurrentProviderName;
-	switch (CurrentProvider)
-	{
-	case EN2CLLMProvider::OpenAI: CurrentProviderName = TEXT("OpenAI"); break;
-	case EN2CLLMProvider::Anthropic: CurrentProviderName = TEXT("Anthropic"); break;
-	case EN2CLLMProvider::Gemini: CurrentProviderName = TEXT("Gemini"); break;
-	case EN2CLLMProvider::Ollama: CurrentProviderName = TEXT("Ollama"); break;
-	case EN2CLLMProvider::DeepSeek: CurrentProviderName = TEXT("DeepSeek"); break;
-	case EN2CLLMProvider::LMStudio: CurrentProviderName = TEXT("LMStudio"); break;
-	default: CurrentProviderName = TEXT("Unknown"); break;
 	}
 
 	const TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
 	Data->SetArrayField(TEXT("providers"), ProvidersArray);
-	Data->SetStringField(TEXT("current_provider"), CurrentProviderName);
-	Data->SetNumberField(TEXT("provider_count"), Providers.Num());
-
+	Data->SetStringField(TEXT("current_provider"), ProviderName(Current));
+	Data->SetNumberField(TEXT("provider_count"), ProvidersArray.Num());
 	return MakeSuccessJson(Data);
 }
 
 FString UN2CPythonBridge::GetActiveProvider()
 {
-	const UN2CSettings* Settings = GetDefault<UN2CSettings>();
-	if (!Settings)
+	using namespace N2CPythonBridgePrivate;
+	const EN2CLLMProvider Current = GetDefault<UN2CUserSettings>()->Provider;
+	const FN2CProviderProfile* Profile = ProviderProfile(Current);
+	if (!Profile)
 	{
-		return MakeErrorJson(TEXT("Failed to get NodeToCode settings"));
+		return MakeErrorJson(FString::Printf(TEXT("The model catalog has no provider %s"), *ProviderName(Current)));
 	}
-
-	EN2CLLMProvider CurrentProvider = GetDefault<UN2CUserSettings>()->Provider;
-
-	FString ProviderName;
-	FString DisplayName;
-	FString Model;
-	FString Endpoint;
-	bool bIsLocal = false;
-
-	switch (CurrentProvider)
-	{
-	case EN2CLLMProvider::OpenAI:
-		ProviderName = TEXT("OpenAI");
-		DisplayName = TEXT("OpenAI");
-		Model = Settings->GetActiveModel();
-		Endpoint = TEXT("https://api.openai.com/v1/chat/completions");
-		break;
-
-	case EN2CLLMProvider::Anthropic:
-		ProviderName = TEXT("Anthropic");
-		DisplayName = TEXT("Anthropic");
-		Model = Settings->GetActiveModel();
-		Endpoint = TEXT("https://api.anthropic.com/v1/messages");
-		break;
-
-	case EN2CLLMProvider::Gemini:
-		ProviderName = TEXT("Gemini");
-		DisplayName = TEXT("Google Gemini");
-		Model = Settings->GetActiveModel();
-		Endpoint = TEXT("https://generativelanguage.googleapis.com/v1beta/models");
-		break;
-
-	case EN2CLLMProvider::Ollama:
-		ProviderName = TEXT("Ollama");
-		DisplayName = TEXT("Ollama (Local)");
-		Model = Settings->OllamaModel;
-		Endpoint = Settings->OllamaConfig.OllamaEndpoint.IsEmpty() ? TEXT("http://localhost:11434/api/chat") : Settings->OllamaConfig.OllamaEndpoint;
-		bIsLocal = true;
-		break;
-
-	case EN2CLLMProvider::DeepSeek:
-		ProviderName = TEXT("DeepSeek");
-		DisplayName = TEXT("DeepSeek");
-		Model = Settings->GetActiveModel();
-		Endpoint = TEXT("https://api.deepseek.com/v1/chat/completions");
-		break;
-
-	case EN2CLLMProvider::LMStudio:
-		ProviderName = TEXT("LMStudio");
-		DisplayName = TEXT("LM Studio (Local)");
-		Model = Settings->LMStudioModel;
-		Endpoint = GetDefault<UN2CUserSettings>()->LMStudioEndpoint.IsEmpty() ? TEXT("http://localhost:1234/v1/chat/completions") : GetDefault<UN2CUserSettings>()->LMStudioEndpoint;
-		bIsLocal = true;
-		break;
-
-	default:
-		ProviderName = TEXT("Unknown");
-		DisplayName = TEXT("Unknown");
-		break;
-	}
-
 	const TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
-	Data->SetStringField(TEXT("name"), ProviderName);
-	Data->SetStringField(TEXT("display_name"), DisplayName);
-	Data->SetStringField(TEXT("model"), Model);
-	Data->SetStringField(TEXT("endpoint"), Endpoint);
-	Data->SetBoolField(TEXT("is_local"), bIsLocal);
-
+	Data->SetStringField(TEXT("name"), ProviderName(Current));
+	Data->SetStringField(TEXT("display_name"), Profile->DisplayName);
+	Data->SetStringField(TEXT("model"), GetDefault<UN2CSettings>()->GetActiveModelForProvider(Current));
+	Data->SetStringField(TEXT("endpoint"), ProviderEndpoint(Current, *Profile));
+	Data->SetBoolField(TEXT("is_local"), Profile->bIsLocal);
 	return MakeSuccessJson(Data);
 }
 
@@ -795,157 +703,95 @@ bool UN2CPythonBridge::TakeMcpResult(const FString& CallId, FString& OutResultJs
 	return bFound;
 }
 
+// The graph-editing and navigation functions below forward to their MCP tool through InvokeToolWith (card 0343): the
+// tool is the one implementation, and each returns InvokeTool's answer, {success, data: <the tool's result>, error}
+
+namespace N2CPythonBridgePrivate
+{
+	/** A tool's arguments with the target arguments (blueprintPath, graphGuid or graphName) a bridge call gives */
+	TSharedRef<FJsonObject> TargetArguments(const FString& BlueprintPath, const FString& Graph)
+	{
+		const TSharedRef<FJsonObject> Arguments = MakeShared<FJsonObject>();
+		const FN2CGraphTargetArgs Target = FN2CGraphTargetArgs::FromPathAndGraph(BlueprintPath, Graph);
+		if (!Target.BlueprintPath.IsEmpty())
+		{
+			Arguments->SetStringField(TEXT("blueprintPath"), Target.BlueprintPath);
+		}
+		if (!Target.GraphGuid.IsEmpty())
+		{
+			Arguments->SetStringField(TEXT("graphGuid"), Target.GraphGuid);
+		}
+		else if (!Target.GraphName.IsEmpty())
+		{
+			Arguments->SetStringField(TEXT("graphName"), Target.GraphName);
+		}
+		return Arguments;
+	}
+
+	/** Parses a JSON array argument; false, with OutError an InvokeTool INVALID_ARGUMENT answer, when Text is not one */
+	bool ParseArrayArgument(const FString& Text, const TCHAR* Field, TArray<TSharedPtr<FJsonValue>>& OutArray, FString& OutError)
+	{
+		TSharedPtr<FJsonValue> Parsed;
+		const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Text);
+		if (!FJsonSerializer::Deserialize(Reader, Parsed) || !Parsed.IsValid() || Parsed->Type != EJson::Array)
+		{
+			OutError = InvokeToolError(EN2CToolErrorCode::InvalidArgument, FString::Printf(TEXT("%s is not a JSON array"), Field), Field);
+			return false;
+		}
+		OutArray = Parsed->AsArray();
+		return true;
+	}
+	/**
+	 * InvokeToolWith, plus the rule nodetocode's wrappers apply (utils._invoke): a tool that reports a failure inside
+	 * its value ("success": false, as compile-blueprint does for compile errors) makes the answer a failure, with the
+	 * tool's message as "error" and its value kept as "data"
+	 */
+	FString ForwardToTool(const TCHAR* ToolName, const TSharedRef<FJsonObject>& Arguments)
+	{
+		const FString Answer = UN2CPythonBridge::InvokeToolWith(ToolName, Arguments);
+		TSharedPtr<FJsonObject> Response;
+		const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Answer);
+		const TSharedPtr<FJsonObject>* Data = nullptr;
+		bool bToolSuccess = true;
+		if (!FJsonSerializer::Deserialize(Reader, Response) || !Response.IsValid() || !Response->GetBoolField(TEXT("success"))
+			|| !Response->TryGetObjectField(TEXT("data"), Data) || !(*Data)->TryGetBoolField(TEXT("success"), bToolSuccess) || bToolSuccess)
+		{
+			return Answer;
+		}
+		FString Message;
+		if (!(*Data)->TryGetStringField(TEXT("message"), Message) && !(*Data)->TryGetStringField(TEXT("error"), Message))
+		{
+			Message = FString::Printf(TEXT("%s failed"), ToolName);
+		}
+		Response->SetBoolField(TEXT("success"), false);
+		Response->SetStringField(TEXT("error"), Message);
+		FString Text;
+		FJsonSerializer::Serialize(Response.ToSharedRef(), TJsonWriterFactory<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>::Create(&Text));
+		return Text;
+	}
+}
+using N2CPythonBridgePrivate::ForwardToTool;
+using N2CPythonBridgePrivate::TargetArguments;
+using N2CPythonBridgePrivate::ParseArrayArgument;
+
 // ========== Blueprint Editor Navigation ==========
 
 FString UN2CPythonBridge::OpenBlueprint(const FString& BlueprintPath, const FString& FocusGraph)
 {
-	if (BlueprintPath.IsEmpty())
+	const TSharedRef<FJsonObject> Arguments = MakeShared<FJsonObject>();
+	Arguments->SetStringField(TEXT("asset_path"), BlueprintPath.TrimStartAndEnd());
+	if (!FocusGraph.TrimStartAndEnd().IsEmpty())
 	{
-		return MakeErrorJson(TEXT("BlueprintPath cannot be empty"));
+		Arguments->SetStringField(TEXT("focus_graph"), FocusGraph.TrimStartAndEnd());
 	}
-
-	// Load the Blueprint asset
-	FString ResolveError;
-	UBlueprint* Blueprint = FN2CMcpBlueprintUtils::ResolveBlueprint(BlueprintPath, ResolveError);
-	if (!Blueprint)
-	{
-		return MakeErrorJson(FString::Printf(TEXT("Failed to load Blueprint: %s"), *ResolveError));
-	}
-
-	// The graph to focus, found before anything opens: an unknown name fails and lists the graphs, instead of opening
-	// the Blueprint with nothing focused so the next add_node_to_graph lands in the graph focused before (card 0286)
-	UEdGraph* TargetGraph = nullptr;
-	if (!FocusGraph.IsEmpty())
-	{
-		FString GraphError;
-		TargetGraph = FN2CMcpBlueprintUtils::FindTopLevelGraph(*Blueprint, FocusGraph, GraphError);
-		if (!TargetGraph)
-		{
-			return MakeErrorJson(GraphError);
-		}
-	}
-
-	// Open the Blueprint editor
-	TSharedPtr<IBlueprintEditor> BlueprintEditor;
-	FString OpenError;
-	if (!FN2CMcpBlueprintUtils::OpenBlueprintEditor(Blueprint, BlueprintEditor, OpenError))
-	{
-		return MakeErrorJson(FString::Printf(TEXT("Failed to open Blueprint editor: %s"), *OpenError));
-	}
-
-	// The editor must be this Blueprint's before anything is focused in it: an editor of another Blueprint would get
-	// this Blueprint's graph pushed into it (card 0150)
-	const TSharedPtr<FBlueprintEditor> Editor = FN2CBlueprintEditorTracker::GetEditorFor(Blueprint);
-	if (!Editor.IsValid() || Editor != StaticCastSharedPtr<FBlueprintEditor>(BlueprintEditor) || Editor->GetBlueprintObj() != Blueprint)
-	{
-		return MakeErrorJson(FString::Printf(TEXT("Failed to open Blueprint editor: the editor found does not edit %s"), *Blueprint->GetPathName()));
-	}
-
-	// Focus the graph found above; read back what the editor now shows rather than echo the request
-	FString FocusedGraphName;
-	if (TargetGraph)
-	{
-		Editor->JumpToHyperlink(TargetGraph, false);
-		if (Editor->GetFocusedGraph() == TargetGraph)
-		{
-			FocusedGraphName = TargetGraph->GetName();
-		}
-	}
-
-	// Bring to front
-	Editor->FocusWindow();
-
-	FN2CLogger::Get().Log(FString::Printf(TEXT("OpenBlueprint: Opened %s"), *Blueprint->GetName()), EN2CLogSeverity::Info);
-
-	const TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
-	Data->SetStringField(TEXT("blueprintName"), Blueprint->GetName());
-	Data->SetStringField(TEXT("blueprintPath"), Blueprint->GetPathName());
-	Data->SetStringField(TEXT("focusedGraph"), FocusedGraphName);
-	Data->SetNumberField(TEXT("eventGraphCount"), Blueprint->UbergraphPages.Num());
-	Data->SetNumberField(TEXT("functionCount"), Blueprint->FunctionGraphs.Num());
-
-	return MakeSuccessJson(Data);
+	return ForwardToTool(TEXT("open-blueprint-asset"), Arguments);
 }
 
 FString UN2CPythonBridge::OpenBlueprintFunction(const FString& FunctionName)
 {
-	if (FunctionName.IsEmpty())
-	{
-		return MakeErrorJson(TEXT("FunctionName cannot be empty"));
-	}
-
-	// Get the focused Blueprint
-	UBlueprint* Blueprint = nullptr;
-	UEdGraph* FocusedGraph = nullptr;
-	FString GraphError;
-
-	// The focused graph, through the one graph resolver (card 0152)
-	const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(FN2CGraphTargetArgs(), /*bForWrite*/ false);
-	if (!Target.IsValid())
-	{
-		return MakeErrorJson(Target.Error);
-	}
-	Blueprint = Target.Blueprint;
-	FocusedGraph = Target.Graph;
-
-	if (!Blueprint)
-	{
-		return MakeErrorJson(TEXT("No Blueprint found"));
-	}
-
-	// Find the function graph
-	UEdGraph* FunctionGraph = nullptr;
-	for (UEdGraph* Graph : Blueprint->FunctionGraphs)
-	{
-		if (Graph && Graph->GetName() == FunctionName)
-		{
-			FunctionGraph = Graph;
-			break;
-		}
-	}
-
-	if (!FunctionGraph)
-	{
-		// List available functions for error message
-		TArray<FString> AvailableFunctions;
-		for (UEdGraph* Graph : Blueprint->FunctionGraphs)
-		{
-			if (Graph)
-			{
-				AvailableFunctions.Add(Graph->GetName());
-			}
-		}
-
-		FString AvailableStr = AvailableFunctions.Num() > 0 ? FString::Join(AvailableFunctions, TEXT(", ")) : TEXT("none");
-		return MakeErrorJson(FString::Printf(TEXT("Function '%s' not found in Blueprint. Available functions: %s"), *FunctionName, *AvailableStr));
-	}
-
-	// Open the Blueprint editor and navigate to the function
-	TSharedPtr<IBlueprintEditor> BlueprintEditor;
-	FString OpenError;
-	if (!FN2CMcpBlueprintUtils::OpenBlueprintEditor(Blueprint, BlueprintEditor, OpenError))
-	{
-		return MakeErrorJson(FString::Printf(TEXT("Failed to open Blueprint editor: %s"), *OpenError));
-	}
-
-	// Navigate to the function graph, only in this Blueprint's own editor (card 0150)
-	const TSharedPtr<FBlueprintEditor> Editor = FN2CBlueprintEditorTracker::GetEditorFor(Blueprint);
-	if (!Editor.IsValid() || Editor != StaticCastSharedPtr<FBlueprintEditor>(BlueprintEditor) || Editor->GetBlueprintObj() != Blueprint)
-	{
-		return MakeErrorJson(FString::Printf(TEXT("Failed to open Blueprint editor: the editor found does not edit %s"), *Blueprint->GetPathName()));
-	}
-	Editor->JumpToHyperlink(FunctionGraph, false);
-	Editor->FocusWindow();
-
-	FN2CLogger::Get().Log(FString::Printf(TEXT("OpenBlueprintFunction: Opened %s in %s"), *FunctionName, *Blueprint->GetName()), EN2CLogSeverity::Info);
-
-	const TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
-	Data->SetStringField(TEXT("functionName"), FunctionName);
-	Data->SetStringField(TEXT("blueprintName"), Blueprint->GetName());
-	Data->SetStringField(TEXT("blueprintPath"), Blueprint->GetPathName());
-	Data->SetStringField(TEXT("graphGuid"), FunctionGraph->GraphGuid.ToString());
-
-	return MakeSuccessJson(Data);
+	const TSharedRef<FJsonObject> Arguments = MakeShared<FJsonObject>();
+	Arguments->SetStringField(TEXT("graphName"), FunctionName.TrimStartAndEnd());
+	return ForwardToTool(TEXT("open-blueprint-function"), Arguments);
 }
 
 // ========== Blueprint Graph Editing ==========
@@ -953,1174 +799,155 @@ FString UN2CPythonBridge::OpenBlueprintFunction(const FString& FunctionName)
 FString UN2CPythonBridge::SearchBlueprintNodes(const FString& SearchTerm, bool bContextSensitive, int32 MaxResults,
 	const FString& CategoryFilter, bool bExcludeVMFunctions, const FString& BlueprintPath, const FString& Graph)
 {
-	if (SearchTerm.IsEmpty())
+	const TSharedRef<FJsonObject> Arguments = TargetArguments(BlueprintPath, Graph);
+	Arguments->SetStringField(TEXT("searchTerm"), SearchTerm.TrimStartAndEnd());
+	Arguments->SetBoolField(TEXT("contextSensitive"), bContextSensitive);
+	Arguments->SetNumberField(TEXT("maxResults"), MaxResults);
+	Arguments->SetBoolField(TEXT("excludeVMFunctions"), bExcludeVMFunctions);
+	if (!CategoryFilter.TrimStartAndEnd().IsEmpty())
 	{
-		return MakeErrorJson(TEXT("SearchTerm cannot be empty"));
+		Arguments->SetStringField(TEXT("category"), CategoryFilter.TrimStartAndEnd());
 	}
-
-	MaxResults = FMath::Clamp(MaxResults, 1, 100);
-
-	// The focused graph, through the one graph resolver (card 0152), for bContextSensitive true and false: the engine's
-	// action filter rejects every action without a Blueprint and a graph, so a search without one found nothing (card 0434)
-	const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(BridgeTargetArgs(BlueprintPath, Graph), /*bForWrite*/ false);
-	if (!Target.IsValid())
-	{
-		return MakeErrorJson(TEXT("No graph to search for: no Blueprint editor is active or graph focused: ") + Target.Error);
-	}
-	UBlueprint* ContextBlueprint = Target.Blueprint;
-	UEdGraph* ContextGraph = Target.Graph;
-
-	// The same action list search-blueprint-nodes and AddNodeToGraph build: the editor's node menu with Context
-	// Sensitive off, for either value of bContextSensitive
-	FBlueprintActionMenuBuilder MenuBuilder;
-	N2CNodeActions::BuildActionList(MenuBuilder, ContextBlueprint, ContextGraph);
-
-	const TArray<FString> LowerFilterTerms = N2CNodeActions::TokenizeSearchTerm(SearchTerm);
-
-	TArray<TSharedPtr<FJsonValue>> ResultNodes;
-	int32 ResultCount = 0;
-
-	for (int32 i = 0; i < MenuBuilder.GetNumActions() && ResultCount < MaxResults; ++i)
-	{
-		const TSharedPtr<FEdGraphSchemaAction>& Action = MenuBuilder.GetSchemaAction(i);
-		if (!Action.IsValid() || !N2CNodeActions::MatchesSearchTerm(*Action, LowerFilterTerms))
-		{
-			continue;
-		}
-
-		// Category filter on the action's own menu category, not a pipe heuristic over the search text
-		if (!N2CNodeActions::MatchesCategory(*Action, CategoryFilter))
-		{
-			continue;
-		}
-
-		if (bExcludeVMFunctions && N2CNodeActions::IsExcludedVMFunction(*Action))
-		{
-			continue;
-		}
-
-		TSharedPtr<FJsonObject> NodeJson = MakeShareable(new FJsonObject);
-
-		// The action's own fields: menuName, category, tooltip and keywords. name and displayName are the menu name
-		// (before card 0277 both were the raw search text)
-		const FString MenuName = Action->GetMenuDescription().ToString();
-		NodeJson->SetStringField(TEXT("name"), MenuName);
-		NodeJson->SetStringField(TEXT("displayName"), MenuName);
-		N2CNodeActions::AddDescriptionFields(*Action, *NodeJson);
-
-		// Spawn metadata for adding the node later: the stable ID (the spawner signature)
-		TSharedPtr<FJsonObject> SpawnMetadata = MakeShareable(new FJsonObject);
-		SpawnMetadata->SetStringField(TEXT("actionIdentifier"), N2CNodeActions::GetActionId(Action));
-		SpawnMetadata->SetStringField(TEXT("nodeName"), MenuName);
-		SpawnMetadata->SetBoolField(TEXT("isContextSensitive"), bContextSensitive);
-		NodeJson->SetObjectField(TEXT("spawnMetadata"), SpawnMetadata);
-
-		ResultNodes.Add(MakeShareable(new FJsonValueObject(NodeJson)));
-		ResultCount++;
-	}
-
-	// Build result JSON
-	TSharedPtr<FJsonObject> ResultObject = MakeShareable(new FJsonObject);
-	ResultObject->SetArrayField(TEXT("nodes"), ResultNodes);
-	ResultObject->SetNumberField(TEXT("count"), ResultCount);
-
-	// Read only: no compile and no action-database refresh (card 0151)
-	return MakeSuccessJson(ResultObject);
+	return ForwardToTool(TEXT("search-blueprint-nodes"), Arguments);
 }
 
 FString UN2CPythonBridge::AddNodeToGraph(const FString& NodeName, const FString& ActionIdentifier, float LocationX, float LocationY,
 	const FString& BlueprintPath, const FString& Graph)
 {
-	// One compile for this call, after its transaction closes (inside run-python, at the end of the tool call)
-	FN2CMcpToolCallScope CallScope;
-
-	if (NodeName.IsEmpty() || ActionIdentifier.IsEmpty())
-	{
-		return MakeErrorJson(TEXT("NodeName and ActionIdentifier are required"));
-	}
-
-	// Get the active graph context
-	UBlueprint* ActiveBlueprint = nullptr;
-	UEdGraph* ActiveGraph = nullptr;
-	FString ContextError;
-	// The focused graph, through the one graph resolver (card 0152); read-only graphs are refused
-	const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(BridgeTargetArgs(BlueprintPath, Graph), /*bForWrite*/ true);
-	if (!Target.IsValid())
-	{
-		return MakeErrorJson(Target.Error);
-	}
-	ActiveBlueprint = Target.Blueprint;
-	ActiveGraph = Target.Graph;
-
-	// The same action list search_blueprint_nodes builds for this graph
-	FBlueprintActionMenuBuilder MenuBuilder;
-	N2CNodeActions::BuildActionList(MenuBuilder, ActiveBlueprint, ActiveGraph);
-
-	// The stable ID (spawner signature); pre-0277 search-text identifiers are still accepted (card 0277)
-	FString ResolveError;
-	const TSharedPtr<FEdGraphSchemaAction> SchemaAction = N2CNodeActions::ResolveAction(MenuBuilder, ActionIdentifier,
-		NodeName, ResolveError);
-	if (!SchemaAction.IsValid())
-	{
-		return MakeErrorJson(ResolveError);
-	}
-
-	FString SpawnError;
-	UEdGraphNode* SpawnedNode = N2CNodeActions::SpawnAction(SchemaAction, ActiveGraph, FVector2f(LocationX, LocationY), SpawnError);
-	if (!SpawnedNode)
-	{
-		return MakeErrorJson(SpawnError);
-	}
-
-	// Mark it modified; the call compiles it once, below
-	FN2CMcpBlueprintUtils::MarkModified(ActiveBlueprint, /*bStructural*/ false);
-
-	// Build result with pin information for immediate use
-	TSharedPtr<FJsonObject> ResultObject = MakeShareable(new FJsonObject);
-	ResultObject->SetStringField(TEXT("nodeGuid"), SpawnedNode->NodeGuid.ToString());
-	ResultObject->SetStringField(TEXT("nodeName"), SpawnedNode->GetNodeTitle(ENodeTitleType::ListView).ToString());
-	ResultObject->SetStringField(TEXT("graphName"), ActiveGraph->GetName());
-	ResultObject->SetStringField(TEXT("blueprintName"), ActiveBlueprint->GetName());
-
-	TSharedPtr<FJsonObject> LocationObject = MakeShareable(new FJsonObject);
-	LocationObject->SetNumberField(TEXT("x"), SpawnedNode->NodePosX);
-	LocationObject->SetNumberField(TEXT("y"), SpawnedNode->NodePosY);
-	ResultObject->SetObjectField(TEXT("location"), LocationObject);
-
-	// Add pin information so caller can immediately connect pins without additional lookup
-	TArray<TSharedPtr<FJsonValue>> InputPinsArray;
-	TArray<TSharedPtr<FJsonValue>> OutputPinsArray;
-
-	for (UEdGraphPin* Pin : SpawnedNode->Pins)
-	{
-		if (!Pin || Pin->bHidden)
-		{
-			continue;
-		}
-
-		TSharedPtr<FJsonObject> PinObj = MakeShareable(new FJsonObject);
-		PinObj->SetStringField(TEXT("pinGuid"), Pin->PinId.ToString());
-		PinObj->SetStringField(TEXT("pinName"), Pin->PinName.ToString());
-		PinObj->SetStringField(TEXT("displayName"), Pin->GetDisplayName().ToString());
-		PinObj->SetStringField(TEXT("type"), Pin->PinType.PinCategory.ToString());
-
-		// Include default value for input pins
-		if (Pin->Direction == EGPD_Input && !Pin->GetDefaultAsString().IsEmpty())
-		{
-			PinObj->SetStringField(TEXT("defaultValue"), Pin->GetDefaultAsString());
-		}
-
-		if (Pin->Direction == EGPD_Input)
-		{
-			InputPinsArray.Add(MakeShareable(new FJsonValueObject(PinObj)));
-		}
-		else
-		{
-			OutputPinsArray.Add(MakeShareable(new FJsonValueObject(PinObj)));
-		}
-	}
-
-	ResultObject->SetArrayField(TEXT("inputPins"), InputPinsArray);
-	ResultObject->SetArrayField(TEXT("outputPins"), OutputPinsArray);
-
-	// Add guidance for the next step - helps LLMs understand what to do after adding a node
-	TSharedPtr<FJsonObject> NextStepObject = MakeShareable(new FJsonObject);
-	NextStepObject->SetStringField(TEXT("function"), TEXT("connect_pins"));
-	NextStepObject->SetStringField(TEXT("description"), TEXT("Use nodetocode.connect_pins() with the nodeGuid and pinGuid values above to wire this node to other nodes in the graph."));
-	ResultObject->SetObjectField(TEXT("nextStep"), NextStepObject);
-
-	AddCompileResult(ResultObject, CallScope.Flush());
-
-	return MakeSuccessJson(ResultObject);
+	const TSharedRef<FJsonObject> Arguments = TargetArguments(BlueprintPath, Graph);
+	Arguments->SetStringField(TEXT("nodeName"), NodeName.TrimStartAndEnd());
+	Arguments->SetStringField(TEXT("actionIdentifier"), ActionIdentifier.TrimStartAndEnd());
+	const TSharedRef<FJsonObject> Location = MakeShared<FJsonObject>();
+	Location->SetNumberField(TEXT("x"), LocationX);
+	Location->SetNumberField(TEXT("y"), LocationY);
+	Arguments->SetObjectField(TEXT("location"), Location);
+	return ForwardToTool(TEXT("add-bp-node-to-active-graph"), Arguments);
 }
 
 FString UN2CPythonBridge::ConnectPins(const FString& ConnectionsJson, bool bBreakExistingLinks,
 	const FString& BlueprintPath, const FString& Graph)
 {
-	// One compile for this call, after its transaction closes (inside run-python, at the end of the tool call)
-	FN2CMcpToolCallScope CallScope;
-
-	if (ConnectionsJson.IsEmpty())
+	TArray<TSharedPtr<FJsonValue>> Connections;
+	FString Error;
+	if (!ParseArrayArgument(ConnectionsJson, TEXT("connections"), Connections, Error))
 	{
-		return MakeErrorJson(TEXT("ConnectionsJson cannot be empty"));
+		return Error;
 	}
-
-	// Parse connections JSON
-	TSharedPtr<FJsonValue> ParsedValue;
-	TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(ConnectionsJson);
-	if (!FJsonSerializer::Deserialize(Reader, ParsedValue) || !ParsedValue.IsValid())
-	{
-		return MakeErrorJson(TEXT("Failed to parse ConnectionsJson"));
-	}
-
-	const TArray<TSharedPtr<FJsonValue>>* ConnectionsArray;
-	if (!ParsedValue->TryGetArray(ConnectionsArray) || ConnectionsArray->Num() == 0)
-	{
-		return MakeErrorJson(TEXT("ConnectionsJson must be a non-empty array"));
-	}
-
-	// Get focused graph
-	UBlueprint* Blueprint = nullptr;
-	UEdGraph* FocusedGraph = nullptr;
-	FString GraphError;
-	// The focused graph, through the one graph resolver (card 0152); read-only graphs are refused
-	const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(BridgeTargetArgs(BlueprintPath, Graph), /*bForWrite*/ true);
-	if (!Target.IsValid())
-	{
-		return MakeErrorJson(Target.Error);
-	}
-	Blueprint = Target.Blueprint;
-	FocusedGraph = Target.Graph;
-
-	const UEdGraphSchema* Schema = FocusedGraph->GetSchema();
-	if (!Schema)
-	{
-		return MakeErrorJson(TEXT("Graph has no schema"));
-	}
-
-	// Build node lookup map
-	TMap<FGuid, UEdGraphNode*> NodeMap;
-	for (UEdGraphNode* Node : FocusedGraph->Nodes)
-	{
-		if (Node && Node->NodeGuid.IsValid())
-		{
-			NodeMap.Add(Node->NodeGuid, Node);
-		}
-	}
-
-	// Process connections
-	TArray<TSharedPtr<FJsonValue>> SucceededArray;
-	TArray<TSharedPtr<FJsonValue>> FailedArray;
-
-	TOptional<FScopedTransaction> Transaction(InPlace, LOCTEXT("PythonConnectPins", "Python: Connect Pins"));
-	Blueprint->Modify();
-	FocusedGraph->Modify();
-
-	// Every entry is reported, in order, with its array index: a failed or malformed one in failed with an errorCode
-	// (INVALID_REQUEST, INVALID_GUID, NODE_NOT_FOUND, PIN_NOT_FOUND, WOULD_BREAK_EXISTING_LINK, SCHEMA_VALIDATION_FAILED,
-	// CONNECTION_FAILED), a made one in succeeded with the schema's response and any conversion node (card 0276)
-	auto Fail = [&FailedArray](int32 Index, const TCHAR* Code, const FString& Error, const TSharedPtr<FJsonObject>& Extra = nullptr)
-	{
-		TSharedPtr<FJsonObject> FailedObj = Extra.IsValid() ? Extra : MakeShared<FJsonObject>();
-		FailedObj->SetNumberField(TEXT("index"), Index);
-		FailedObj->SetStringField(TEXT("errorCode"), Code);
-		FailedObj->SetStringField(TEXT("error"), Error);
-		FailedArray.Add(MakeShared<FJsonValueObject>(FailedObj));
-	};
-	auto FindPin = [](UEdGraphNode* Node, const FString& PinGuidStr, const FString& PinName) -> UEdGraphPin*
-	{
-		FGuid PinGuid;
-		if (FGuid::Parse(PinGuidStr, PinGuid))
-		{
-			for (UEdGraphPin* Pin : Node->Pins)
-			{
-				if (Pin && Pin->PinId == PinGuid)
-				{
-					return Pin;
-				}
-			}
-		}
-		if (!PinName.IsEmpty())
-		{
-			for (UEdGraphPin* Pin : Node->Pins)
-			{
-				if (Pin && (Pin->PinName.ToString() == PinName || Pin->GetDisplayName().ToString() == PinName))
-				{
-					return Pin;
-				}
-			}
-		}
-		return nullptr;
-	};
-
-	for (int32 Index = 0; Index < ConnectionsArray->Num(); ++Index)
-	{
-		const TSharedPtr<FJsonValue>& ConnectionValue = (*ConnectionsArray)[Index];
-		const TSharedPtr<FJsonObject>* ConnectionObject = nullptr;
-		if (!ConnectionValue.IsValid() || !ConnectionValue->TryGetObject(ConnectionObject))
-		{
-			Fail(Index, TEXT("INVALID_REQUEST"), TEXT("The entry is not an object with 'from' and 'to'"));
-			continue;
-		}
-
-		const TSharedPtr<FJsonObject>* FromObject = nullptr;
-		const TSharedPtr<FJsonObject>* ToObject = nullptr;
-		if (!(*ConnectionObject)->TryGetObjectField(TEXT("from"), FromObject) || !(*ConnectionObject)->TryGetObjectField(TEXT("to"), ToObject))
-		{
-			Fail(Index, TEXT("INVALID_REQUEST"), TEXT("The entry needs a 'from' and a 'to' object"));
-			continue;
-		}
-
-		// pinGuid and pinName are optional (either finds the pin); a missing field is read as empty, without a log error
-		FString FromNodeGuidStr, FromPinGuidStr, FromPinName, ToNodeGuidStr, ToPinGuidStr, ToPinName;
-		const bool bHasNodes = (*FromObject)->TryGetStringField(TEXT("nodeGuid"), FromNodeGuidStr)
-			&& (*ToObject)->TryGetStringField(TEXT("nodeGuid"), ToNodeGuidStr);
-		(*FromObject)->TryGetStringField(TEXT("pinGuid"), FromPinGuidStr);
-		(*FromObject)->TryGetStringField(TEXT("pinName"), FromPinName);
-		(*ToObject)->TryGetStringField(TEXT("pinGuid"), ToPinGuidStr);
-		(*ToObject)->TryGetStringField(TEXT("pinName"), ToPinName);
-		if (!bHasNodes)
-		{
-			Fail(Index, TEXT("INVALID_REQUEST"), TEXT("'from' and 'to' each need a nodeGuid string"));
-			continue;
-		}
-
-		// Find nodes
-		FGuid FromNodeGuid, ToNodeGuid;
-		if (!FGuid::Parse(FromNodeGuidStr, FromNodeGuid) || !FGuid::Parse(ToNodeGuidStr, ToNodeGuid))
-		{
-			Fail(Index, TEXT("INVALID_GUID"), TEXT("Invalid GUID format"));
-			continue;
-		}
-
-		UEdGraphNode* FromNode = NodeMap.FindRef(FromNodeGuid);
-		UEdGraphNode* ToNode = NodeMap.FindRef(ToNodeGuid);
-
-		if (!FromNode || !ToNode)
-		{
-			Fail(Index, TEXT("NODE_NOT_FOUND"), TEXT("Node not found"));
-			continue;
-		}
-
-		UEdGraphPin* FromPin = FindPin(FromNode, FromPinGuidStr, FromPinName);
-		UEdGraphPin* ToPin = FindPin(ToNode, ToPinGuidStr, ToPinName);
-
-		if (!FromPin || !ToPin)
-		{
-			Fail(Index, TEXT("PIN_NOT_FOUND"), TEXT("Pin not found"));
-			continue;
-		}
-
-		// Validate connection; the schema decides what (if anything) a connection breaks or converts
-		const FPinConnectionResponse Response = Schema->CanCreateConnection(FromPin, ToPin);
-		TSharedPtr<FJsonObject> ResponseFields = MakeShared<FJsonObject>();
-		N2CPinConnectPolicy::WriteResponse(ResponseFields, Response);
-		FString PolicyError;
-		if (!N2CPinConnectPolicy::Allow(Response, FromPin, ToPin, bBreakExistingLinks, PolicyError))
-		{
-			Fail(Index, N2CPinConnectPolicy::WouldReplaceExistingLink(Response, FromPin, ToPin) ? TEXT("WOULD_BREAK_EXISTING_LINK") : TEXT("SCHEMA_VALIDATION_FAILED"),
-				PolicyError, ResponseFields);
-			continue;
-		}
-
-		// Make the connection
-		FromNode->Modify();
-		ToNode->Modify();
-
-		const N2CPinConnectPolicy::FConnectOutcome Outcome = N2CPinConnectPolicy::Connect(Schema, FromPin, ToPin);
-		if (Outcome.bConnected)
-		{
-			TSharedPtr<FJsonObject> SuccessObj = MakeShared<FJsonObject>();
-			SuccessObj->SetNumberField(TEXT("index"), Index);
-			SuccessObj->SetStringField(TEXT("fromNode"), FromNodeGuidStr);
-			SuccessObj->SetStringField(TEXT("fromPin"), FromPin->PinId.ToString());
-			SuccessObj->SetStringField(TEXT("toNode"), ToNodeGuidStr);
-			SuccessObj->SetStringField(TEXT("toPin"), ToPin->PinId.ToString());
-			N2CPinConnectPolicy::WriteResponse(SuccessObj, Response, Outcome.ConversionNode);
-			SucceededArray.Add(MakeShared<FJsonValueObject>(SuccessObj));
-		}
-		else
-		{
-			Fail(Index, TEXT("CONNECTION_FAILED"), TEXT("Connection failed"), ResponseFields);
-		}
-	}
-
-	FN2CMcpBlueprintUtils::MarkModified(Blueprint, /*bStructural*/ false);
-
-	// Build result
-	TSharedPtr<FJsonObject> ResultObject = MakeShareable(new FJsonObject);
-	ResultObject->SetArrayField(TEXT("succeeded"), SucceededArray);
-	ResultObject->SetArrayField(TEXT("failed"), FailedArray);
-
-	TSharedPtr<FJsonObject> SummaryObject = MakeShareable(new FJsonObject);
-	SummaryObject->SetNumberField(TEXT("totalRequested"), ConnectionsArray->Num());
-	SummaryObject->SetNumberField(TEXT("succeeded"), SucceededArray.Num());
-	SummaryObject->SetNumberField(TEXT("failed"), FailedArray.Num());
-	ResultObject->SetObjectField(TEXT("summary"), SummaryObject);
-
-	Transaction.Reset(); // close the undo transaction before compiling
-	AddCompileResult(ResultObject, CallScope.Flush());
-
-	return MakeSuccessJson(ResultObject);
+	const TSharedRef<FJsonObject> Arguments = TargetArguments(BlueprintPath, Graph);
+	Arguments->SetArrayField(TEXT("connections"), Connections);
+	const TSharedRef<FJsonObject> Options = MakeShared<FJsonObject>();
+	Options->SetBoolField(TEXT("breakExistingLinks"), bBreakExistingLinks);
+	Arguments->SetObjectField(TEXT("options"), Options);
+	return ForwardToTool(TEXT("connect-pins"), Arguments);
 }
 
 FString UN2CPythonBridge::SetPinValue(const FString& NodeGuid, const FString& PinGuid, const FString& Value, const FString& PinName,
 	const FString& BlueprintPath, const FString& Graph)
 {
-	// One compile for this call, after its transaction closes (inside run-python, at the end of the tool call)
-	FN2CMcpToolCallScope CallScope;
-
-	if (NodeGuid.IsEmpty() || PinGuid.IsEmpty())
+	const TSharedRef<FJsonObject> Arguments = TargetArguments(BlueprintPath, Graph);
+	Arguments->SetStringField(TEXT("nodeGuid"), NodeGuid.TrimStartAndEnd());
+	Arguments->SetStringField(TEXT("pinGuid"), PinGuid.TrimStartAndEnd());
+	Arguments->SetStringField(TEXT("value"), Value);
+	if (!PinName.TrimStartAndEnd().IsEmpty())
 	{
-		return MakeErrorJson(TEXT("NodeGuid and PinGuid are required"));
+		Arguments->SetStringField(TEXT("pinName"), PinName.TrimStartAndEnd());
 	}
-
-	// Get focused graph
-	UBlueprint* Blueprint = nullptr;
-	UEdGraph* FocusedGraph = nullptr;
-	FString GraphError;
-	// The focused graph, through the one graph resolver (card 0152); read-only graphs are refused
-	const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(BridgeTargetArgs(BlueprintPath, Graph), /*bForWrite*/ true);
-	if (!Target.IsValid())
-	{
-		return MakeErrorJson(Target.Error);
-	}
-	Blueprint = Target.Blueprint;
-	FocusedGraph = Target.Graph;
-
-	// Find the node
-	FGuid ParsedNodeGuid;
-	if (!FGuid::Parse(NodeGuid, ParsedNodeGuid))
-	{
-		return MakeErrorJson(TEXT("Invalid node GUID format"));
-	}
-
-	UEdGraphNode* TargetNode = nullptr;
-	for (UEdGraphNode* Node : FocusedGraph->Nodes)
-	{
-		if (Node && Node->NodeGuid == ParsedNodeGuid)
-		{
-			TargetNode = Node;
-			break;
-		}
-	}
-
-	if (!TargetNode)
-	{
-		return MakeErrorJson(FString::Printf(TEXT("Node with GUID %s not found"), *NodeGuid));
-	}
-
-	// Find the pin
-	UEdGraphPin* TargetPin = nullptr;
-	FGuid ParsedPinGuid;
-	if (FGuid::Parse(PinGuid, ParsedPinGuid))
-	{
-		for (UEdGraphPin* Pin : TargetNode->Pins)
-		{
-			if (Pin && Pin->PinId == ParsedPinGuid)
-			{
-				TargetPin = Pin;
-				break;
-			}
-		}
-	}
-
-	if (!TargetPin && !PinName.IsEmpty())
-	{
-		for (UEdGraphPin* Pin : TargetNode->Pins)
-		{
-			if (Pin && (Pin->PinName.ToString() == PinName || Pin->GetDisplayName().ToString() == PinName))
-			{
-				TargetPin = Pin;
-				break;
-			}
-		}
-	}
-
-	if (!TargetPin)
-	{
-		return MakeErrorJson(FString::Printf(TEXT("Pin with GUID %s not found"), *PinGuid));
-	}
-
-	// Validate pin can have default value
-	if (TargetPin->Direction != EGPD_Input)
-	{
-		return MakeErrorJson(TEXT("Can only set default values on input pins"));
-	}
-
-	if (TargetPin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec)
-	{
-		return MakeErrorJson(TEXT("Cannot set default value on execution pin"));
-	}
-
-	if (TargetPin->LinkedTo.Num() > 0)
-	{
-		return MakeErrorJson(TEXT("Cannot set default value on connected pin"));
-	}
-
-	// Store old value
-	const FString OldValue = FN2CMcpPinDefault::Read(*TargetPin);
-
-	// As set-input-pin-value: the schema checks the value before the node is touched, a refused value is an error with
-	// the schema's message and the old default stays (no transaction is opened), an empty value resets the pin (card 0278)
-	FString Prepared;
-	FString PrepareError;
-	if (!FN2CMcpPinDefault::Prepare(*TargetPin, Value, Prepared, PrepareError))
-	{
-		return MakeErrorJson(FN2CMcpPinDefault::RefusalMessage(*TargetPin, Value, PrepareError, OldValue));
-	}
-	TOptional<FScopedTransaction> Transaction(InPlace, LOCTEXT("PythonSetPinValue", "Python: Set Pin Value"));
-	FN2CMcpPinDefault::Write(*TargetPin, Prepared);
-
-	FN2CMcpBlueprintUtils::MarkModified(Blueprint, /*bStructural*/ false);
-
-	const TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
-	Data->SetStringField(TEXT("nodeGuid"), NodeGuid);
-	Data->SetStringField(TEXT("pinGuid"), PinGuid);
-	Data->SetStringField(TEXT("pinName"), TargetPin->GetDisplayName().ToString());
-	Data->SetStringField(TEXT("oldValue"), OldValue);
-	// What the pin holds now, read back
-	Data->SetStringField(TEXT("newValue"), FN2CMcpPinDefault::Read(*TargetPin));
-
-	Transaction.Reset(); // close the undo transaction before compiling
-	AddCompileResult(Data, CallScope.Flush());
-
-	return MakeSuccessJson(Data);
+	return ForwardToTool(TEXT("set-input-pin-value"), Arguments);
 }
 
 FString UN2CPythonBridge::DeleteNodes(const FString& NodeGuidsJson, bool bPreserveConnections, bool bForce,
 	const FString& BlueprintPath, const FString& Graph)
 {
-	// One compile for this call, after its transaction closes (inside run-python, at the end of the tool call)
-	FN2CMcpToolCallScope CallScope;
-
-	if (NodeGuidsJson.IsEmpty())
+	TArray<TSharedPtr<FJsonValue>> NodeGuids;
+	FString Error;
+	if (!ParseArrayArgument(NodeGuidsJson, TEXT("nodeGuids"), NodeGuids, Error))
 	{
-		return MakeErrorJson(TEXT("NodeGuidsJson cannot be empty"));
+		return Error;
 	}
-
-	// Parse JSON
-	TSharedPtr<FJsonValue> ParsedValue;
-	TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(NodeGuidsJson);
-	if (!FJsonSerializer::Deserialize(Reader, ParsedValue) || !ParsedValue.IsValid())
-	{
-		return MakeErrorJson(TEXT("Failed to parse NodeGuidsJson"));
-	}
-
-	const TArray<TSharedPtr<FJsonValue>>* GuidsArray;
-	if (!ParsedValue->TryGetArray(GuidsArray) || GuidsArray->Num() == 0)
-	{
-		return MakeErrorJson(TEXT("NodeGuidsJson must be a non-empty array"));
-	}
-
-	// The focused graph, through the one graph resolver (card 0152); read-only graphs are refused
-	const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(BridgeTargetArgs(BlueprintPath, Graph), /*bForWrite*/ true);
-	if (!Target.IsValid())
-	{
-		return MakeErrorJson(Target.Error);
-	}
-	UBlueprint* Blueprint = Target.Blueprint;
-	UEdGraph* FocusedGraph = Target.Graph;
-
-	// Find the nodes; protection is the node's own CanUserDeleteNode, which bForce overrides (card 0279). A GUID that
-	// is not a node of the graph, or names a protected node, is listed under 'skipped' with the reason
-	TArray<UEdGraphNode*> NodesToDelete;
-	TArray<TSharedPtr<FJsonValue>> SkippedArray;
-	auto Skip = [&SkippedArray](const FString& Guid, const FString& Reason)
-	{
-		const TSharedPtr<FJsonObject> Skipped = MakeShared<FJsonObject>();
-		Skipped->SetStringField(TEXT("guid"), Guid);
-		Skipped->SetStringField(TEXT("reason"), Reason);
-		SkippedArray.Add(MakeShared<FJsonValueObject>(Skipped));
-	};
-
-	for (const TSharedPtr<FJsonValue>& Value : *GuidsArray)
-	{
-		FString GuidString;
-		FGuid ParsedGuid;
-		if (!Value->TryGetString(GuidString) || !FGuid::Parse(GuidString, ParsedGuid))
-		{
-			Skip(GuidString, TEXT("not a GUID"));
-			continue;
-		}
-		UEdGraphNode* Node = N2CNodeDeletion::FindNode(FocusedGraph, ParsedGuid);
-		if (!Node)
-		{
-			Skip(GuidString, FString::Printf(TEXT("no node with this GUID in graph %s"), *FocusedGraph->GetName()));
-			continue;
-		}
-		FString Reason;
-		if (!N2CNodeDeletion::CanDelete(Node, bForce, Reason))
-		{
-			Skip(GuidString, Reason);
-			continue;
-		}
-		NodesToDelete.AddUnique(Node);
-	}
-
-	if (NodesToDelete.Num() == 0)
-	{
-		TArray<FString> Reasons;
-		for (const TSharedPtr<FJsonValue>& Skipped : SkippedArray)
-		{
-			Reasons.Add(FString::Printf(TEXT("%s: %s"), *Skipped->AsObject()->GetStringField(TEXT("guid")), *Skipped->AsObject()->GetStringField(TEXT("reason"))));
-		}
-		return MakeErrorJson(FString::Printf(TEXT("No valid nodes found to delete (%s)"), *FString::Join(Reasons, TEXT("; "))));
-	}
-
-	// Delete the way the editor's Delete does, shared with the delete-blueprint-node tool (card 0279)
-	TOptional<FScopedTransaction> Transaction(InPlace, LOCTEXT("PythonDeleteNodes", "Python: Delete Nodes"));
-	const TArray<N2CNodeDeletion::FDeletedNode> Deleted = N2CNodeDeletion::DeleteNodes(Blueprint, NodesToDelete, bPreserveConnections);
-
-	// Build result
-	TArray<TSharedPtr<FJsonValue>> DeletedArray;
-	for (const N2CNodeDeletion::FDeletedNode& Info : Deleted)
-	{
-		TSharedPtr<FJsonObject> NodeObj = MakeShareable(new FJsonObject);
-		NodeObj->SetStringField(TEXT("guid"), Info.NodeGuid);
-		NodeObj->SetStringField(TEXT("name"), Info.ListTitle);
-		if (Info.BridgedLinks.Num() > 0)
-		{
-			TArray<TSharedPtr<FJsonValue>> Links;
-			for (const N2CNodeDeletion::FBridgedLink& Link : Info.BridgedLinks)
-			{
-				const TSharedPtr<FJsonObject> LinkObj = MakeShared<FJsonObject>();
-				LinkObj->SetStringField(TEXT("fromNode"), Link.FromNodeGuid);
-				LinkObj->SetStringField(TEXT("fromPin"), Link.FromPinName);
-				LinkObj->SetStringField(TEXT("toNode"), Link.ToNodeGuid);
-				LinkObj->SetStringField(TEXT("toPin"), Link.ToPinName);
-				LinkObj->SetStringField(TEXT("type"), Link.PinType);
-				Links.Add(MakeShared<FJsonValueObject>(LinkObj));
-			}
-			NodeObj->SetArrayField(TEXT("preservedConnections"), Links);
-		}
-		DeletedArray.Add(MakeShareable(new FJsonValueObject(NodeObj)));
-	}
-
-	TSharedPtr<FJsonObject> ResultObject = MakeShareable(new FJsonObject);
-	ResultObject->SetArrayField(TEXT("deletedNodes"), DeletedArray);
-	ResultObject->SetNumberField(TEXT("deletedCount"), DeletedArray.Num());
-	if (SkippedArray.Num() > 0)
-	{
-		ResultObject->SetArrayField(TEXT("skipped"), SkippedArray);
-	}
-
-	Transaction.Reset(); // close the undo transaction before compiling
-	AddCompileResult(ResultObject, CallScope.Flush());
-
-	return MakeSuccessJson(ResultObject);
+	const TSharedRef<FJsonObject> Arguments = TargetArguments(BlueprintPath, Graph);
+	Arguments->SetArrayField(TEXT("nodeGuids"), NodeGuids);
+	Arguments->SetBoolField(TEXT("preserveConnections"), bPreserveConnections);
+	Arguments->SetBoolField(TEXT("force"), bForce);
+	return ForwardToTool(TEXT("delete-blueprint-node"), Arguments);
 }
 
 FString UN2CPythonBridge::FindNodesInGraph(const FString& SearchTermsJson, const FString& SearchType, bool bCaseSensitive, int32 MaxResults,
 	const FString& BlueprintPath, const FString& Graph)
 {
-	if (SearchTermsJson.IsEmpty())
+	TArray<TSharedPtr<FJsonValue>> SearchTerms;
+	FString Error;
+	if (!ParseArrayArgument(SearchTermsJson, TEXT("searchTerms"), SearchTerms, Error))
 	{
-		return MakeErrorJson(TEXT("SearchTermsJson cannot be empty"));
+		return Error;
 	}
-
-	MaxResults = FMath::Clamp(MaxResults, 1, 200);
-
-	// Parse JSON
-	TSharedPtr<FJsonValue> ParsedValue;
-	TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(SearchTermsJson);
-	if (!FJsonSerializer::Deserialize(Reader, ParsedValue) || !ParsedValue.IsValid())
-	{
-		return MakeErrorJson(TEXT("Failed to parse SearchTermsJson"));
-	}
-
-	const TArray<TSharedPtr<FJsonValue>>* TermsArray;
-	if (!ParsedValue->TryGetArray(TermsArray) || TermsArray->Num() == 0)
-	{
-		return MakeErrorJson(TEXT("SearchTermsJson must be a non-empty array"));
-	}
-
-	TArray<FString> SearchTerms;
-	for (const TSharedPtr<FJsonValue>& Value : *TermsArray)
-	{
-		FString Term;
-		if (Value->TryGetString(Term) && !Term.IsEmpty())
-		{
-			SearchTerms.Add(Term);
-		}
-	}
-
-	if (SearchTerms.Num() == 0)
-	{
-		return MakeErrorJson(TEXT("No valid search terms found"));
-	}
-
-	// Get focused graph
-	UBlueprint* Blueprint = nullptr;
-	UEdGraph* FocusedGraph = nullptr;
-	FString GraphError;
-	// The focused graph, through the one graph resolver (card 0152)
-	const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(BridgeTargetArgs(BlueprintPath, Graph), /*bForWrite*/ false);
-	if (!Target.IsValid())
-	{
-		return MakeErrorJson(Target.Error);
-	}
-	Blueprint = Target.Blueprint;
-	FocusedGraph = Target.Graph;
-
-	// Collect nodes
-	TArray<UK2Node*> AllNodes;
-	if (!FN2CEditorIntegration::Get().CollectNodesFromGraph(FocusedGraph, AllNodes))
-	{
-		return MakeErrorJson(TEXT("Failed to collect nodes from graph"));
-	}
-
-	// Find matching nodes
-	TArray<UK2Node*> MatchingNodes;
-	bool bIsGuidSearch = SearchType.Equals(TEXT("guid"), ESearchCase::IgnoreCase);
-
-	for (UK2Node* Node : AllNodes)
-	{
-		if (!Node)
-		{
-			continue;
-		}
-
-		bool bMatches = false;
-
-		if (bIsGuidSearch)
-		{
-			FString NodeGuidString = Node->NodeGuid.ToString(EGuidFormats::DigitsWithHyphens);
-			FString NodeGuidStringNoHyphens = Node->NodeGuid.ToString(EGuidFormats::Digits);
-
-			for (const FString& Term : SearchTerms)
-			{
-				if (NodeGuidString.Equals(Term, ESearchCase::IgnoreCase) ||
-					NodeGuidStringNoHyphens.Equals(Term, ESearchCase::IgnoreCase))
-				{
-					bMatches = true;
-					break;
-				}
-			}
-		}
-		else // keyword search
-		{
-			// The title as shown and in source text, the class and the member name (card 0138)
-			FString SearchableText = N2CStableNames::NodeSearchText(Node);
-
-			if (!bCaseSensitive)
-			{
-				SearchableText = SearchableText.ToLower();
-			}
-
-			for (const FString& Term : SearchTerms)
-			{
-				FString SearchTerm = bCaseSensitive ? Term : Term.ToLower();
-				if (SearchableText.Contains(SearchTerm))
-				{
-					bMatches = true;
-					break;
-				}
-			}
-		}
-
-		if (bMatches)
-		{
-			MatchingNodes.Add(Node);
-			if (MatchingNodes.Num() >= MaxResults)
-			{
-				break;
-			}
-		}
-	}
-
-	// Build result
-	TArray<TSharedPtr<FJsonValue>> NodesArray;
-	for (UK2Node* Node : MatchingNodes)
-	{
-		TSharedPtr<FJsonObject> NodeObj = MakeShareable(new FJsonObject);
-		NodeObj->SetStringField(TEXT("nodeGuid"), Node->NodeGuid.ToString());
-		NodeObj->SetStringField(TEXT("nodeName"), Node->GetNodeTitle(ENodeTitleType::ListView).ToString());
-		NodeObj->SetStringField(TEXT("nodeClass"), Node->GetClass()->GetName());
-		NodeObj->SetNumberField(TEXT("posX"), Node->NodePosX);
-		NodeObj->SetNumberField(TEXT("posY"), Node->NodePosY);
-
-		// Add pin information
-		TArray<TSharedPtr<FJsonValue>> InputPinsArray;
-		TArray<TSharedPtr<FJsonValue>> OutputPinsArray;
-
-		for (UEdGraphPin* Pin : Node->Pins)
-		{
-			if (!Pin || Pin->bHidden)
-			{
-				continue;
-			}
-
-			TSharedPtr<FJsonObject> PinObj = MakeShareable(new FJsonObject);
-			PinObj->SetStringField(TEXT("pinGuid"), Pin->PinId.ToString());
-			PinObj->SetStringField(TEXT("pinName"), Pin->PinName.ToString());
-			PinObj->SetStringField(TEXT("displayName"), Pin->GetDisplayName().ToString());
-			PinObj->SetStringField(TEXT("type"), Pin->PinType.PinCategory.ToString());
-
-			if (Pin->Direction == EGPD_Input)
-			{
-				InputPinsArray.Add(MakeShareable(new FJsonValueObject(PinObj)));
-			}
-			else
-			{
-				OutputPinsArray.Add(MakeShareable(new FJsonValueObject(PinObj)));
-			}
-		}
-
-		NodeObj->SetArrayField(TEXT("inputPins"), InputPinsArray);
-		NodeObj->SetArrayField(TEXT("outputPins"), OutputPinsArray);
-
-		NodesArray.Add(MakeShareable(new FJsonValueObject(NodeObj)));
-	}
-
-	TSharedPtr<FJsonObject> ResultObject = MakeShareable(new FJsonObject);
-	ResultObject->SetArrayField(TEXT("nodes"), NodesArray);
-
-	TSharedPtr<FJsonObject> MetadataObject = MakeShareable(new FJsonObject);
-	MetadataObject->SetStringField(TEXT("blueprintName"), Blueprint->GetName());
-	MetadataObject->SetStringField(TEXT("graphName"), FocusedGraph->GetName());
-	MetadataObject->SetNumberField(TEXT("totalFound"), MatchingNodes.Num());
-	MetadataObject->SetNumberField(TEXT("totalInGraph"), AllNodes.Num());
-	ResultObject->SetObjectField(TEXT("metadata"), MetadataObject);
-
-	return MakeSuccessJson(ResultObject);
+	const TSharedRef<FJsonObject> Arguments = TargetArguments(BlueprintPath, Graph);
+	Arguments->SetArrayField(TEXT("searchTerms"), SearchTerms);
+	Arguments->SetStringField(TEXT("searchType"), SearchType);
+	Arguments->SetBoolField(TEXT("caseSensitive"), bCaseSensitive);
+	Arguments->SetNumberField(TEXT("maxResults"), MaxResults);
+	return ForwardToTool(TEXT("find-nodes-in-graph"), Arguments);
 }
 
-FString UN2CPythonBridge::CreateCommentNode(const FString& NodeGuidsJson, const FString& CommentText, float ColorR, float ColorG, float ColorB, int32 FontSize, const FString& MoveMode, float Padding,
-	const FString& BlueprintPath, const FString& Graph)
+FString UN2CPythonBridge::CreateCommentNode(const FString& NodeGuidsJson, const FString& CommentText, float ColorR, float ColorG, float ColorB,
+	int32 FontSize, const FString& MoveMode, float Padding, const FString& BlueprintPath, const FString& Graph)
 {
-	if (NodeGuidsJson.IsEmpty())
+	TArray<TSharedPtr<FJsonValue>> NodeGuids;
+	FString Error;
+	if (!ParseArrayArgument(NodeGuidsJson, TEXT("nodeGuids"), NodeGuids, Error))
 	{
-		return MakeErrorJson(TEXT("NodeGuidsJson cannot be empty"));
+		return Error;
 	}
-
-	// Parse JSON
-	TSharedPtr<FJsonValue> ParsedValue;
-	TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(NodeGuidsJson);
-	if (!FJsonSerializer::Deserialize(Reader, ParsedValue) || !ParsedValue.IsValid())
-	{
-		return MakeErrorJson(TEXT("Failed to parse NodeGuidsJson"));
-	}
-
-	const TArray<TSharedPtr<FJsonValue>>* GuidsArray;
-	if (!ParsedValue->TryGetArray(GuidsArray) || GuidsArray->Num() == 0)
-	{
-		return MakeErrorJson(TEXT("NodeGuidsJson must be a non-empty array"));
-	}
-
-	// Get focused graph
-	UBlueprint* Blueprint = nullptr;
-	UEdGraph* FocusedGraph = nullptr;
-	FString GraphError;
-	// The focused graph, through the one graph resolver (card 0152); read-only graphs are refused
-	const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(BridgeTargetArgs(BlueprintPath, Graph), /*bForWrite*/ true);
-	if (!Target.IsValid())
-	{
-		return MakeErrorJson(Target.Error);
-	}
-	Blueprint = Target.Blueprint;
-	FocusedGraph = Target.Graph;
-
-	// Build node lookup and find nodes
-	TMap<FGuid, UEdGraphNode*> NodeMap;
-	for (UEdGraphNode* Node : FocusedGraph->Nodes)
-	{
-		if (Node && Node->NodeGuid.IsValid())
-		{
-			NodeMap.Add(Node->NodeGuid, Node);
-		}
-	}
-
-	TArray<UEdGraphNode*> NodesToComment;
-	for (const TSharedPtr<FJsonValue>& Value : *GuidsArray)
-	{
-		FString GuidString;
-		if (Value->TryGetString(GuidString))
-		{
-			FGuid ParsedGuid;
-			if (FGuid::Parse(GuidString, ParsedGuid))
-			{
-				UEdGraphNode* Node = NodeMap.FindRef(ParsedGuid);
-				if (Node && !Node->IsA<UEdGraphNode_Comment>())
-				{
-					NodesToComment.Add(Node);
-				}
-			}
-		}
-	}
-
-	if (NodesToComment.Num() == 0)
-	{
-		return MakeErrorJson(TEXT("No valid nodes found to comment"));
-	}
-
-	// Calculate bounding box
-	const float DefaultNodeWidth = 150.0f;
-	const float DefaultNodeHeight = 50.0f;
-
-	float MinX = NodesToComment[0]->NodePosX;
-	float MinY = NodesToComment[0]->NodePosY;
-	float NodeWidth = NodesToComment[0]->NodeWidth > 0 ? NodesToComment[0]->NodeWidth : DefaultNodeWidth;
-	float NodeHeight = NodesToComment[0]->NodeHeight > 0 ? NodesToComment[0]->NodeHeight : DefaultNodeHeight;
-	float MaxX = MinX + NodeWidth;
-	float MaxY = MinY + NodeHeight;
-
-	for (int32 i = 1; i < NodesToComment.Num(); i++)
-	{
-		UEdGraphNode* Node = NodesToComment[i];
-		MinX = FMath::Min(MinX, (float)Node->NodePosX);
-		MinY = FMath::Min(MinY, (float)Node->NodePosY);
-
-		NodeWidth = Node->NodeWidth > 0 ? Node->NodeWidth : DefaultNodeWidth;
-		NodeHeight = Node->NodeHeight > 0 ? Node->NodeHeight : DefaultNodeHeight;
-
-		MaxX = FMath::Max(MaxX, Node->NodePosX + NodeWidth);
-		MaxY = FMath::Max(MaxY, Node->NodePosY + NodeHeight);
-	}
-
-	MinX -= Padding;
-	MinY -= Padding;
-	MaxX += Padding;
-	MaxY += Padding;
-
-	// Create the comment node
-	const FScopedTransaction Transaction(LOCTEXT("PythonCreateComment", "Python: Create Comment"));
-	FocusedGraph->Modify();
-
-	// Through the schema's template path, as create-comment-node does: RF_Transactional and a GUID (card 0155)
-	UEdGraphNode_Comment* CommentNode = FN2CMcpNodeSpawn::SpawnCommentNode(FocusedGraph, FSlateRect(MinX, MinY, MaxX, MaxY),
-		CommentText, FLinearColor(ColorR, ColorG, ColorB), FontSize, MoveMode.Equals(TEXT("group"), ESearchCase::IgnoreCase), NodesToComment);
-	if (!CommentNode)
-	{
-		return MakeErrorJson(TEXT("Failed to create comment node"));
-	}
-
-	// A comment changes nothing the compiler sees: dirty the package, do not compile (card 0151)
-	FN2CMcpBlueprintUtils::MarkCosmeticChange(Blueprint);
-
-	// Build result
-	const TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
-	Data->SetStringField(TEXT("commentGuid"), CommentNode->NodeGuid.ToString());
-	Data->SetStringField(TEXT("commentText"), CommentText);
-	Data->SetNumberField(TEXT("includedNodeCount"), NodesToComment.Num());
-
-	const TSharedPtr<FJsonObject> PositionObject = MakeShared<FJsonObject>();
-	PositionObject->SetNumberField(TEXT("x"), CommentNode->NodePosX);
-	PositionObject->SetNumberField(TEXT("y"), CommentNode->NodePosY);
-	Data->SetObjectField(TEXT("position"), PositionObject);
-
-	const TSharedPtr<FJsonObject> SizeObject = MakeShared<FJsonObject>();
-	SizeObject->SetNumberField(TEXT("width"), CommentNode->NodeWidth);
-	SizeObject->SetNumberField(TEXT("height"), CommentNode->NodeHeight);
-	Data->SetObjectField(TEXT("size"), SizeObject);
-
-	return MakeSuccessJson(Data);
+	const TSharedRef<FJsonObject> Arguments = TargetArguments(BlueprintPath, Graph);
+	Arguments->SetArrayField(TEXT("nodeGuids"), NodeGuids);
+	Arguments->SetStringField(TEXT("commentText"), CommentText);
+	const TSharedRef<FJsonObject> Color = MakeShared<FJsonObject>();
+	Color->SetNumberField(TEXT("r"), ColorR);
+	Color->SetNumberField(TEXT("g"), ColorG);
+	Color->SetNumberField(TEXT("b"), ColorB);
+	Arguments->SetObjectField(TEXT("color"), Color);
+	Arguments->SetNumberField(TEXT("fontSize"), FontSize);
+	Arguments->SetStringField(TEXT("moveMode"), MoveMode);
+	Arguments->SetNumberField(TEXT("padding"), Padding);
+	return ForwardToTool(TEXT("create-comment-node"), Arguments);
 }
 
 // ========== Function Pin Management ==========
 
-FString UN2CPythonBridge::AddFunctionInputPin(const FString& PinName, const FString& TypeIdentifier, const FString& DefaultValue, bool bIsPassByReference, const FString& Tooltip,
-	const FString& BlueprintPath, const FString& Graph)
+FString UN2CPythonBridge::AddFunctionInputPin(const FString& PinName, const FString& TypeIdentifier, const FString& DefaultValue,
+	bool bIsPassByReference, const FString& Tooltip, const FString& BlueprintPath, const FString& Graph)
 {
-	// One compile for this call, after its transaction closes (inside run-python, at the end of the tool call)
-	FN2CMcpToolCallScope CallScope;
-
-	if (PinName.IsEmpty() || TypeIdentifier.IsEmpty())
-	{
-		return MakeErrorJson(TEXT("PinName and TypeIdentifier are required"));
-	}
-
-	// The focused function, through the one graph resolver (card 0152): read-only graphs are refused, and a graph that
-	// is not a function is refused before anything changes
-	const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(BridgeTargetArgs(BlueprintPath, Graph), /*bForWrite*/ true);
-	if (!Target.IsValid())
-	{
-		return MakeErrorJson(Target.Error);
-	}
-	UEdGraph* FocusedGraph = Target.Graph;
-	if (!FN2CMcpFunctionGuidUtils::IsFunctionGraph(Target.Blueprint, FocusedGraph))
-	{
-		return MakeErrorJson(FString::Printf(TEXT("NOT_A_FUNCTION_GRAPH: the focused graph %s (%s graph) is not a function. Open the function first."),
-			*FocusedGraph->GetName(), *FN2CGraphTarget::GraphKind(FocusedGraph)));
-	}
-
-	// Check if this is a K2 graph
-	if (!FocusedGraph->GetSchema()->IsA<UEdGraphSchema_K2>())
-	{
-		return MakeErrorJson(TEXT("The focused graph is not a Blueprint graph"));
-	}
-
-	// Resolve type identifier
-	FEdGraphPinType PinType;
-	FString ResolveError;
-
-	if (!FN2CMcpTypeResolver::ResolvePinType(TypeIdentifier, TEXT(""), TEXT("none"), TEXT(""), bIsPassByReference, false, PinType, ResolveError))
-	{
-		return MakeErrorJson(FString::Printf(TEXT("Failed to resolve type '%s': %s"), *TypeIdentifier, *ResolveError));
-	}
-
-	// The add-function-input-pin path (card 0156): validate, then one transaction that adds the pin, regenerates the
-	// skeleton and rebuilds the call sites; it has closed when this returns, so the compile below is not recorded
-	FN2CFunctionPinEdit Edit;
-	if (!FN2CMcpFunctionPinUtils::AddFunctionPin(Target.Blueprint, FocusedGraph, /*bReturnValue*/ false, PinName, PinType, DefaultValue,
-		Tooltip, FText::Format(LOCTEXT("PythonAddInputPin", "Python: Add Input Pin '{0}'"), FText::FromString(PinName)), Edit))
-	{
-		return MakeErrorJson(Edit.Error);
-	}
-
-	const TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
-	Data->SetStringField(TEXT("pinName"), PinName);
-	Data->SetStringField(TEXT("actualName"), Edit.PinName.ToString());
-	Data->SetStringField(TEXT("pinGuid"), Edit.Pin ? Edit.Pin->PinId.ToString() : FString());
-	Data->SetStringField(TEXT("functionName"), FocusedGraph->GetName());
-	Data->SetStringField(TEXT("typeIdentifier"), TypeIdentifier);
-
-	AddCompileResult(Data, CallScope.Flush());
-
-	return MakeSuccessJson(Data);
+	const TSharedRef<FJsonObject> Arguments = TargetArguments(BlueprintPath, Graph);
+	Arguments->SetStringField(TEXT("pinName"), PinName.TrimStartAndEnd());
+	Arguments->SetStringField(TEXT("typeIdentifier"), TypeIdentifier.TrimStartAndEnd());
+	Arguments->SetStringField(TEXT("defaultValue"), DefaultValue);
+	Arguments->SetBoolField(TEXT("isPassByReference"), bIsPassByReference);
+	Arguments->SetStringField(TEXT("tooltip"), Tooltip);
+	return ForwardToTool(TEXT("add-function-input-pin"), Arguments);
 }
 
 FString UN2CPythonBridge::AddFunctionReturnPin(const FString& PinName, const FString& TypeIdentifier, const FString& Tooltip,
 	const FString& BlueprintPath, const FString& Graph)
 {
-	// One compile for this call, after its transaction closes (inside run-python, at the end of the tool call)
-	FN2CMcpToolCallScope CallScope;
-
-	if (PinName.IsEmpty() || TypeIdentifier.IsEmpty())
-	{
-		return MakeErrorJson(TEXT("PinName and TypeIdentifier are required"));
-	}
-
-	// The focused function, through the one graph resolver (card 0152): read-only graphs are refused, and a graph that
-	// is not a function is refused before anything changes
-	const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(BridgeTargetArgs(BlueprintPath, Graph), /*bForWrite*/ true);
-	if (!Target.IsValid())
-	{
-		return MakeErrorJson(Target.Error);
-	}
-	UEdGraph* FocusedGraph = Target.Graph;
-	if (!FN2CMcpFunctionGuidUtils::IsFunctionGraph(Target.Blueprint, FocusedGraph))
-	{
-		return MakeErrorJson(FString::Printf(TEXT("NOT_A_FUNCTION_GRAPH: the focused graph %s (%s graph) is not a function. Open the function first."),
-			*FocusedGraph->GetName(), *FN2CGraphTarget::GraphKind(FocusedGraph)));
-	}
-
-	// Check if this is a K2 graph
-	if (!FocusedGraph->GetSchema()->IsA<UEdGraphSchema_K2>())
-	{
-		return MakeErrorJson(TEXT("The focused graph is not a Blueprint graph"));
-	}
-
-	// Resolve type identifier
-	FEdGraphPinType PinType;
-	FString ResolveError;
-
-	if (!FN2CMcpTypeResolver::ResolvePinType(TypeIdentifier, TEXT(""), TEXT("none"), TEXT(""), false, false, PinType, ResolveError))
-	{
-		return MakeErrorJson(FString::Printf(TEXT("Failed to resolve type '%s': %s"), *TypeIdentifier, *ResolveError));
-	}
-
-	// The add-function-return-pin path (card 0156): validate, then one transaction that adds the pin to every Return node
-	// (creating one, with a GUID and wired from the entry, when there is none), regenerates the skeleton and rebuilds the
-	// call sites
-	FN2CFunctionPinEdit Edit;
-	if (!FN2CMcpFunctionPinUtils::AddFunctionPin(Target.Blueprint, FocusedGraph, /*bReturnValue*/ true, PinName, PinType, FString(),
-		Tooltip, FText::Format(LOCTEXT("PythonAddReturnPin", "Python: Add Return Pin '{0}'"), FText::FromString(PinName)), Edit))
-	{
-		return MakeErrorJson(Edit.Error);
-	}
-
-	const TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
-	Data->SetStringField(TEXT("pinName"), PinName);
-	Data->SetStringField(TEXT("actualName"), Edit.PinName.ToString());
-	Data->SetStringField(TEXT("pinGuid"), Edit.Pin ? Edit.Pin->PinId.ToString() : FString());
-	Data->SetStringField(TEXT("functionName"), FocusedGraph->GetName());
-	Data->SetStringField(TEXT("typeIdentifier"), TypeIdentifier);
-
-	AddCompileResult(Data, CallScope.Flush());
-
-	return MakeSuccessJson(Data);
+	const TSharedRef<FJsonObject> Arguments = TargetArguments(BlueprintPath, Graph);
+	Arguments->SetStringField(TEXT("pinName"), PinName.TrimStartAndEnd());
+	Arguments->SetStringField(TEXT("typeIdentifier"), TypeIdentifier.TrimStartAndEnd());
+	Arguments->SetStringField(TEXT("tooltip"), Tooltip);
+	return ForwardToTool(TEXT("add-function-return-pin"), Arguments);
 }
 
-FString UN2CPythonBridge::RemoveFunctionEntryPin(const FString& PinName,
-	const FString& BlueprintPath, const FString& Graph)
+FString UN2CPythonBridge::RemoveFunctionEntryPin(const FString& PinName, const FString& BlueprintPath, const FString& Graph)
 {
-	// One compile for this call, after its transaction closes (inside run-python, at the end of the tool call)
-	FN2CMcpToolCallScope CallScope;
-
-	if (PinName.IsEmpty())
-	{
-		return MakeErrorJson(TEXT("PinName is required"));
-	}
-
-	// The focused function, through the one graph resolver (card 0152): read-only graphs are refused, and a graph that
-	// is not a function is refused before anything changes
-	const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(BridgeTargetArgs(BlueprintPath, Graph), /*bForWrite*/ true);
-	if (!Target.IsValid())
-	{
-		return MakeErrorJson(Target.Error);
-	}
-	UEdGraph* FocusedGraph = Target.Graph;
-	if (!FN2CMcpFunctionGuidUtils::IsFunctionGraph(Target.Blueprint, FocusedGraph))
-	{
-		return MakeErrorJson(FString::Printf(TEXT("NOT_A_FUNCTION_GRAPH: the focused graph %s (%s graph) is not a function. Open the function first."),
-			*FocusedGraph->GetName(), *FN2CGraphTarget::GraphKind(FocusedGraph)));
-	}
-
-	// Check if this is a K2 graph
-	if (!FocusedGraph->GetSchema()->IsA<UEdGraphSchema_K2>())
-	{
-		return MakeErrorJson(TEXT("The focused graph is not a Blueprint graph"));
-	}
-
-	// Validates first (a misspelled name opens no transaction and leaves the package clean), then one transaction that
-	// removes the pin, regenerates the skeleton and rebuilds the call sites (card 0156)
-	FN2CFunctionPinEdit Edit;
-	if (!FN2CMcpFunctionPinUtils::RemoveFunctionPin(Target.Blueprint, FocusedGraph, /*bReturnValue*/ false, PinName,
-		FText::Format(LOCTEXT("PythonRemoveEntryPin", "Python: Remove Entry Pin '{0}'"), FText::FromString(PinName)), Edit))
-	{
-		return MakeErrorJson(Edit.Error);
-	}
-
-	const TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
-	Data->SetStringField(TEXT("removedPin"), PinName);
-	Data->SetStringField(TEXT("functionName"), FocusedGraph->GetName());
-
-	AddCompileResult(Data, CallScope.Flush());
-
-	return MakeSuccessJson(Data);
+	const TSharedRef<FJsonObject> Arguments = TargetArguments(BlueprintPath, Graph);
+	Arguments->SetStringField(TEXT("pinName"), PinName.TrimStartAndEnd());
+	return ForwardToTool(TEXT("remove-function-entry-pin"), Arguments);
 }
 
-FString UN2CPythonBridge::RemoveFunctionReturnPin(const FString& PinName,
-	const FString& BlueprintPath, const FString& Graph)
+FString UN2CPythonBridge::RemoveFunctionReturnPin(const FString& PinName, const FString& BlueprintPath, const FString& Graph)
 {
-	// One compile for this call, after its transaction closes (inside run-python, at the end of the tool call)
-	FN2CMcpToolCallScope CallScope;
-
-	if (PinName.IsEmpty())
-	{
-		return MakeErrorJson(TEXT("PinName is required"));
-	}
-
-	// The focused function, through the one graph resolver (card 0152): read-only graphs are refused, and a graph that
-	// is not a function is refused before anything changes
-	const FN2CGraphTarget Target = FN2CGraphTarget::Resolve(BridgeTargetArgs(BlueprintPath, Graph), /*bForWrite*/ true);
-	if (!Target.IsValid())
-	{
-		return MakeErrorJson(Target.Error);
-	}
-	UEdGraph* FocusedGraph = Target.Graph;
-	if (!FN2CMcpFunctionGuidUtils::IsFunctionGraph(Target.Blueprint, FocusedGraph))
-	{
-		return MakeErrorJson(FString::Printf(TEXT("NOT_A_FUNCTION_GRAPH: the focused graph %s (%s graph) is not a function. Open the function first."),
-			*FocusedGraph->GetName(), *FN2CGraphTarget::GraphKind(FocusedGraph)));
-	}
-
-	// Check if this is a K2 graph
-	if (!FocusedGraph->GetSchema()->IsA<UEdGraphSchema_K2>())
-	{
-		return MakeErrorJson(TEXT("The focused graph is not a Blueprint graph"));
-	}
-
-	// Validates first (a misspelled name opens no transaction and leaves the package clean), then one transaction that
-	// removes the pin from every Return node, regenerates the skeleton and rebuilds the call sites (card 0156)
-	FN2CFunctionPinEdit Edit;
-	if (!FN2CMcpFunctionPinUtils::RemoveFunctionPin(Target.Blueprint, FocusedGraph, /*bReturnValue*/ true, PinName,
-		FText::Format(LOCTEXT("PythonRemoveReturnPin", "Python: Remove Return Pin '{0}'"), FText::FromString(PinName)), Edit))
-	{
-		return MakeErrorJson(Edit.Error);
-	}
-
-	const TSharedPtr<FJsonObject> Data = MakeShared<FJsonObject>();
-	Data->SetStringField(TEXT("removedPin"), PinName);
-	Data->SetStringField(TEXT("functionName"), FocusedGraph->GetName());
-
-	AddCompileResult(Data, CallScope.Flush());
-
-	return MakeSuccessJson(Data);
+	const TSharedRef<FJsonObject> Arguments = TargetArguments(BlueprintPath, Graph);
+	Arguments->SetStringField(TEXT("pinName"), PinName.TrimStartAndEnd());
+	return ForwardToTool(TEXT("remove-function-return-pin"), Arguments);
 }
-
-#undef LOCTEXT_NAMESPACE
 
 FString UN2CPythonBridge::MakeResultJson(bool bSuccess, const TSharedPtr<FJsonObject>& Data, const FString* Error)
 {

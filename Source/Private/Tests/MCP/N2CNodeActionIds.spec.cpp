@@ -815,15 +815,13 @@ void FN2CNodeActionIdsSpec::Define()
 				TestTrue(TEXT("bridge made an integer > integer node"), IsIntegerGreater(Node));
 			}
 
-			// The bridge's own fields: menu name and category, not the search blob
+			// The bridge forwards to search-blueprint-nodes (card 0343): its nodes are the tool's, with spawnMetadata
 			if (BridgeHits.Num() > 0 && Data)
 			{
 				const TSharedPtr<FJsonObject> First = NodesOf(*Data)[0]->AsObject();
-				for (const TCHAR* Field : { TEXT("menuName"), TEXT("category"), TEXT("tooltip"), TEXT("keywords") })
-				{
-					TestTrue(FString::Printf(TEXT("bridge result has %s"), Field), First.IsValid() && First->HasField(Field));
-				}
-				TestEqual(TEXT("bridge name is the menu name"), First->GetStringField(TEXT("name")), First->GetStringField(TEXT("menuName")));
+				const TSharedPtr<FJsonObject>* Spawn = nullptr;
+				TestTrue(TEXT("bridge result has the tool's spawnMetadata"), First.IsValid() && First->TryGetObjectField(TEXT("spawnMetadata"), Spawn)
+					&& (*Spawn)->HasField(TEXT("actionIdentifier")) && (*Spawn)->HasField(TEXT("nodeName")));
 			}
 		});
 	});

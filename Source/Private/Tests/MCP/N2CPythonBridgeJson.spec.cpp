@@ -477,7 +477,8 @@ void FN2CPythonBridgeJsonSpec::Define()
 			Settings->OllamaConfig.OllamaEndpoint = OldEndpoint;
 
 			ExpectString(TEXT("GetActiveProvider"), Active, TEXT("model"), Awkward);
-			ExpectString(TEXT("GetActiveProvider"), Active, TEXT("endpoint"), Awkward);
+			// Where requests go: the user's endpoint with the path the Ollama service adds (card 0343)
+			ExpectString(TEXT("GetActiveProvider"), Active, TEXT("endpoint"), FString(Awkward) + TEXT("/api/chat"));
 			if (Active.IsValid())
 			{
 				TestTrue(TEXT("is_local"), Active->GetBoolField(TEXT("is_local")));
@@ -528,8 +529,10 @@ void FN2CPythonBridgeJsonSpec::Define()
 		It(TEXT("OpenBlueprint reports an awkward missing path as valid JSON"), [this]()
 		{
 			const FString Path = FString::Printf(TEXT("/Game/N2CTest/%s"), Awkward);
+			// open-blueprint-asset (the bridge forwards to it, card 0343) refuses the path and logs it
+			AddExpectedError(TEXT("open-blueprint-asset:"), EAutomationExpectedErrorFlags::Contains, 0);
 			const FString Error = FailureError(TEXT("OpenBlueprint"), UN2CPythonBridge::OpenBlueprint(Path, Awkward));
-			TestTrue(TEXT("error says the Blueprint failed to load"), Error.StartsWith(TEXT("Failed to load Blueprint")));
+			TestTrue(TEXT("error names the path: ") + Error, Error.Contains(TEXT("/Game/N2CTest/")));
 		});
 	});
 
@@ -565,7 +568,7 @@ void FN2CPythonBridgeJsonSpec::Define()
 
 			const FString Missing = FString::Printf(TEXT("Missing %s"), Awkward);
 			const FString MissingError = FailureError(TEXT("OpenBlueprintFunction (missing)"), UN2CPythonBridge::OpenBlueprintFunction(Missing));
-			TestTrue(TEXT("missing-function error names the function"), MissingError.StartsWith(FString::Printf(TEXT("Function '%s' not found"), *Missing)));
+			TestTrue(TEXT("missing-function error names the function"), MissingError.Contains(Missing));
 			TestTrue(TEXT("missing-function error lists the awkward function"), MissingError.Contains(GraphName));
 
 			const TSharedPtr<FJsonObject> Found = SuccessData(TEXT("FindNodesInGraph"),
@@ -581,12 +584,19 @@ void FN2CPythonBridgeJsonSpec::Define()
 			const TArray<TSharedPtr<FJsonValue>>* Nodes = nullptr;
 			if (ByGuid.IsValid() && TestTrue(TEXT("the variable node is found"), ByGuid->TryGetArrayField(TEXT("nodes"), Nodes) && Nodes->Num() == 1))
 			{
-				ExpectString(TEXT("variable node"), (*Nodes)[0]->AsObject(), TEXT("nodeName"),
-					Focused.VariableGet->GetNodeTitle(ENodeTitleType::ListView).ToString());
+				// find-nodes-in-graph's nodes (the bridge forwards to it, card 0343): ids {short, guid}, output_pins with ids.name
+				const TSharedPtr<FJsonObject> Node = (*Nodes)[0]->AsObject();
+				ExpectString(TEXT("variable node ids"), Node->GetObjectField(TEXT("ids")), TEXT("guid"), Focused.VariableGet->NodeGuid.ToString(EGuidFormats::DigitsWithHyphens));
 				const TArray<TSharedPtr<FJsonValue>>* Outputs = nullptr;
-				if (TestTrue(TEXT("variable node has an output pin"), (*Nodes)[0]->AsObject()->TryGetArrayField(TEXT("outputPins"), Outputs) && Outputs->Num() > 0))
+				bool bNamed = false;
+				if (TestTrue(TEXT("variable node has an output pin"), Node->TryGetArrayField(TEXT("output_pins"), Outputs) && Outputs->Num() > 0))
 				{
-					ExpectString(TEXT("variable pin"), (*Outputs)[0]->AsObject(), TEXT("pinName"), VariableName);
+					for (const TSharedPtr<FJsonValue>& Pin : *Outputs)
+					{
+						const TSharedPtr<FJsonObject>* Ids = nullptr;
+						bNamed |= Pin->AsObject()->TryGetObjectField(TEXT("ids"), Ids) && (*Ids)->GetStringField(TEXT("name")) == VariableName;
+					}
+					TestTrue(TEXT("an output pin named as the variable, as written"), bNamed);
 				}
 			}
 
@@ -603,12 +613,14 @@ void FN2CPythonBridgeJsonSpec::Define()
 			const FString PrintGuidArray = FString::Printf(TEXT("[\"%s\"]"), *Focused.Print->NodeGuid.ToString());
 			const TSharedPtr<FJsonObject> Comment = SuccessData(TEXT("CreateCommentNode"),
 				UN2CPythonBridge::CreateCommentNode(PrintGuidArray, Awkward, 0.1f, 0.2f, 0.3f, 18, TEXT("group"), 50.0f));
-			ExpectString(TEXT("CreateCommentNode"), Comment, TEXT("commentText"), Awkward);
-			if (Comment.IsValid())
+			// create-comment-node's result: commentNode {text, x, y, width, height} and includedCount
+			const TSharedPtr<FJsonObject> CommentNode = Comment.IsValid() ? Comment->GetObjectField(TEXT("commentNode")) : nullptr;
+			ExpectString(TEXT("CreateCommentNode commentNode"), CommentNode, TEXT("text"), Awkward);
+			if (Comment.IsValid() && CommentNode.IsValid())
 			{
-				TestEqual(TEXT("includedNodeCount"), Comment->GetIntegerField(TEXT("includedNodeCount")), 1);
-				TestTrue(TEXT("size.width"), Comment->GetObjectField(TEXT("size"))->GetIntegerField(TEXT("width")) > 0);
-				TestTrue(TEXT("position.x is a number"), Comment->GetObjectField(TEXT("position"))->HasTypedField<EJson::Number>(TEXT("x")));
+				TestEqual(TEXT("includedCount"), Comment->GetIntegerField(TEXT("includedCount")), 1);
+				TestTrue(TEXT("width"), CommentNode->GetIntegerField(TEXT("width")) > 0);
+				TestTrue(TEXT("x is a number"), CommentNode->HasTypedField<EJson::Number>(TEXT("x")));
 			}
 
 			const TSharedPtr<FJsonObject> Input = SuccessData(TEXT("AddFunctionInputPin"),
@@ -658,14 +670,15 @@ void FN2CPythonBridgeJsonSpec::Define()
 			if (!InputActual.IsEmpty())
 			{
 				const TSharedPtr<FJsonObject> Removed = SuccessData(TEXT("RemoveFunctionEntryPin"), UN2CPythonBridge::RemoveFunctionEntryPin(InputActual));
-				ExpectString(TEXT("RemoveFunctionEntryPin"), Removed, TEXT("removedPin"), InputActual);
+				ExpectString(TEXT("RemoveFunctionEntryPin"), Removed, TEXT("removedPinName"), InputActual);
 				ExpectString(TEXT("RemoveFunctionEntryPin"), Removed, TEXT("functionName"), GraphName);
 			}
 			if (!OutputActual.IsEmpty())
 			{
 				const TSharedPtr<FJsonObject> Removed = SuccessData(TEXT("RemoveFunctionReturnPin"), UN2CPythonBridge::RemoveFunctionReturnPin(OutputActual));
-				ExpectString(TEXT("RemoveFunctionReturnPin"), Removed, TEXT("removedPin"), OutputActual);
+				ExpectString(TEXT("RemoveFunctionReturnPin"), Removed, TEXT("removedPinName"), OutputActual);
 			}
+			AddExpectedError(TEXT("RemoveFunctionEntryPin: Failed to remove pin"), EAutomationExpectedErrorFlags::Contains, 1);
 			const FString MissingPin = FailureError(TEXT("RemoveFunctionEntryPin (missing)"), UN2CPythonBridge::RemoveFunctionEntryPin(Awkward));
 			TestFalse(TEXT("missing-pin error is not empty"), MissingPin.IsEmpty());
 
@@ -724,8 +737,9 @@ void FN2CPythonBridgeJsonSpec::Define()
 			}
 			const int32 NodesBefore = Focused.Function->Nodes.Num();
 			const TSharedPtr<FJsonObject> Connected = SuccessData(TEXT("ConnectPins"), UN2CPythonBridge::ConnectPins(FString::Printf(
-				TEXT("[42,{\"from\":{\"nodeGuid\":\"%s\",\"pinGuid\":\"%s\"},\"to\":{\"nodeGuid\":\"%s\",\"pinName\":\"InString\"}}]"),
-				*Focused.VariableGet->NodeGuid.ToString(), *VariableOut->PinId.ToString(), *Focused.Print->NodeGuid.ToString()), false));
+				TEXT("[42,{\"from\":{\"nodeGuid\":\"%s\",\"pinGuid\":\"%s\"},\"to\":{\"nodeGuid\":\"%s\",\"pinGuid\":\"%s\"}}]"),
+				*Focused.VariableGet->NodeGuid.ToString(), *VariableOut->PinId.ToString(), *Focused.Print->NodeGuid.ToString(),
+				*InString->PinId.ToString()), false));
 			Focused.Package->SetDirtyFlag(false);
 			if (!Connected.IsValid())
 			{
@@ -747,7 +761,7 @@ void FN2CPythonBridgeJsonSpec::Define()
 			const TSharedPtr<FJsonObject> Entry = Made[0]->AsObject();
 			TestEqual(TEXT("its index"), Entry->GetIntegerField(TEXT("index")), 1);
 			ExpectString(TEXT("succeeded"), Entry, TEXT("response"), TEXT("MAKE_WITH_CONVERSION_NODE"));
-			ExpectString(TEXT("succeeded"), Entry, TEXT("toPin"), InString->PinId.ToString());
+			ExpectString(TEXT("succeeded to"), Entry->GetObjectField(TEXT("to")), TEXT("pinGuid"), InString->PinId.ToString());
 			const TSharedPtr<FJsonObject>* Conversion = nullptr;
 			if (TestTrue(TEXT("conversionNode reported"), Entry->TryGetObjectField(TEXT("conversionNode"), Conversion)))
 			{

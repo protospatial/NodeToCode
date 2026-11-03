@@ -134,7 +134,7 @@ void FN2COpenBlueprintGraphSpec::Define()
 			const TSharedPtr<FJsonObject>* Data = nullptr;
 			if (TestTrue(TEXT("the bridge's OpenBlueprint succeeds"), Bridge.IsValid() && Bridge->GetBoolField(TEXT("success")) && Bridge->TryGetObjectField(TEXT("data"), Data)))
 			{
-				TestEqual(TEXT("focusedGraph is the graph's name"), (*Data)->GetStringField(TEXT("focusedGraph")), UEdGraphSchema_K2::FN_UserConstructionScript.ToString());
+				TestEqual(TEXT("focused_graph is the graph's name"), (*Data)->GetStringField(TEXT("focused_graph")), UEdGraphSchema_K2::FN_UserConstructionScript.ToString());
 			}
 			TestTrue(TEXT("the editor shows the construction script after the bridge"), Editor->GetFocusedGraph()
 				&& Editor->GetFocusedGraph()->GetFName() == UEdGraphSchema_K2::FN_UserConstructionScript);

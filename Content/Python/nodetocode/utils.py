@@ -230,7 +230,7 @@ TOOL_NAMES = {
     'get_material_n2cjson': 'get-material-n2cjson',
 }
 
-# nodetocode functions that still call their own UN2CPythonBridge function, and why (card 0343 retires those)
+# nodetocode functions that call a UN2CPythonBridge function of their own, and why (the editing ones forward to their tool, card 0343)
 BRIDGE_ONLY = {
     'get_focused_blueprint': 'get-focused-blueprint returns N2C JSON with ids objects, not the n2c_json document',
     'list_tags': 'list-blueprint-tags cannot filter by Blueprint (blueprint_path)',
