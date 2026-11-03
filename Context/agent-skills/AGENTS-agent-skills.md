@@ -25,4 +25,4 @@ copies, and the Claude Code plugin around them. User pages: `wiki/developers/Age
   live check: `Tests/mcp_probe/live_claude_plugin_0172.py`. Validate also prints "Plugin directory checks" (what the
   plugin directory would ask for) that do not change its result: the probe reports those codes without failing, any
   other warning fails it. The listing icon `.claude-plugin/icon.png` (1024 px, named by `icon`) is rendered from
-  `Resources/claude_plugin_icon.svg`; `privacyPolicyUrl` is still unset (the owner picks the page, card 0511). User page: `wiki/developers/Claude-Code-Plugin.md`.
+  `Resources/claude_plugin_icon.svg`; `privacyPolicyUrl` is the Data Flow and Privacy wiki page (owner, 2026-11-02). User page: `wiki/developers/Claude-Code-Plugin.md`.
