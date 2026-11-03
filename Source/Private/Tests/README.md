@@ -274,7 +274,7 @@ card 0305).
   - Checked graphs stay checked when the same view is refreshed.
   - The header names the view, and an empty list says why.
 - `NodeToCode.UI.TranslationViewerJson` (`Core/N2CTranslationViewerJson.spec.cpp`, card 0501) saves a single
-  translation with the real writer (`SN2CMainWindow::SaveSingleTranslation`, through `FN2CTranslationArchive`)
+  translation with the real writer (`UN2CTranslationSubsystem::SaveSingleTranslation`, through `FN2CTranslationArchive`)
   into a scratch output folder on an isolated graph state manager. `LoadN2CJson` returns the `N2C_BP_<run>.json`
   capture from the run folder, one folder above the recorded entry folder, also when the LLM renamed the graph.
 - `NodeToCode.Translation.Archive` (`LLM/N2CTranslationArchive.spec.cpp`, card 0252) writes a response with root,
@@ -304,7 +304,8 @@ card 0305).
   an hour ago (an aborted or killed run in any checkout). Never write a credential outside `NodeToCodeTest/`.
 - `NodeToCode.Settings.Migration` (`Core/N2CSettingsMigration.spec.cpp`) upgrades `Fixtures/Settings/Legacy12x`, a
   1.2.x project: `DefaultNodeToCode.ini` with every config key of main's `UN2CSettings`, the `DefaultEngine.ini`
-  1.2.x wrote, and a 1.2.x project `secrets.json`. Every key has a fate in the spec's table (kept, migrated, model ID,
+  1.2.x wrote, and a 1.2.x project `secrets.json` (checked in as `secrets.legacy12x.json`, so the release
+  package's forbidden-name check stays strict; card 0527). Every key has a fate in the spec's table (kept, migrated, model ID,
   pricing, theme); each value is checked after the upgrade and again after a restart, and every key lands in the
   per-user store. A key added to the fixture without a fate fails the spec.
 - `NodeToCode.StructUtils` (`Core/N2CStructUtils.spec.cpp`) calls `UN2CStructUtilsLibrary` with bad package paths and

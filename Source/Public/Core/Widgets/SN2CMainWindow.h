@@ -12,6 +12,7 @@
 class SN2CTagManager;
 class SN2CTranslationViewer;
 class SN2CBatchProgressModal;
+struct FN2CTranslationSession;
 
 /**
  * Delegate for when a batch operation completes
@@ -27,6 +28,10 @@ DECLARE_DELEGATE_TwoParams(FOnN2CTranslationComplete, const FN2CTranslationRespo
  * Main NodeToCode window widget
  * Composes the Tag Manager with Translation Viewer and Batch Progress overlays
  * All action handlers are integrated in C++ - no Blueprint wiring required
+ *
+ * Single translations (a row's Translate, the graph overlay's) are UN2CTranslationSubsystem sessions (card 0254): the
+ * window starts a row's session and observes every editor session, showing its progress in the progress modal and its
+ * result in the translation viewer. It sends no LLM request itself.
  */
 class NODETOCODE_API SN2CMainWindow : public SCompoundWidget
 {
@@ -81,20 +86,6 @@ public:
 	/** Check if batch progress is visible */
 	bool IsBatchProgressVisible() const { return bShowBatchProgress; }
 
-	/**
-	 * Writes a single translation as a run of the translation archive (FN2CTranslationArchive, card 0252): every
-	 * response entry in its own folder, the capture beside them, a manifest. Then records Graph (the tagged graph) at
-	 * its root entry's folder, with the run's provider, model and language, so the translation viewer can load it
-	 * again. RunInfo null: a Single run named after the capture, with the settings' provider, model and language.
-	 * OutSaved, when given, gets what was written. False when nothing was written or Graph has no valid GUID.
-	 */
-	static bool SaveSingleTranslation(const FN2CTagInfo& Graph, const FN2CTranslationResponse& Response,
-		const FN2CBlueprint& Capture, const FN2CTranslationRunInfo* RunInfo = nullptr, FN2CArchivedResponse* OutSaved = nullptr);
-
-	/** A Single run named after Capture, with the settings' provider, model and target language */
-	static FN2CTranslationRunInfo MakeSingleRunInfo(const FN2CBlueprint& Capture);
-
-
 private:
 	// External event delegates
 	FOnN2CBatchOperationComplete OnBatchCompleteDelegate;
@@ -109,19 +100,20 @@ private:
 	bool bShowTranslationViewer;
 	bool bShowBatchProgress;
 
-	// Pending operation state
-	FN2CTagInfo PendingSingleTranslateGraph;
-	/** The N2C JSON sent for the pending single translation, for the translation viewer's JSON tab */
-	FString PendingSingleTranslateJson;
-	bool bIsSingleTranslationInProgress;
+	/** The translation session the progress modal shows (invalid when it shows none or a batch) */
+	FGuid ObservedSession;
+
+	/** Registered with the translation subsystem as a window that shows sessions itself */
+	bool bIsPresenter = false;
 
 	// Batch orchestrator delegate handles
 	FDelegateHandle BatchItemCompleteHandle;
 	FDelegateHandle BatchCompleteHandle;
 	FDelegateHandle BatchProgressHandle;
 
-	// Overlay translation request delegate handle
-	FDelegateHandle OverlayTranslationRequestHandle;
+	// Translation subsystem delegate handles
+	FDelegateHandle SessionChangedHandle;
+	FDelegateHandle ShowResultHandle;
 
 	// ==================== Tag Manager Event Handlers ====================
 
@@ -188,15 +180,13 @@ private:
 	/** Called for batch progress updates */
 	void OnBatchProgress(int32 CurrentIndex, int32 TotalCount, const FString& GraphName);
 
-	// ==================== Overlay Translation Handling ====================
+	// ==================== Translation Sessions ====================
 
-	/** Handle translation request from graph overlay */
-	void HandleOverlayTranslationRequest(const FGuid& GraphGuid, const FString& GraphName, const FString& BlueprintPath);
+	/** A translation session changed state: the progress modal follows the editor's sessions, the viewer shows a result */
+	void HandleSessionChanged(const FN2CTranslationSession& Session);
 
-	// ==================== Single Translation Callbacks ====================
-
-	/** Called when single graph translation completes; Saved is what SaveSingleTranslation wrote (empty on failure) */
-	void OnSingleTranslationComplete(const FN2CTranslationResponse& Response, bool bSuccess, const FN2CArchivedResponse& Saved);
+	/** Shows a finished session's result in the translation viewer (the notification's Open Result) */
+	void ShowSessionResult(const FN2CTranslationSession& Session);
 
 	// ==================== Overlay Visibility ====================
 

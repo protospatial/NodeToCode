@@ -40,10 +40,13 @@ the graph again. The NodeToCode window's **Prune Missing** button removes the ta
 
 1. Focus the graph in its Blueprint editor and click **Translate** on its N2C bar. For several graphs, tag them, check
    them in the Tag Manager and click **Batch Translate** ([Window Overview](Top-Navbar-Overview)).
-2. The Node to Code window shows the progress while the request runs (if it is closed, Translate opens it first); the bar's **Translate** button reads
-   **Translation in progress...** and only one translation runs at a time.
-3. When the answer arrives, the translation opens in the window's viewer ([Viewing the Results](Viewing-the-Results))
-   and is saved as files ([Utilizing Saved Translations](Utilizing-Saved-Translations)).
+2. While the request runs, every N2C bar's **Translate** button reads **Translation in progress...** and only one
+   translation runs at a time. If the Node to Code window is open, it comes to the front and shows the progress. If it is closed, a
+   notification at the bottom right of the editor shows it instead, with **Cancel** to stop the request.
+3. When the answer arrives, the translation is saved as files ([Utilizing Saved Translations](Utilizing-Saved-Translations)).
+   An open window shows it in its viewer ([Viewing the Results](Viewing-the-Results)); otherwise the notification says
+   the graph was translated and its **Open Result** button opens the window on the translation. If the request fails,
+   the window's progress dialog or the notification says why.
 
 ## Behind the Scenes
 

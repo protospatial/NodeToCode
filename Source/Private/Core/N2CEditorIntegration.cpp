@@ -9,7 +9,6 @@
 #include "BlueprintEditorModule.h"
 #include "Code Editor/Models/N2CCodeLanguage.h"
 #include "Core/N2CEditorWindow.h"
-#include "Framework/Docking/TabManager.h"
 #include "Core/N2CCapture.h"
 #include "Utils/Validators/N2CPinValidator.h"
 #include "Core/N2CSerializer.h"
@@ -455,56 +454,5 @@ bool FN2CEditorIntegration::ResolveTranslationOverrides(const FString& ProviderI
         }
     }
 
-    return true;
-}
-
-void FN2CEditorIntegration::SetTranslationInProgress(bool bInProgress)
-{
-    if (bIsAnyTranslationInProgress != bInProgress)
-    {
-        bIsAnyTranslationInProgress = bInProgress;
-        OnTranslationStateChanged.Broadcast(bInProgress);
-
-        FN2CLogger::Get().Log(
-            FString::Printf(TEXT("Global translation state changed: %s"),
-                bInProgress ? TEXT("IN PROGRESS") : TEXT("IDLE")),
-            EN2CLogSeverity::Info
-        );
-    }
-}
-
-bool FN2CEditorIntegration::RequestOverlayTranslation(const FGuid& GraphGuid, const FString& GraphName, const FString& BlueprintPath)
-{
-    FN2CLogger::Get().Log(
-        FString::Printf(TEXT("RequestOverlayTranslation: Graph=%s (GUID=%s)"), *GraphName, *GraphGuid.ToString()),
-        EN2CLogSeverity::Info
-    );
-
-    // Only the Node to Code window translates an overlay request and shows the result. With the window closed nothing
-    // listens and the click did nothing (card 0521), so open it first: its SN2CMainWindow subscribes as it is built
-    if (!OnOverlayTranslationRequested.IsBound())
-    {
-        FN2CLogger::Get().Log(TEXT("Opening the Node to Code window for the N2C bar's translation"), EN2CLogSeverity::Info);
-        if (OpenWindowForOverlayTranslation)
-        {
-            OpenWindowForOverlayTranslation();
-        }
-        else
-        {
-            FGlobalTabmanager::Get()->TryInvokeTab(SN2CEditorWindow::TabId);
-        }
-    }
-    if (!OnOverlayTranslationRequested.IsBound())
-    {
-        const FString Message = FString::Printf(
-            TEXT("Could not open the Node to Code window to translate %s. Open it with the N2C button on the graph's N2C bar, then click Translate again."),
-            *GraphName);
-        // Logged as a warning and shown as a notification
-        FN2CGraphUtils::NotifyFailure(Message);
-        return false;
-    }
-
-    // The window translates the graph and shows its progress and result
-    OnOverlayTranslationRequested.Broadcast(GraphGuid, GraphName, BlueprintPath);
     return true;
 }

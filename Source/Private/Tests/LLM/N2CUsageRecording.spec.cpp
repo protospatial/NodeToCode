@@ -34,6 +34,7 @@
 #include "Models/N2CBlueprint.h"
 #include "Models/N2CTranslation.h"
 #include "Tests/N2CTestBlueprintFactory.h"
+#include "Subsystems/N2CTranslationSubsystem.h"
 #include "Tests/N2CTestHelpers.h"
 #include "Tests/N2CTestHttpStub.h"
 
@@ -265,7 +266,7 @@ void FN2CUsageRecordingSpec::Define()
 		}
 		const FN2CBlueprint Captured = Capture.GetValue().Blueprint;
 
-		// The caller saves the parsed response (card 0252: ProcessN2CJson writes nothing), as the main window does
+		// The caller saves the parsed response (card 0252: ProcessN2CJson writes nothing), as a translation session does
 		const TSharedRef<int32> Completions = MakeShared<int32>(0);
 		const TSharedRef<FN2CTranslationResponse> Parsed = MakeShared<FN2CTranslationResponse>();
 		Module->ProcessN2CJson(FN2CSerializer::ToJson(Captured, EN2CJsonStyle::Condensed),
@@ -279,7 +280,7 @@ void FN2CUsageRecordingSpec::Define()
 		TestEqual(TEXT("the stub answered once"), *Stub.Hits, 1);
 		FN2CTagInfo Graph;
 		Graph.GraphName = TEXT("EventGraph");
-		SN2CMainWindow::SaveSingleTranslation(Graph, *Parsed, Captured);
+		UN2CTranslationSubsystem::SaveSingleTranslation(Graph, *Parsed, Captured);
 
 		const FString Folder = Module->GetLatestTranslationPath();
 		const FString TranslationPath = Folder / FString::Printf(TEXT("N2C_Translation_%s.json"), *FPaths::GetBaseFilename(Folder));
