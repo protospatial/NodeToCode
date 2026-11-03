@@ -3,6 +3,11 @@
 
 #include "Core/N2CTargetLanguage.h"
 
+#include "Dom/JsonObject.h"
+#include "Models/N2CJsonContract.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
+
 namespace
 {
 	/** The table, in enum order. A new EN2CCodeLanguage value needs a row here (NodeToCode.Languages checks it). */
@@ -114,4 +119,44 @@ const FN2CTargetLanguage* N2C::FindLanguage(const FString& Name)
 FString N2C::GetPromptKey(EN2CCodeLanguage Language, const TCHAR* Family)
 {
 	return FString::Printf(TEXT("%s_%s"), Family, GetLanguage(Language).PromptKey);
+}
+
+TConstArrayView<const TCHAR*> N2C::GetPromptFamilies()
+{
+	static const TCHAR* const Families[] = { BlueprintPromptFamily, MaterialPromptFamily };
+	return Families;
+}
+
+const TCHAR* N2C::GetPromptFamilyForDocument(const FString& N2CJson)
+{
+	TSharedPtr<FJsonObject> Root;
+	const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(N2CJson);
+	if (!FJsonSerializer::Deserialize(Reader, Root) || !Root.IsValid())
+	{
+		return BlueprintPromptFamily;
+	}
+	const TSharedPtr<FJsonObject>* Metadata = nullptr;
+	FString AssetKind;
+	if (Root->TryGetObjectField(TEXT("metadata"), Metadata)
+		&& (*Metadata)->TryGetStringField(N2CJsonContract::AssetKindField, AssetKind)
+		&& AssetKind.Equals(N2CJsonContract::AssetKindMaterial, ESearchCase::CaseSensitive))
+	{
+		return MaterialPromptFamily;
+	}
+	return BlueprintPromptFamily;
+}
+
+bool N2C::IsLanguageAvailableForFamily(const TCHAR* Family, EN2CCodeLanguage Language)
+{
+	if (FCString::Strcmp(Family, MaterialPromptFamily) == 0)
+	{
+		return Language == EN2CCodeLanguage::Pseudocode;
+	}
+	return FindLanguageRow(Language) != nullptr;
+}
+
+FString N2C::TargetNotAvailableForMaterialsMessage(EN2CCodeLanguage Language)
+{
+	return FString::Printf(TEXT("%s: a material can be explained in %s only, not translated to %s"),
+		TargetNotAvailableForMaterialsCode, GetLanguage(EN2CCodeLanguage::Pseudocode).DisplayName, GetLanguage(Language).DisplayName);
 }

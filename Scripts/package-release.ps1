@@ -83,6 +83,7 @@ $RequiredFiles = @(
     'Source/NodeToCode.Build.cs',
     'Resources/Icon128.png',
     'Content/Prompting/CodeGen_CPP.md',
+    'Content/Prompting/MaterialGen_Pseudocode.md',
     'Content/Prompting/Shared/N2CJsonSpec.md',
     'Content/Prompting/Shared/N2CResponseFormat.md',
     'Content/Data/N2CModelCatalog.json',

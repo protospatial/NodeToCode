@@ -12,6 +12,10 @@ Choose the output programming language:
 - Swift (VisionOS or iOS)
 - Pseudocode (Great for communicating language-agnostic code!)
 
+A material graph is explained, not translated: its translation uses Pseudocode only, with a prompt of its own
+that reads the material from its outputs back. Asking for a material in any other language fails at once with
+`TARGET_NOT_AVAILABLE_FOR_MATERIALS`, before anything is sent to the LLM.
+
 **Target Language** is in **Project Settings → Plugins → Node to Code → Code Generation**, beside
 [Max Translation Depth](Max-Translation-Depth) and [Reference Source Files](Reference-Source-Files):
 
