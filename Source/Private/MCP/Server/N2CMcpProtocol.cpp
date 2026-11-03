@@ -2,6 +2,7 @@
 
 #include "MCP/Server/N2CMcpProtocol.h"
 #include "MCP/Server/N2CMcpRequestTrace.h"
+#include "MCP/Server/N2CMcpCompletion.h"
 #include "MCP/Server/N2CMcpTcpConnectionState.h"
 #include "Utils/N2CLogger.h"
 #include "Dom/JsonObject.h"
@@ -16,6 +17,15 @@
 #include "MCP/Validation/N2CMcpRequestValidator.h"
 #include "MCP/Async/N2CToolAsyncTaskManager.h"
 #include "Misc/ScopeExit.h"
+#include "Core/N2CBlueprintEditorTracker.h"
+#include "MCP/Resources/Implementations/N2CMcpBlueprintResource.h"
+#include "BlueprintEditor.h"
+#include "Editor.h"
+#include "Engine/Blueprint.h"
+#include "GenericPlatform/GenericPlatformHttp.h"
+#include "UObject/ObjectSaveContext.h"
+#include "UObject/Package.h"
+#include "Misc/PackageName.h"
 
 // ----------------------------------------------------------------------------------------------------------------
 // Inbound message
@@ -144,6 +154,23 @@ FN2CMcpProtocol::FN2CMcpProtocol(const FN2CMcpCatalogs& InCatalogs)
 {
 	check(Catalogs.Tools && Catalogs.Resources && Catalogs.Prompts && Catalogs.Tasks);
 
+	// Resource update notifications (card 0214): note compiled and saved Blueprints for the next stream beat
+	if (GEditor)
+	{
+		BlueprintPreCompileHandle = GEditor->OnBlueprintPreCompile().AddLambda([this](UBlueprint* Blueprint)
+		{
+			NoteBlueprintChanged(Blueprint);
+		});
+	}
+	PackageSavedHandle = UPackage::PackageSavedWithContextEvent.AddLambda([this](const FString&, UPackage* Package, FObjectPostSaveContext)
+	{
+		// A saved asset is its package's object of the same name
+		if (Package && HasResourceSubscriptions())
+		{
+			NoteBlueprintChanged(FindObject<UBlueprint>(Package, *FPackageName::GetShortName(Package)));
+		}
+	});
+
 	// tools/list is fixed while the server runs; it changes only when the tool manager is configured again (a server
 	// restart with new settings). Tell clients through the broadcast sink, when a transport set one (none does today;
 	// see SetBroadcastSink)
@@ -175,6 +202,11 @@ FN2CMcpProtocol::FN2CMcpProtocol(const FN2CMcpCatalogs& InCatalogs)
 FN2CMcpProtocol::~FN2CMcpProtocol()
 {
 	Catalogs.Tools->OnToolListChanged().Remove(ToolListChangedHandle);
+	if (GEditor && BlueprintPreCompileHandle.IsValid())
+	{
+		GEditor->OnBlueprintPreCompile().Remove(BlueprintPreCompileHandle);
+	}
+	UPackage::PackageSavedWithContextEvent.Remove(PackageSavedHandle);
 	if (StreamTickerHandle.IsValid())
 	{
 		FTSTicker::GetCoreTicker().RemoveTicker(StreamTickerHandle);
@@ -919,6 +951,10 @@ bool FN2CMcpProtocol::DispatchMethod(const FString& Method, const TSharedPtr<FJs
 	{
 		return HandleCancelTask(Params, Id, OutResponse);
 	}
+	else if (Method == TEXT("completion/complete"))
+	{
+		return HandleCompletion(Params, Id, OutResponse);
+	}
 	else
 	{
 		// Method not found
@@ -1018,7 +1054,7 @@ bool FN2CMcpProtocol::HandleInitialize(const TSharedPtr<FJsonValue>& Params, con
 
 	// Guidance for the agent (InitializeResult.instructions)
 	Result->SetStringField(TEXT("instructions"), GetServerInstructions());
-	Result->SetObjectField(TEXT("serverInfo"), BuildServerInfo());
+	Result->SetObjectField(TEXT("serverInfo"), BuildServerInfo(/*bWithIcons=*/true));
 
 	// Create success response
 	OutResponse = FJsonRpcUtils::CreateSuccessResponse(Id, MakeShareable(new FJsonValueObject(Result)));
@@ -1501,6 +1537,17 @@ bool FN2CMcpProtocol::HandlePromptsGet(const TSharedPtr<FJsonValue>& Params, con
 	// Create success response
 	OutResponse = FJsonRpcUtils::CreateSuccessResponse(Id, MakeShareable(new FJsonValueObject(ResultJson)));
 
+	return true;
+}
+
+bool FN2CMcpProtocol::HandleCompletion(const TSharedPtr<FJsonValue>& Params, const TSharedPtr<FJsonValue>& Id, FJsonRpcResponse& OutResponse)
+{
+	FString Error;
+	const TSharedPtr<FJsonObject> Result = N2CMcpCompletion::Complete(
+		Params.IsValid() && Params->Type == EJson::Object ? Params->AsObject() : nullptr, *Catalogs.Prompts, Error);
+	OutResponse = Result.IsValid()
+		? FJsonRpcUtils::CreateSuccessResponse(Id, MakeShared<FJsonValueObject>(Result))
+		: FJsonRpcUtils::CreateErrorResponse(Id, JsonRpcErrorCodes::InvalidParams, Error);
 	return true;
 }
 

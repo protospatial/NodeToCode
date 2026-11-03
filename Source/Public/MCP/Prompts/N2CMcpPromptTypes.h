@@ -31,6 +31,9 @@ struct NODETOCODE_API FMcpPromptArgument
 	UPROPERTY()
 	bool bRequired = false;
 
+	/** The values completion/complete offers for this argument (card 0214); not sent in prompts/list */
+	TArray<FString> CompletionValues;
+
 	/**
 	 * Converts this argument to JSON format
 	 */

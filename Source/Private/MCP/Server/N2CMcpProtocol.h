@@ -7,6 +7,7 @@
 #include "Dom/JsonValue.h"
 #include "Delegates/IDelegateInstance.h"
 #include "Containers/Ticker.h"
+#include "UObject/WeakObjectPtrTemplates.h"
 #include "HAL/CriticalSection.h"
 #include "MCP/Server/N2CMcpJsonRpcTypes.h"
 
@@ -323,11 +324,33 @@ private:
 	void HandleSubscriptionsListen(const TSharedRef<IN2CMcpResponder>& Responder, const TSharedPtr<FJsonObject>& Params,
 		const TSharedPtr<FJsonValue>& Id);
 
-	/** The capabilities initialize and server/discover advertise */
-	static TSharedRef<FJsonObject> BuildServerCapabilities();
+	/**
+	 * Resource update notifications (card 0214). A subscriptions/listen stream may subscribe to
+	 * nodetocode://blueprint/current and to any nodetocode://blueprint/<path>. A Blueprint compile
+	 * (UEditorEngine::OnBlueprintPreCompile) or package save is noted, and on the next stream beat each subscriber of
+	 * that Blueprint's URI (and of current, when it is the focused Blueprint) gets notifications/resources/updated; a
+	 * change of the focused Blueprint updates current. URIs are compared percent-decoded.
+	 */
+	static bool IsUpdatableResourceUri(const FString& Uri);
+	void NoteBlueprintChanged(class UBlueprint* Blueprint);
+	void FlushResourceUpdates();
+	bool HasResourceSubscriptions() const;
 
-	/** {name, version} of this server */
-	static TSharedRef<FJsonObject> BuildServerInfo();
+	/**
+	 * The capabilities initialize and server/discover advertise. bResourceSubscriptions: resources.subscribe true, for a
+	 * 2026-07-28 client on a transport that can keep a subscriptions/listen stream open (card 0214)
+	 */
+	static TSharedRef<FJsonObject> BuildServerCapabilities(bool bResourceSubscriptions = false);
+
+	/**
+	 * {name, title, version, description, websiteUrl} of this server, plus icons (the plugin icon as a data: URI PNG)
+	 * with bWithIcons: initialize and server/discover carry them, the serverInfo every 2026-07-28 result repeats in its
+	 * _meta does not (card 0214)
+	 */
+	static TSharedRef<FJsonObject> BuildServerInfo(bool bWithIcons = false);
+
+	/** The icons array of serverInfo: the plugin's Resources/Icon128.png as a data: URI; empty when the file is missing */
+	static TArray<TSharedPtr<FJsonValue>> ServerIcons();
 
 	/** Adds resultType, the serverInfo _meta and, for Method's list and read results, ttlMs and cacheScope */
 	static void DecorateModernResult(const FString& Method, const TSharedPtr<FJsonObject>& Result);
@@ -359,6 +382,8 @@ private:
 		bool bHeldReply = false;
 		int32 HeldLocalPort = 0;
 		int32 HeldPeerPort = 0;
+		/** subscriptions/listen: the resource URIs it subscribed to that this server updates (card 0214) */
+		TArray<FString> ResourceSubscriptions;
 	};
 	TArray<FWatchedStream> WatchedStreams;
 	FTSTicker::FDelegateHandle StreamTickerHandle;
@@ -380,8 +405,16 @@ private:
 	bool HandlePromptsList(const TSharedPtr<FJsonValue>& Params, const TSharedPtr<FJsonValue>& Id, FJsonRpcResponse& OutResponse);
 	bool HandlePromptsGet(const TSharedPtr<FJsonValue>& Params, const TSharedPtr<FJsonValue>& Id, FJsonRpcResponse& OutResponse);
 	bool HandleCancelTask(const TSharedPtr<FJsonValue>& Params, const TSharedPtr<FJsonValue>& Id, FJsonRpcResponse& OutResponse);
+	/** completion/complete (card 0214, N2CMcpCompletion): -32602 for a malformed or unknown ref */
+	bool HandleCompletion(const TSharedPtr<FJsonValue>& Params, const TSharedPtr<FJsonValue>& Id, FJsonRpcResponse& OutResponse);
 
 	FN2CMcpCatalogs Catalogs;
+
+	/** Resource updates (card 0214): Blueprints compiled or saved since the last beat, and the focused Blueprint then */
+	TArray<TWeakObjectPtr<class UBlueprint>> ChangedBlueprints;
+	FString LastFocusedBlueprintPath;
+	FDelegateHandle BlueprintPreCompileHandle;
+	FDelegateHandle PackageSavedHandle;
 
 	/** Live sessions by Mcp-Session-Id */
 	TMap<FString, FN2CMcpSession> Sessions;
