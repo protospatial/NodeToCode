@@ -4,12 +4,15 @@
 
 #include "CoreMinimal.h"
 #include "Delegates/IDelegateInstance.h"
+#include "UObject/WeakObjectPtrTemplates.h"
 
 class FBlueprintEditor;
 class IAssetEditorInstance;
+class IMaterialEditor;
 class SDockTab;
 class UBlueprint;
 class UEdGraph;
+class UObject;
 
 /**
  * The single definition of "the focused Blueprint" for NodeToCode (card 0150).
@@ -27,6 +30,11 @@ class UEdGraph;
  *
  * Only real Blueprint editors count: some UBlueprint subclasses (Control Rig with RigVM.UseNewEditor=1, third-party
  * types) open in toolkits that are not FBlueprintEditor, so every lookup checks IToolkit::IsBlueprintEditor().
+ *
+ * The same events and the same last-activation rule give the focused Material Editor (card 0463), kept apart from the
+ * Blueprint focus: activating a Material Editor never moves the focused Blueprint editor, and the other way round. A
+ * Material Editor is the engine's FMaterialEditor (toolkit name MaterialEditor) open on a Material or Material
+ * Function; it edits a transient working copy until Apply (WorkingCopyOf). Material instance editors do not count.
  */
 class FN2CBlueprintEditorTracker
 {
@@ -56,8 +64,9 @@ public:
 
 	/**
 	 * Handles a tab being foregrounded or made active: when it belongs to a Blueprint editor whose asset tab is in
-	 * front, that editor becomes the focused editor. Returns the editor that took the focus, or null when the focus
-	 * did not change. The global tab manager events call this; tests call it to replay them.
+	 * front, that editor becomes the focused editor; when it belongs to a Material Editor whose asset tab is in front,
+	 * that Material Editor becomes the focused Material Editor. Returns the Blueprint editor that took the focus, or
+	 * null when the Blueprint focus did not change. The global tab manager events call this; tests call it to replay them.
 	 */
 	TSharedPtr<FBlueprintEditor> HandleTabActivated(const TSharedPtr<SDockTab>& Tab);
 
@@ -66,6 +75,31 @@ public:
 
 	/** The graph the focused Blueprint editor shows, or null */
 	UEdGraph* GetFocusedGraph() const;
+
+	/** The Material Editor open on Asset (a Material or Material Function), or null. Never opens one. */
+	static TSharedPtr<IMaterialEditor> GetMaterialEditorFor(const UObject* Asset);
+
+	/** The assets (the saved originals, not the working copies) every open Material Editor edits, each once */
+	static TArray<UObject*> GetOpenMaterialEditorAssets();
+
+	/** The asset of the Material Editor a tab belongs to (its asset tab, or a tab inside it), or null */
+	static UObject* FindMaterialAssetForTab(const TSharedPtr<SDockTab>& Tab);
+
+	/**
+	 * The copy a Material Editor edits until Apply: for a Material the editor's preview material
+	 * (IMaterialEditor::GetMaterialInterface, a UPreviewMaterial in the transient package), for a Material Function the
+	 * duplicate its graph shows (UMaterialGraph::MaterialFunction). Null when the editor has none.
+	 */
+	static UObject* WorkingCopyOf(const IMaterialEditor& Editor);
+
+	/** Records that the user (or a tool acting for them) activated the Material Editor open on Asset */
+	void NotifyMaterialEditorActivated(UObject* Asset);
+
+	/**
+	 * The asset of the focused Material Editor: the most recently activated one still open, failing that the open one
+	 * with the latest IAssetEditorInstance::GetLastActivationTime(); null when no Material Editor is open
+	 */
+	UObject* GetFocusedMaterialAsset() const;
 
 private:
 	FN2CBlueprintEditorTracker() = default;
@@ -79,6 +113,9 @@ private:
 
 	/** Activated Blueprint editors, most recent last; each editor once */
 	mutable TArray<TWeakPtr<FBlueprintEditor>> ActivationHistory;
+
+	/** Assets of activated Material Editors, most recent last; each asset once */
+	mutable TArray<TWeakObjectPtr<UObject>> MaterialActivationHistory;
 
 	FDelegateHandle OnTabForegroundedHandle;
 	FDelegateHandle OnActiveTabChangedHandle;

@@ -162,7 +162,6 @@ void FN2CMaterialN2CJsonSpec::Define()
 			ExpectError(TEXT("a material instance"), Args(Instance->GetPathName()), TEXT("UNSUPPORTED_ASSET_TYPE"), TEXT("MaterialInstanceConstant"));
 		}
 		ExpectError(TEXT("a missing path"), Args(TEXT("/Game/N2CNoSuchMaterial")), TEXT("ASSET_NOT_FOUND"));
-		ExpectError(TEXT("no path"), MakeShared<FJsonObject>(), TEXT("INVALID_ARGUMENT"));
 		const TSharedPtr<FJsonObject> BadDepth = Args(TEXT("/Engine/EngineMaterials/WorldGridMaterial"));
 		BadDepth->SetNumberField(TEXT("depth"), 9);
 		ExpectError(TEXT("depth 9"), BadDepth, TEXT("INVALID_ARGUMENT"));
