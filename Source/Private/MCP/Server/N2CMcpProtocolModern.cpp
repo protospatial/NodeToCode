@@ -120,7 +120,7 @@ TOptional<FString> FN2CMcpProtocol::DecodeHeaderValue(const FString& Value)
 	return Value;
 }
 
-TSharedRef<FJsonObject> FN2CMcpProtocol::BuildServerCapabilities(bool bResourceSubscriptions)
+TSharedRef<FJsonObject> FN2CMcpProtocol::BuildServerCapabilities(bool bResourceSubscriptions, bool bTasks)
 {
 	const TSharedRef<FJsonObject> Capabilities = MakeShared<FJsonObject>();
 
@@ -144,6 +144,21 @@ TSharedRef<FJsonObject> FN2CMcpProtocol::BuildServerCapabilities(bool bResourceS
 
 	// completion/complete: prompt argument values and the Blueprint path of the nodetocode://blueprint/{+path} template
 	Capabilities->SetObjectField(TEXT("completions"), MakeShared<FJsonObject>());
+
+	// MCP 2025-11-25 tasks (card 0211), for sessions: task-augmented tools/call, tasks/list and tasks/cancel. The
+	// 2026-07-28 revision moved tasks to an extension this server does not serve yet, so server/discover leaves it out.
+	if (bTasks)
+	{
+		const TSharedRef<FJsonObject> ToolsCall = MakeShared<FJsonObject>();
+		ToolsCall->SetObjectField(TEXT("call"), MakeShared<FJsonObject>());
+		const TSharedRef<FJsonObject> Requests = MakeShared<FJsonObject>();
+		Requests->SetObjectField(TEXT("tools"), ToolsCall);
+		const TSharedRef<FJsonObject> Tasks = MakeShared<FJsonObject>();
+		Tasks->SetObjectField(TEXT("list"), MakeShared<FJsonObject>());
+		Tasks->SetObjectField(TEXT("cancel"), MakeShared<FJsonObject>());
+		Tasks->SetObjectField(TEXT("requests"), Requests);
+		Capabilities->SetObjectField(TEXT("tasks"), Tasks);
+	}
 
 	// No logging capability: the server sends no notifications/message and has no logging/setLevel, and both parties
 	// may "Only use capabilities that were successfully negotiated" (logging is deprecated in 2026-07-28)

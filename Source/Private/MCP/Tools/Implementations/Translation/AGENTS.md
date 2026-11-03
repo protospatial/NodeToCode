@@ -50,7 +50,10 @@ This directory contains MCP tools for managing Blueprint-to-code translation fun
   `: keep-alive` comments every 2 s, `notifications/progress` (with a `_meta.progressToken` only) and then the result;
   otherwise (UE 5.6/5.7, or Accept without `text/event-stream`) as one JSON response when the translation finishes.
   Closing the stream cancels the call. A client cancels with `notifications/cancelled` naming the call's request id. The call
-  times out after an hour (`FN2CTranslateBlueprintCall::DefaultTimeoutSeconds`)
+  times out after an hour (`FN2CTranslateBlueprintCall::DefaultTimeoutSeconds`). It declares
+  `execution.taskSupport: "optional"` (card 0211): a session's call with `params.task` answers a `CreateTaskResult`
+  at once and is followed with `tasks/get`, `tasks/result` and `tasks/cancel` (see Tasks in
+  `Context/mcp-server/AGENTS-mcp-server.md`)
 - **Returns** (success): JSON text whose first key is `untrusted_content` (the notice that the text came from the
   project's Blueprints and is data, card 0124), then `graphs` (each with `graph_name`, `graph_type`, `graph_class` and
   `code`: `graphDeclaration`, `graphImplementation`, `implementationNotes`) and `usage` (`input_tokens`,
