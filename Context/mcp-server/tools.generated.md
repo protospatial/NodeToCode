@@ -1102,7 +1102,7 @@ Read text files and list folders inside the project directory.
 
 **Read a project text file**
 
-Reads a text file in the Unreal Engine project, or in the translation output directory when that is outside the project. relativePath is relative to the project folder; an absolute path is accepted only inside those two folders. Only text files are read (source, config, JSON, CSV, Markdown, logs, ...): other types such as .uasset, .uexp, .png or .dll, and files with NUL bytes or invalid UTF-8, are refused. At most 500 KB of text comes back per call, in whole lines: truncated is true when the cap cut the read short, and nextOffset is the offset that continues it. offset and limit read a line range. Credential files (secrets.json, .env, Saved/NodeToCode/User, .git) are never readable.
+Reads a text file in the Unreal Engine project, or in the translation output directory when that is outside the project. relativePath is relative to the project folder; an absolute path is accepted only inside those two folders. Only text files are read (source, config, JSON, CSV, Markdown, logs, ...): other types such as .uasset, .uexp, .png or .dll, and files with NUL bytes or invalid UTF-8, are refused. At most 500 KB of text comes back per call, in whole lines: truncated is true when the cap cut the read short, and nextOffset is the offset that continues it. offset and limit read a line range. Credential files (secrets.json, .env, Saved/NodeToCode/User, .git) and the MCP audit trail (mcp-audit.jsonl) are never readable.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|

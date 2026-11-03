@@ -67,7 +67,8 @@ ignored with one warning (a cloned project cannot turn Python execution on). Spe
   `NODETOCODE_MCP_TOKEN` (`N2C.Mcp.WriteClientConfig`). Detail: "Server switches (per-user)" in
   [MCP server](../mcp-server/AGENTS-mcp-server.md).
 - `FN2CPathUtils::IsDeniedForAgentAccess` (`Source/Public/Utils/N2CPathUtils.h`): the file tools never read
-  `<UserSettingsDir>/NodeToCode` (keys and token), `<ProjectSaved>/NodeToCode/User`, any `secrets.json*`,
+  `<UserSettingsDir>/NodeToCode` (keys and token), `<ProjectSaved>/NodeToCode/User`, any `secrets.json*`, the MCP
+  audit trail `mcp-audit.*` (card 0424: it holds what run-python printed),
   `<Project>/.git` or `.env` files. The wider controls: [threat model](../mcp-server/threat-model.md).
 
 ## Specs
