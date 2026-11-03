@@ -6,8 +6,11 @@ On UE 5.8 or later with Epic's ToolsetRegistry plugin enabled, it registers Node
 AgentSkillToolset then lists and serves them), the NodeToCodeTools toolset (Unreal MCP and the in-editor assistant
 then list it) and its Python tests, as Epic's EditorToolset does. Anywhere else it does nothing and logs nothing. It
 never raises: a failure of either part is one warning, the other part still registers, and the rest of the editor
-starts as usual.
+starts as usual. The packaged plugin leaves the tests out (Config/FilterPlugin.ini, card 0526); then only the
+toolset registers, silently.
 """
+
+import importlib.util
 
 import unreal
 
@@ -39,9 +42,13 @@ def _n2c_register_skills():
 
 def _n2c_register_toolsets():
     from nodetocode import toolsets
-    from nodetocode.toolsets import tests
 
     toolsets._registration.register()
+    # The tests ship only in the repository and the host projects: a packaged plugin has no toolsets/tests (card 0526)
+    if importlib.util.find_spec('nodetocode.toolsets.tests') is None:
+        return
+    from nodetocode.toolsets import tests
+
     tests._test_runner = unreal.PythonTestRunner.create(
         'NodeToCode.Toolsets.PythonTests',
         unreal.PythonTestRunnerSearchOptions(root_module=tests.__name__),

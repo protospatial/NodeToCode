@@ -7,6 +7,9 @@
 #include "EdGraph/EdGraphPin.h"
 #include "Templates/ValueOrError.h"
 
+class FJsonObject;
+class FProperty;
+
 /**
  * One codec between a type written as text and FEdGraphPinType (card 0347, review arch-arch-core-llm-ui-12), so a type
  * an agent reads anywhere can be written back through any tool. Before it, UN2CStructUtilsLibrary had its own
@@ -43,4 +46,23 @@ namespace N2C::PinType
 
 	/** Whether two pin types are the same variable type: category, sub-category, sub-type object, container and map value */
 	NODETOCODE_API bool SameType(const FEdGraphPinType& A, const FEdGraphPinType& B);
+
+	/**
+	 * The one JSON description of a type (card 0348, review arch-arch-mcp-7), which list-overridable-functions returns
+	 * for each parameter and FN2CMcpVariableUtils::BuildTypeInfo condenses for the variable and pin tools. Fields:
+	 * - type and category: bool, byte, int, int64, string, name, text, struct, object, class, softobject, softclass,
+	 *   interface, enum, delegate, mcdelegate, or unknown; float and double have category real and subCategory float
+	 *   or double;
+	 * - the type it names: structType/structPath, enumType/enumPath, objectType/objectPath (for class and softclass the
+	 *   class a value must derive from, for interface the interface);
+	 * - a container: type and container array, set or map, with innerType (array), elementType (set) or keyType and
+	 *   valueType (map), each the description of that element.
+	 */
+	NODETOCODE_API TSharedPtr<FJsonObject> Describe(const FEdGraphPinType& PinType);
+
+	/**
+	 * Describe of the property's pin type (UEdGraphSchema_K2::ConvertPropertyToPinType), plus cppType, isReference and
+	 * isConst from the property; the element descriptions of a container carry their own cppType. {"type": "unknown"} for null.
+	 */
+	NODETOCODE_API TSharedPtr<FJsonObject> Describe(const FProperty* Property);
 }

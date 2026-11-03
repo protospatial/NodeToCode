@@ -4,6 +4,8 @@
 #include "MCP/Utils/N2CPinTypeCodec.h"
 #include "MCP/Utils/N2CMcpTypeResolver.h"
 #include "EdGraphSchema_K2.h"
+#include "Dom/JsonObject.h"
+#include "UObject/UnrealType.h"
 
 namespace N2CPinTypeCodecPrivate
 {
@@ -317,5 +319,151 @@ namespace N2C::PinType
 		const FEdGraphTerminalType& VB = B.PinValueType;
 		return VA.TerminalCategory == VB.TerminalCategory && VA.TerminalSubCategory == VB.TerminalSubCategory
 			&& VA.TerminalSubCategoryObject.Get() == VB.TerminalSubCategoryObject.Get();
+	}
+}
+
+namespace N2CPinTypeCodecPrivate
+{
+	/** The description of one terminal type (no container): see N2C::PinType::Describe */
+	static TSharedPtr<FJsonObject> DescribeTerminal(const FName Category, const FName SubCategory, const UObject* Object)
+	{
+		const TSharedPtr<FJsonObject> Json = MakeShared<FJsonObject>();
+		auto Set = [&Json](const TCHAR* Type, const TCHAR* InCategory)
+		{
+			Json->SetStringField(TEXT("type"), Type);
+			Json->SetStringField(TEXT("category"), InCategory);
+		};
+		auto Named = [&Json, Object](const TCHAR* NameField, const TCHAR* PathField)
+		{
+			if (Object)
+			{
+				Json->SetStringField(NameField, Object->GetName());
+				Json->SetStringField(PathField, Object->GetPathName());
+			}
+		};
+		if (Category == UEdGraphSchema_K2::PC_Boolean) { Set(TEXT("bool"), TEXT("bool")); }
+		else if ((Category == UEdGraphSchema_K2::PC_Byte || Category == UEdGraphSchema_K2::PC_Enum) && Cast<UEnum>(Object))
+		{
+			Set(TEXT("enum"), TEXT("enum"));
+			Named(TEXT("enumType"), TEXT("enumPath"));
+		}
+		else if (Category == UEdGraphSchema_K2::PC_Byte) { Set(TEXT("byte"), TEXT("byte")); }
+		else if (Category == UEdGraphSchema_K2::PC_Int) { Set(TEXT("int"), TEXT("int")); }
+		else if (Category == UEdGraphSchema_K2::PC_Int64) { Set(TEXT("int64"), TEXT("int64")); }
+		else if (Category == UEdGraphSchema_K2::PC_Real || Category == UEdGraphSchema_K2::PC_Float || Category == UEdGraphSchema_K2::PC_Double)
+		{
+			const bool bDouble = SubCategory == UEdGraphSchema_K2::PC_Double || Category == UEdGraphSchema_K2::PC_Double;
+			Set(bDouble ? TEXT("double") : TEXT("float"), TEXT("real"));
+			Json->SetStringField(TEXT("subCategory"), bDouble ? TEXT("double") : TEXT("float"));
+		}
+		else if (Category == UEdGraphSchema_K2::PC_String) { Set(TEXT("string"), TEXT("string")); }
+		else if (Category == UEdGraphSchema_K2::PC_Name) { Set(TEXT("name"), TEXT("name")); }
+		else if (Category == UEdGraphSchema_K2::PC_Text) { Set(TEXT("text"), TEXT("text")); }
+		else if (Category == UEdGraphSchema_K2::PC_Struct)
+		{
+			Set(TEXT("struct"), TEXT("struct"));
+			Named(TEXT("structType"), TEXT("structPath"));
+		}
+		else if (Category == UEdGraphSchema_K2::PC_Object || Category == UEdGraphSchema_K2::PC_Class
+			|| Category == UEdGraphSchema_K2::PC_SoftObject || Category == UEdGraphSchema_K2::PC_SoftClass
+			|| Category == UEdGraphSchema_K2::PC_Interface)
+		{
+			// The class a value must be (object, interface) or derive from (class, softclass): the pin's sub-type
+			// object, which for a class property is its meta class, not UClass
+			const FString Name = Category.ToString().ToLower();
+			Set(*Name, *Name);
+			Named(TEXT("objectType"), TEXT("objectPath"));
+		}
+		else if (Category == UEdGraphSchema_K2::PC_Delegate) { Set(TEXT("delegate"), TEXT("delegate")); }
+		else if (Category == UEdGraphSchema_K2::PC_MCDelegate) { Set(TEXT("mcdelegate"), TEXT("mcdelegate")); }
+		else { Set(TEXT("unknown"), TEXT("unknown")); }
+		return Json;
+	}
+
+	/** Adds cppType, isReference and isConst of a property to its description */
+	static void AddPropertyFields(const TSharedPtr<FJsonObject>& Json, const FProperty* Property)
+	{
+		if (Json.IsValid() && Property)
+		{
+			Json->SetStringField(TEXT("cppType"), Property->GetCPPType());
+			Json->SetBoolField(TEXT("isReference"), Property->HasAnyPropertyFlags(CPF_ReferenceParm));
+			Json->SetBoolField(TEXT("isConst"), Property->HasAnyPropertyFlags(CPF_ConstParm));
+		}
+	}
+}
+
+namespace N2C::PinType
+{
+	TSharedPtr<FJsonObject> Describe(const FEdGraphPinType& PinType)
+	{
+		using namespace N2CPinTypeCodecPrivate;
+		const TSharedPtr<FJsonObject> Terminal = DescribeTerminal(PinType.PinCategory, PinType.PinSubCategory, PinType.PinSubCategoryObject.Get());
+		auto Container = [](const TCHAR* Name)
+		{
+			const TSharedPtr<FJsonObject> Json = MakeShared<FJsonObject>();
+			Json->SetStringField(TEXT("type"), Name);
+			Json->SetStringField(TEXT("container"), Name);
+			return Json;
+		};
+		switch (PinType.ContainerType)
+		{
+		case EPinContainerType::Array:
+		{
+			const TSharedPtr<FJsonObject> Json = Container(TEXT("array"));
+			Json->SetObjectField(TEXT("innerType"), Terminal);
+			return Json;
+		}
+		case EPinContainerType::Set:
+		{
+			const TSharedPtr<FJsonObject> Json = Container(TEXT("set"));
+			Json->SetObjectField(TEXT("elementType"), Terminal);
+			return Json;
+		}
+		case EPinContainerType::Map:
+		{
+			const TSharedPtr<FJsonObject> Json = Container(TEXT("map"));
+			const FEdGraphTerminalType& Value = PinType.PinValueType;
+			Json->SetObjectField(TEXT("keyType"), Terminal);
+			Json->SetObjectField(TEXT("valueType"), DescribeTerminal(Value.TerminalCategory, Value.TerminalSubCategory, Value.TerminalSubCategoryObject.Get()));
+			return Json;
+		}
+		default:
+			return Terminal;
+		}
+	}
+
+	TSharedPtr<FJsonObject> Describe(const FProperty* Property)
+	{
+		using namespace N2CPinTypeCodecPrivate;
+		FEdGraphPinType PinType;
+		if (!Property || !GetDefault<UEdGraphSchema_K2>()->ConvertPropertyToPinType(Property, PinType))
+		{
+			const TSharedPtr<FJsonObject> Unknown = MakeShared<FJsonObject>();
+			Unknown->SetStringField(TEXT("type"), TEXT("unknown"));
+			if (Property)
+			{
+				Unknown->SetStringField(TEXT("category"), TEXT("unknown"));
+				AddPropertyFields(Unknown, Property);
+			}
+			return Unknown;
+		}
+		const TSharedPtr<FJsonObject> Json = Describe(PinType);
+		AddPropertyFields(Json, Property);
+		// The element descriptions of a container name their own C++ type
+		const TSharedPtr<FJsonObject>* Element = nullptr;
+		if (const FArrayProperty* Array = CastField<FArrayProperty>(Property))
+		{
+			if (Json->TryGetObjectField(TEXT("innerType"), Element)) { AddPropertyFields(*Element, Array->Inner); }
+		}
+		else if (const FSetProperty* Set = CastField<FSetProperty>(Property))
+		{
+			if (Json->TryGetObjectField(TEXT("elementType"), Element)) { AddPropertyFields(*Element, Set->ElementProp); }
+		}
+		else if (const FMapProperty* Map = CastField<FMapProperty>(Property))
+		{
+			if (Json->TryGetObjectField(TEXT("keyType"), Element)) { AddPropertyFields(*Element, Map->KeyProp); }
+			if (Json->TryGetObjectField(TEXT("valueType"), Element)) { AddPropertyFields(*Element, Map->ValueProp); }
+		}
+		return Json;
 	}
 }

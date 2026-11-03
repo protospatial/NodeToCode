@@ -78,13 +78,6 @@ private:
 		TArray<TSharedPtr<FJsonValue>>& OutOutputParams) const;
 
 	/**
-	 * Converts a property to a JSON representation.
-	 * @param Property The property to convert
-	 * @return JSON object representing the property type
-	 */
-	TSharedPtr<FJsonObject> ConvertPropertyToJson(const class FProperty* Property) const;
-
-	/**
 	 * Gets function metadata as JSON.
 	 * @param Function The function to get metadata from
 	 * @return JSON object containing function metadata

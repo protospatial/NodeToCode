@@ -147,3 +147,47 @@ def test_no_skills_before_5_8_even_with_the_registry(engine, monkeypatch, versio
     assert registered == []
     assert UNREAL.logs == []
     assert _toolset_modules() == []
+
+
+def _registry_and_toolsets(monkeypatch, tmp_path, with_tests):
+    """A toolset_registry package and a stand-in nodetocode.toolsets whose registration records the call. Its __path__
+    is a tmp folder that holds a tests package only when with_tests, as the repository does and the packaged plugin
+    (Config/FilterPlugin.ini, card 0526) does not. Returns (registered calls, test runners created)."""
+    registered, runners = [], []
+    toolsets_dir = tmp_path / 'toolsets'
+    toolsets_dir.mkdir()
+    if with_tests:
+        (toolsets_dir / 'tests').mkdir()
+        (toolsets_dir / 'tests' / '__init__.py').write_text('_test_runner = None\n', encoding='utf-8')
+    toolsets = types.ModuleType('nodetocode.toolsets')
+    toolsets.__path__ = [str(toolsets_dir)]
+    toolsets._registration = types.SimpleNamespace(register=lambda: registered.append('toolsets'))
+    monkeypatch.setitem(sys.modules, 'nodetocode.toolsets', toolsets)
+    import nodetocode
+    monkeypatch.setattr(nodetocode, 'toolsets', toolsets, raising=False)
+
+    class PythonTestRunner:
+        @staticmethod
+        def create(name, options, timeout):
+            runners.append((name, options.root_module, timeout))
+            return object()
+
+    class PythonTestRunnerSearchOptions:
+        def __init__(self, root_module):
+            self.root_module = root_module
+    monkeypatch.setattr(UNREAL, 'PythonTestRunnerSearchOptions', PythonTestRunnerSearchOptions, raising=False)
+    return registered, runners, PythonTestRunner
+
+
+@pytest.mark.parametrize('with_tests', [True, False], ids=['repository', 'packaged plugin'])
+def test_toolset_tests_register_only_when_the_folder_ships(engine, monkeypatch, tmp_path, with_tests):
+    registered, runners, runner_class = _registry_and_toolsets(monkeypatch, tmp_path, with_tests)
+    engine('5.8.3-0+++UE5+Release-5.8', registry_classes=True, registry_package=types.ModuleType('toolset_registry'))
+    monkeypatch.setattr(UNREAL, 'PythonTestRunner', runner_class, raising=False)
+    _run()
+    assert registered == ['toolsets']
+    assert runners == ([('NodeToCode.Toolsets.PythonTests', 'nodetocode.toolsets.tests', 60.0)] if with_tests else [])
+    # Only the skills part warns (the bare registry package has no agent_skill); the toolset part is silent either way
+    warnings = UNREAL.messages('warning')
+    assert len(warnings) == 1 and warnings[0].startswith('NodeToCode: Agent Skills not registered')
+    assert UNREAL.messages('error') == []
