@@ -39,6 +39,9 @@ struct NODETOCODE_API FN2CGraphTargetArgs
 
 	/** blueprintPath, graphName and graphGuid of a tool's arguments (trimmed; absent fields stay empty) */
 	static FN2CGraphTargetArgs FromJson(const TSharedPtr<FJsonObject>& Arguments);
+
+	/** A Blueprint path and one graph argument that is a GraphGuid when it parses as a GUID, else a graph name (trimmed) */
+	static FN2CGraphTargetArgs FromPathAndGraph(const FString& BlueprintPath, const FString& Graph);
 };
 
 /**
