@@ -541,6 +541,12 @@ TArray<FString> UN2CUserSettings::CollectReferenceSourceFiles(const TArray<FFile
 }
 
 #if WITH_EDITOR
+FText UN2CUserSettings::GetSectionDescription() const
+{
+	return NSLOCTEXT("NodeToCode", "UserSettingsSection",
+		"Your own Node to Code settings: provider, LM Studio endpoint, MCP server port and switches, window colors, your reference files and translation output folder. They are saved in your user settings for this project, not in the project's Config folder, so they are never committed. The project's shared settings are in Project Settings > Plugins > Node to Code.");
+}
+
 void UN2CUserSettings::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
 {
 	Super::PostEditChangeProperty(PropertyChangedEvent);
