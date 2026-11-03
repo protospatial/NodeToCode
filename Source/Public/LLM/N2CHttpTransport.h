@@ -6,10 +6,13 @@
 #include "CoreMinimal.h"
 #include "LLM/N2CLLMRequestHandle.h"
 
-/** One HTTP POST as the LLM layer sends it (card 0215) */
+/** One HTTP request as the LLM layer sends it: a POST (card 0215), or a GET for a model list (card 0216) */
 struct NODETOCODE_API FN2CHttpRequestSpec
 {
 	FString Url;
+
+	/** POST (requests) or GET (model lists, FN2CModelDiscovery); a GET sends no body */
+	FString Verb = TEXT("POST");
 
 	/** In the order they are set (UN2CHttpHandlerBase::BuildRequestHeaders) */
 	TArray<TPair<FString, FString>> Headers;

@@ -10,6 +10,7 @@
 #include "LLM/N2COllamaConfig.h"
 #include "MCP/Tools/N2CMcpToolsets.h"
 #include "Models/N2CLogging.h"
+#include "UObject/PropertyText.h"
 #include "N2CSettings.generated.h"
 
 struct FN2CModelMetadata;
@@ -112,6 +113,16 @@ struct NODETOCODE_API FN2CApiKeyRemover
 
     UPROPERTY()
     EN2CLLMProvider Provider = EN2CLLMProvider::Anthropic;
+};
+
+/**
+ * The Model List row under LLM Provider in Project Settings (card 0216): FN2CModelListRefresherCustomization draws the
+ * active provider's list status and a Refresh Model List button for it (FN2CModelDiscovery). Holds nothing.
+ */
+USTRUCT()
+struct NODETOCODE_API FN2CModelListRefresher
+{
+    GENERATED_BODY()
 };
 
 /**
@@ -275,10 +286,27 @@ public:
             ToolTip = "How many times a request the provider answers with 429 (rate limited), 529 (overloaded) or another server error is sent again before it fails. The wait is what the provider asks for, else 1 s doubling each time, at most 60 s. 0 turns retries off. Applies to the next request."))
     int32 MaxRequestRetries = 3;
 
+    /**
+     * Providers whose model list is fetched from the provider (card 0216, decision 0004 (c)): catalog provider IDs
+     * (anthropic, openai, gemini, deepseek, ollama, lmstudio, the OpenAI-Compatible presets) or your own profile IDs.
+     * Empty by default: nothing is fetched. For a listed provider that is the active one and has a key, the list is
+     * fetched at editor start, when its key changes and from Refresh Model List (never in commandlets or -unattended
+     * sessions), cached under Saved/NodeToCode/ModelCache, and merged under the catalog in the Model drop-down.
+     */
+    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Provider",
+        meta = (DisplayName = "Live Model Lists", GetOptions = "GetLiveModelListProviderOptions",
+            ToolTip = "Providers whose model list NodeToCode asks the provider for. Off (empty) by default. For a listed provider that is your active provider and has a key, the list is fetched at editor start, when the key changes and with Refresh Model List, never in commandlets or unattended runs. The Model drop-down then adds the models your key can use that the catalog does not list (price unknown) and marks deprecated ones; a selected model the list lacks or the provider deprecates gets a warning."))
+    TArray<FString> LiveModelListProviders;
+
+    /** The Model List row: the active provider's list and the Refresh Model List button (transient, nothing is saved) */
+    UPROPERTY(EditAnywhere, Transient, Category = "Node to Code | LLM Provider",
+        meta = (DisplayName = "Model List", ToolTip = "Fetches the active provider's model list now (it must be in Live Model Lists and have a key). The text says how many models the last list had and when it was fetched."))
+    FN2CModelListRefresher ModelListRefresher;
+
     /** Anthropic model ID - claude-sonnet-5-5 recommended for the best quality/cost balance, claude-opus-5-5 for the most capability, claude-haiku-5-5 for the lowest cost */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | Anthropic",
-        meta = (DisplayName = "Model", GetOptions = "GetAnthropicModelOptions",
-            ToolTip = "Model ID sent to Anthropic, chosen from the model catalog (Content/Data/N2CModelCatalog.json). claude-sonnet-5-5 is recommended for the best quality/cost balance, claude-opus-5-5 for the most capability, claude-haiku-5-5 for the lowest cost. Custom Model ID, when set, is sent instead."))
+        meta = (DisplayName = "Model", GetOptions = "GetAnthropicModelChoices",
+            ToolTip = "Model ID sent to Anthropic, chosen from the model catalog (Content/Data/N2CModelCatalog.json), plus the models the provider lists for your key when Live Model Lists names it. Deprecated models say so, with their shutdown date. claude-sonnet-5-5 is recommended for the best quality/cost balance, claude-opus-5-5 for the most capability, claude-haiku-5-5 for the lowest cost. Custom Model ID, when set, is sent instead."))
     FString AnthropicModelId = N2CDefaultModelIds::Anthropic;
 
     /** Anthropic model ID sent instead of Model when set (a model the catalog does not list) */
@@ -319,8 +347,8 @@ public:
 
     /** OpenAI model ID - gpt-6.1-sol recommended for the best quality/cost balance, gpt-6-astra for the most capability, gpt-6-luna for the lowest cost */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | OpenAI",
-        meta = (DisplayName = "Model", GetOptions = "GetOpenAIModelOptions",
-            ToolTip = "Model ID sent to OpenAI, chosen from the model catalog (Content/Data/N2CModelCatalog.json). gpt-6.1-sol is recommended for the best quality/cost balance, gpt-6-astra for the most capability, gpt-6-luna for the lowest cost. Custom Model ID, when set, is sent instead."))
+        meta = (DisplayName = "Model", GetOptions = "GetOpenAIModelChoices",
+            ToolTip = "Model ID sent to OpenAI, chosen from the model catalog (Content/Data/N2CModelCatalog.json), plus the models the provider lists for your key when Live Model Lists names it. Deprecated models say so, with their shutdown date. gpt-6.1-sol is recommended for the best quality/cost balance, gpt-6-astra for the most capability, gpt-6-luna for the lowest cost. Custom Model ID, when set, is sent instead."))
     FString OpenAIModelId = N2CDefaultModelIds::OpenAI;
 
     /** OpenAI model ID sent instead of Model when set (a model the catalog does not list) */
@@ -356,8 +384,8 @@ public:
 
     /** Gemini model ID - gemini-3.8-flash recommended for the best price-performance, gemini-4-argon for the most capability, gemini-3.5-flash-lite for the lowest cost */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | Gemini",
-        meta = (DisplayName = "Model", GetOptions = "GetGeminiModelOptions",
-            ToolTip = "Model ID sent to Gemini, chosen from the model catalog (Content/Data/N2CModelCatalog.json). gemini-3.8-flash is recommended for the best price-performance, gemini-4-argon for the most capability, gemini-3.5-flash-lite for the lowest cost. Custom Model ID, when set, is sent instead."))
+        meta = (DisplayName = "Model", GetOptions = "GetGeminiModelChoices",
+            ToolTip = "Model ID sent to Gemini, chosen from the model catalog (Content/Data/N2CModelCatalog.json), plus the models the provider lists for your key when Live Model Lists names it. Deprecated models say so, with their shutdown date. gemini-3.8-flash is recommended for the best price-performance, gemini-4-argon for the most capability, gemini-3.5-flash-lite for the lowest cost. Custom Model ID, when set, is sent instead."))
     FString GeminiModelId = N2CDefaultModelIds::Gemini;
 
     /** Gemini model ID sent instead of Model when set (a model the catalog does not list) */
@@ -393,8 +421,8 @@ public:
 
     /** DeepSeek model ID - deepseek-flash recommended (Thinking high, or none for the fastest and cheapest), deepseek-v4-pro for the most capability */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | DeepSeek",
-        meta = (DisplayName = "Model", GetOptions = "GetDeepSeekModelOptions",
-            ToolTip = "Model ID sent to DeepSeek, chosen from the model catalog (Content/Data/N2CModelCatalog.json). deepseek-flash is recommended, deepseek-v4-pro is the most capable; Thinking sets the thinking mode. Custom Model ID, when set, is sent instead."))
+        meta = (DisplayName = "Model", GetOptions = "GetDeepSeekModelChoices",
+            ToolTip = "Model ID sent to DeepSeek, chosen from the model catalog (Content/Data/N2CModelCatalog.json), plus the models the provider lists for your key when Live Model Lists names it. Deprecated models say so, with their shutdown date. deepseek-flash is recommended, deepseek-v4-pro is the most capable; Thinking sets the thinking mode. Custom Model ID, when set, is sent instead."))
     FString DeepSeekModelId = N2CDefaultModelIds::DeepSeek;
 
     /** DeepSeek thinking mode sent with each request: none (thinking off, JSON output), or low, high or max effort */
@@ -636,6 +664,32 @@ public:
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Node to Code | LLM Services")
     TArray<FString> GetDeepSeekModelOptions() const;
 
+    /**
+     * What the Model drop-downs show (card 0216): each option's model ID with a label. Catalog rows first (deprecated
+     * ones say so with their shutdown date, and with a live list, a row the list lacks says so), then IDs only the
+     * provider's live list names (price unknown), then the current value when it is neither.
+     */
+    UFUNCTION()
+    TArray<FPropertyTextString> GetAnthropicModelChoices() const;
+    UFUNCTION()
+    TArray<FPropertyTextString> GetOpenAIModelChoices() const;
+    UFUNCTION()
+    TArray<FPropertyTextString> GetGeminiModelChoices() const;
+    UFUNCTION()
+    TArray<FPropertyTextString> GetDeepSeekModelChoices() const;
+    TArray<FPropertyTextString> GetModelChoices(EN2CLLMProvider InProvider) const;
+
+    /** Options of Live Model Lists: every catalog provider ID, then your Custom Provider Profiles' IDs */
+    UFUNCTION()
+    static TArray<FString> GetLiveModelListProviderOptions();
+
+    /**
+     * Whether Provider's selected model has a price: a local provider (free), a Model Price Overrides entry or a catalog
+     * row. False for a model the catalog does not list (a custom ID, or one from a live model list): its cost is
+     * unknown, not $0.
+     */
+    bool IsActivePricingKnown(EN2CLLMProvider InProvider) const;
+
     /** Options of DeepSeek Thinking: the levels the catalog lists for the selected model */
     UFUNCTION(BlueprintCallable, BlueprintPure, Category = "Node to Code | LLM Services")
     TArray<FString> GetDeepSeekReasoningEffortOptions() const;
@@ -667,6 +721,9 @@ public:
 
     /** Notify that model settings have changed - call this to update token estimation UI */
     void NotifyModelSettingsChanged();
+
+    /** Logs and shows a notification when the active provider's selected model is deprecated or missing from its live list (FN2CModelDiscovery::GetSelectedModelWarning); not in -unattended runs */
+    void WarnAboutSelectedModel() const;
 
     /** Code editor theme colors */
     UPROPERTY(Config, EditAnywhere, Category = "Node to Code | Theming",

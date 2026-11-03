@@ -14,6 +14,8 @@
 #include "LLM/N2CLLMModels.h"
 #include "LLM/N2CLLMModelRegistry.h"
 #include "LLM/N2CModelCatalog.h"
+#include "LLM/N2CModelDiscovery.h"
+#include "Misc/App.h"
 #include "Utils/N2CLogger.h"
 #include "MCP/Server/N2CMcpHttpServerManager.h"
 #include "Framework/Notifications/NotificationManager.h"
@@ -1415,6 +1417,8 @@ void UN2CSettings::PostEditChangeProperty(FPropertyChangedEvent& PropertyChanged
             if (!Entered.IsEmpty())
             {
                 FN2CSecretStore::Get().SetApiKey(KeyProviders[Index], Entered);
+                // A new key may see other models (card 0216; only for an opted-in provider, never unattended)
+                FN2CModelDiscovery::Get().RequestRefresh(KeyProviders[Index], FString(), TEXT("API key changed"));
             }
             RefreshApiKeySources();
             return;
@@ -1440,6 +1444,19 @@ void UN2CSettings::PostEditChangeProperty(FPropertyChangedEvent& PropertyChanged
             PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, OllamaModel) ||
             PropertyName == GET_MEMBER_NAME_CHECKED(UN2CSettings, LMStudioModel))
         {
+            NotifyModelSettingsChanged();
+            WarnAboutSelectedModel();
+        }
+
+        // Opting the active provider in fetches its list (card 0216)
+        const FName ChangedMemberName = PropertyChangedEvent.MemberProperty ? PropertyChangedEvent.MemberProperty->GetFName() : PropertyName;
+        if (ChangedMemberName == GET_MEMBER_NAME_CHECKED(UN2CSettings, LiveModelListProviders))
+        {
+            const FName Active = FN2CModelDiscovery::GetActiveProviderId();
+            if (FN2CModelDiscovery::IsOptedIn(Active) && !FN2CModelDiscovery::Get().GetList(Active))
+            {
+                FN2CModelDiscovery::Get().RequestActiveRefresh(TEXT("added to Live Model Lists"));
+            }
             NotifyModelSettingsChanged();
         }
 
@@ -1539,6 +1556,10 @@ bool UN2CSettings::SetApiKey(EN2CLLMProvider InProvider, const FString& Key)
     if (UN2CSettings* Settings = GetMutableDefault<UN2CSettings>())
     {
         Settings->RefreshApiKeySources();
+    }
+    if (bSaved && !Key.TrimStartAndEnd().IsEmpty())
+    {
+        FN2CModelDiscovery::Get().RequestRefresh(InProvider, FString(), TEXT("API key changed"));
     }
     return bSaved;
 }
@@ -1675,12 +1696,132 @@ namespace N2CModelIds
         {
             Options.AddUnique(Row->ModelId);
         }
+        // The discovery layer (card 0216): IDs the provider's live list names that the catalog does not
+        if (const FN2CModelList* Live = FN2CModelDiscovery::Get().GetListIfOptedIn(FN2CModelCatalog::ProviderIdFor(Provider)))
+        {
+            for (const FN2CDiscoveredModel& Model : Live->Models)
+            {
+                Options.AddUnique(Model.Id);
+            }
+        }
         if (!Current.IsEmpty() && !Options.Contains(Current))
         {
             Options.Add(Current);
         }
         return Options;
     }
+
+    static FPropertyTextString MakeChoice(const FString& ModelId, const FString& Label)
+    {
+        FPropertyTextString Choice;
+        Choice.ValueString = ModelId;
+        Choice.DisplayName = FText::FromString(Label.IsEmpty() ? ModelId : FString::Printf(TEXT("%s  (%s)"), *ModelId, *Label));
+        return Choice;
+    }
+}
+
+TArray<FPropertyTextString> UN2CSettings::GetModelChoices(EN2CLLMProvider InProvider) const
+{
+    TArray<FPropertyTextString> Choices;
+    const N2CModelIds::FSelection* Selection = N2CModelIds::Find(InProvider);
+    if (!Selection)
+    {
+        return Choices;
+    }
+    const FName ProviderId = FN2CModelCatalog::ProviderIdFor(InProvider);
+    const FN2CModelList* Live = FN2CModelDiscovery::Get().GetListIfOptedIn(ProviderId);
+    TSet<FString> Added;
+
+    // Catalog rows: the catalog wins for the IDs it knows
+    for (const FN2CModelMetadata* Row : FN2CModelCatalog::Get().List(ProviderId))
+    {
+        if (Added.Contains(Row->ModelId))
+        {
+            continue;
+        }
+        Added.Add(Row->ModelId);
+        TArray<FString> Notes;
+        if (Row->bIsDeprecated)
+        {
+            Notes.Add(Row->ShutdownDate.IsEmpty() ? FString(TEXT("deprecated")) : FString::Printf(TEXT("deprecated, shuts down %s"), *Row->ShutdownDate));
+        }
+        if (Live && Live->Models.Num() > 0)
+        {
+            const FN2CDiscoveredModel* Listed = Live->Find(Row->ModelId);
+            if (!Listed)
+            {
+                Notes.Add(TEXT("not in your key's model list"));
+            }
+            else if (Listed->bDeprecated && !Row->bIsDeprecated)
+            {
+                Notes.Add(Listed->ShutdownDate.IsEmpty() ? FString(TEXT("provider marks it deprecated"))
+                    : FString::Printf(TEXT("provider: deprecated, shuts down %s"), *Listed->ShutdownDate));
+            }
+        }
+        Choices.Add(N2CModelIds::MakeChoice(Row->ModelId, FString::Join(Notes, TEXT("; "))));
+    }
+
+    // The discovery layer: models only the provider's live list names, with no catalog price
+    if (Live)
+    {
+        for (const FN2CDiscoveredModel& Model : Live->Models)
+        {
+            if (Added.Contains(Model.Id) || FN2CModelCatalog::Get().Find(ProviderId, Model.Id))
+            {
+                continue;
+            }
+            Added.Add(Model.Id);
+            FString Note = TEXT("live list, price unknown");
+            if (Model.bDeprecated)
+            {
+                Note += Model.ShutdownDate.IsEmpty() ? FString(TEXT("; deprecated")) : FString::Printf(TEXT("; deprecated, shuts down %s"), *Model.ShutdownDate);
+            }
+            Choices.Add(N2CModelIds::MakeChoice(Model.Id, Note));
+        }
+    }
+
+    const FString Current = (this->*Selection->ModelId).TrimStartAndEnd();
+    if (!Current.IsEmpty() && !Added.Contains(Current))
+    {
+        const FN2CModelMetadata* Known = FN2CModelCatalog::Get().Find(ProviderId, Current);
+        Choices.Add(N2CModelIds::MakeChoice(Current, Known && Known->bIsRetired ? FString(TEXT("retired")) : FString(TEXT("not in the catalog"))));
+    }
+    return Choices;
+}
+
+TArray<FPropertyTextString> UN2CSettings::GetAnthropicModelChoices() const { return GetModelChoices(EN2CLLMProvider::Anthropic); }
+TArray<FPropertyTextString> UN2CSettings::GetOpenAIModelChoices() const { return GetModelChoices(EN2CLLMProvider::OpenAI); }
+TArray<FPropertyTextString> UN2CSettings::GetGeminiModelChoices() const { return GetModelChoices(EN2CLLMProvider::Gemini); }
+TArray<FPropertyTextString> UN2CSettings::GetDeepSeekModelChoices() const { return GetModelChoices(EN2CLLMProvider::DeepSeek); }
+
+TArray<FString> UN2CSettings::GetLiveModelListProviderOptions()
+{
+    TArray<FString> Options;
+    for (const FN2CProviderProfile& Row : FN2CModelCatalog::Get().Providers())
+    {
+        if (!Row.ModelsPath.IsEmpty())
+        {
+            Options.AddUnique(Row.Id.ToString());
+        }
+    }
+    for (const FN2CCustomProviderProfile& Custom : GetDefault<UN2CUserSettings>()->CustomProviderProfiles)
+    {
+        const FString Id = Custom.Id.TrimStartAndEnd();
+        if (!Id.IsEmpty())
+        {
+            Options.AddUnique(Id);
+        }
+    }
+    return Options;
+}
+
+bool UN2CSettings::IsActivePricingKnown(EN2CLLMProvider InProvider) const
+{
+    if (!N2CModelIds::Find(InProvider))
+    {
+        return true; // Ollama, LM Studio and OpenAI-Compatible are priced as local (free)
+    }
+    return ModelPricing.Contains(GetActiveModelForProvider(InProvider)) || GetActiveModelMetadataForProvider(InProvider) != nullptr;
 }
 
 TArray<FString> UN2CSettings::GetAnthropicModelOptions() const
@@ -1895,6 +2036,24 @@ void UN2CSettings::ShowRestartEditorNotification()
     #undef LOCTEXT_NAMESPACE
 }
 #endif
+
+void UN2CSettings::WarnAboutSelectedModel() const
+{
+    // In the editor only: specs and unattended runs change models with nobody to tell
+    if (FApp::IsUnattended())
+    {
+        return;
+    }
+    const FString Warning = FN2CModelDiscovery::Get().GetSelectedModelWarning(GetDefault<UN2CUserSettings>()->Provider);
+    if (Warning.IsEmpty())
+    {
+        return;
+    }
+    FN2CLogger::Get().LogWarning(Warning, TEXT("N2CSettings"));
+    FNotificationInfo Info(FText::FromString(Warning));
+    Info.ExpireDuration = 8.0f;
+    FSlateNotificationManager::Get().AddNotification(Info);
+}
 
 void UN2CSettings::NotifyModelSettingsChanged()
 {

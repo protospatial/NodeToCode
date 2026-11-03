@@ -170,6 +170,13 @@ public:
 	 */
 	bool IsLocalProvider() const { return bCachedIsLocal; }
 
+	/**
+	 * Whether the selected model has a price (a local provider, a catalog row or a Model Price Overrides entry). False
+	 * for a model the catalog does not list (a custom ID or one from a live model list, card 0216): show its cost as
+	 * unknown, never as $0.
+	 */
+	bool IsPriceKnown() const { return bCachedPriceKnown; }
+
 	/** The output price per 1M tokens of the selected model (0 for a local provider) */
 	float GetOutputCostPer1M() const { return CachedOutputCostPer1M; }
 
@@ -318,6 +325,7 @@ private:
 	int32 CachedMaxOutputTokens = 0;
 	int32 CachedRequestOverheadTokens = 0;
 	bool bCachedIsLocal = false;
+	bool bCachedPriceKnown = true;
 
 	/** The system prompt for the target language and the reference files, in tokens */
 	static int32 ComputeRequestOverheadTokens();

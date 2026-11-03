@@ -577,6 +577,12 @@ FText SN2CContextWindowVisualizer::GetEstimatedCostText() const
 		return LOCTEXT("LocalModelCost", "Estimated batch cost: Free (local model)");
 	}
 
+	if (!TokenService.IsPriceKnown())
+	{
+		// A model the catalog does not list (card 0216): unknown, never $0
+		return LOCTEXT("UnknownCost", "Estimated batch cost: unknown (no price for this model; add one under Project Settings > Node to Code > Model Price Overrides)");
+	}
+
 	if (TotalTokens == 0)
 	{
 		return LOCTEXT("NoCost", "Estimated batch cost: $0.00");

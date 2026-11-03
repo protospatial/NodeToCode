@@ -1,0 +1,75 @@
+{
+ "data": [
+  {
+   "type": "model",
+   "id": "claude-haiku-5-5",
+   "display_name": "Claude Haiku 5.5",
+   "created_at": "2026-10-07T18:00:00Z",
+   "line": "haiku",
+   "max_input_tokens": 1000000,
+   "max_tokens": 128000,
+   "lifecycle": "active",
+   "deprecated_at": null,
+   "retires_at": null,
+   "capabilities": {
+    "structured_outputs": {
+     "supported": true
+    }
+   }
+  },
+  {
+   "type": "model",
+   "id": "claude-sonnet-5-5",
+   "display_name": "Claude Sonnet 5.5",
+   "created_at": "2026-09-28T00:00:00Z",
+   "line": "sonnet",
+   "max_input_tokens": 1000000,
+   "max_tokens": 128000,
+   "lifecycle": "active",
+   "deprecated_at": null,
+   "retires_at": null,
+   "capabilities": {
+    "structured_outputs": {
+     "supported": true
+    }
+   }
+  },
+  {
+   "type": "model",
+   "id": "claude-opus-5-5",
+   "display_name": "Claude Opus 5.5",
+   "created_at": "2026-09-21T16:24:00Z",
+   "line": "opus",
+   "max_input_tokens": 1000000,
+   "max_tokens": 128000,
+   "lifecycle": "active",
+   "deprecated_at": null,
+   "retires_at": null,
+   "capabilities": {
+    "structured_outputs": {
+     "supported": true
+    }
+   }
+  },
+  {
+   "type": "model",
+   "id": "claude-fable-5-1",
+   "display_name": "Claude Fable 5.1",
+   "created_at": "2026-08-28T00:00:00Z",
+   "line": "fable",
+   "max_input_tokens": 1000000,
+   "max_tokens": 128000,
+   "lifecycle": "active",
+   "deprecated_at": null,
+   "retires_at": null,
+   "capabilities": {
+    "structured_outputs": {
+     "supported": true
+    }
+   }
+  }
+ ],
+ "has_more": true,
+ "first_id": "claude-haiku-5-5",
+ "last_id": "claude-fable-5-1"
+}

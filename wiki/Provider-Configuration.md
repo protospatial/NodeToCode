@@ -8,9 +8,11 @@ provider picker in the Node to Code window, or the Get Started card). The provid
 user settings, not in the project. Each provider's model and options below are in the
 [Plugin Settings](Initial-Configuration#accessing-plugin-settings) (Project Settings), shared by the project.
 Each cloud provider's **Model** is a model ID picked from the list of models Node to Code knows (shown below by
-name, with the ID the list shows). **Custom Model ID**, when set, is sent instead: use it for a model released after
-your Node to Code version. Node to Code then has no context size or price for it; add one under
-[Model Price Overrides](#model-price-overrides) to see costs.
+name, with the ID the list shows). A deprecated model says so in the list, with its shutdown date. **Custom Model
+ID**, when set, is sent instead: use it for a model released after your Node to Code version. Node to Code then has no
+context size or price for it, so its cost shows as unknown; add one under
+[Model Price Overrides](#model-price-overrides) to see costs. To pick from the models your key can actually use, turn
+on [Live Model Lists](#live-model-lists).
 
 <img src="images/settings/llm-provider.png" alt="Project Settings, LLM Provider: HTTP Activity Timeout and Max Request Retries, then the Anthropic section with Model, Custom Model ID, API Key, API Key Status and the Remove Saved Anthropic Key button" width="760">
 
@@ -53,6 +55,29 @@ Models the provider has shut down are no longer offered in the **Model** list. I
 (for example Claude 3.7 Sonnet, o4-mini or Gemini 2.5 Flash Preview), Node to Code selects that provider's default
 model when the editor starts, saves it to the project's config and writes one warning to the Output Log. A
 **Custom Model ID** is never changed.
+
+### Live Model Lists
+
+Off by default. **Live Model Lists** (Project Settings → Node to Code → LLM Provider) names the providers whose model
+list Node to Code asks the provider for: `anthropic`, `openai`, `gemini`, `deepseek`, `ollama`, `lmstudio`, an
+OpenAI-Compatible preset (`vllm`, `openrouter`, `groq`, ...) or one of your own profile IDs. For a listed provider
+that is your active **Provider** and has a key, the list is fetched when the editor starts, when you enter a new key,
+when you add the provider, and when you press **Refresh Model List** in the **Model List** row (the row also says how
+many models the last list had and when it was fetched). Nothing is fetched in commandlets or unattended runs (build
+machines, automated tests).
+
+With a list:
+
+- The **Model** list adds the models your key can use that Node to Code does not know, marked *live list, price
+  unknown*. Their context size comes from the provider; their cost shows as unknown (never $0) until you add a
+  [price override](#model-price-overrides).
+- A known model the list lacks is marked *not in your key's model list*; one the provider deprecates is marked with
+  its shutdown date.
+- If your selected model is missing from the list or deprecated, a notification and an Output Log warning say so.
+- Each list is saved under `Saved/NodeToCode/ModelCache/<provider>.json` in your project, so an offline start shows the
+  last list. If a fetch fails, the last list and the built-in list stay in use.
+
+The list never holds or sends anything but the model IDs and their limits; the key is sent in a request header only.
 
 ### [DeepSeek](LLM-Provider-Documentation-&-Resources#deepseek)
 - **API Key**: Enter your DeepSeek API key and press Enter; it is saved to Windows Credential Manager and the field empties. **API Key Status** shows where the key in use comes from
@@ -181,7 +206,8 @@ translation, including the next graph of a batch that is already running.
 
 Cost estimates use each model's list price. To use your own (a discount, or a **Custom Model ID**), add an entry
 under **LLM Services → Pricing → Model Price Overrides**: the key is the model ID, the value the input and output
-price in USD per million tokens. Ollama and LM Studio are always free.
+price in USD per million tokens. Ollama and LM Studio are always free. A cloud model Node to Code has no price for (a
+**Custom Model ID**, or a model from a [live model list](#live-model-lists)) shows its cost as unknown until you add one.
 
 An estimate counts what each request sends: the graph's N2C JSON plus the system prompt for the target language and
 your reference files (a batch sends those once per graph). The reply is priced at the output price, as about the
