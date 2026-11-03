@@ -1,4 +1,4 @@
-NodeToCode's MCP server has 69 tools in 12 toolsets. Two settings choose which of them a connected client sees:
+NodeToCode's MCP server has 70 tools in 12 toolsets. Two settings choose which of them a connected client sees:
 **Tool Profile** picks the toolsets, and **Tool Exposure** picks whether `tools/list` names every tool or only three
 search tools that reach them. The defaults serve every toolset and list every tool, which suits most clients; change
 them when a client struggles with many tools or should only run Python.
@@ -11,7 +11,7 @@ reads it once (as most do) stays correct. Every client gets the same list.
 
 | Tool Profile | What the client gets | Tools |
 |---|---|---|
-| **Default toolsets** (default) | Every toolset | 66, or 69 with **Allow MCP Python Execution** |
+| **Default toolsets** (default) | Every toolset | 67, or 70 with **Allow MCP Python Execution** |
 | **Python scripting only** | Only **PythonTools**: `run-python` and the script library (`list-python-scripts`, `search-python-scripts`, `get-python-script`, `get-script-functions`, `save-python-script`, `delete-python-script`) | 7, or 4 without **Allow MCP Python Execution** |
 | **Custom toolsets** | The toolsets you pick in **Custom Toolsets** | the sum of their tools |
 
@@ -66,7 +66,7 @@ MCP** (ModelContextProtocol) and **EditorToolset** plugins are both enabled:
 
 | Overlapping Tools | Effect |
 |---|---|
-| **Automatic (leave them to Unreal MCP on UE 5.8)** (default) | Left out of the **Default toolsets** profile, which then lists 32 tools (35 with Python execution); a Custom profile serves its toolsets as chosen |
+| **Automatic (leave them to Unreal MCP on UE 5.8)** (default) | Left out of the **Default toolsets** profile, which then lists 33 tools (36 with Python execution); a Custom profile serves its toolsets as chosen |
 | **Leave them to Unreal MCP when it is enabled** | Left out of every profile |
 | **Always serve them** | Served, as on UE 5.6 and 5.7 |
 
@@ -82,9 +82,10 @@ Python scripting only with it off leaves the 4 read-only script library tools, a
 
 ## While you play in the editor
 
-During Play In Editor or Simulate, the 32 tools that edit or compile a Blueprint, or create, copy, move or rename an
-asset or folder, answer `PIE_ACTIVE` until the session ends; every tool stays listed. Reading, translation, opening
-editors, the script library and `run-python` keep working.
+During Play In Editor or Simulate, the 33 tools that edit, tag, compile or save a Blueprint, place C++ code in a
+module, or create, copy, move or rename an asset or folder answer `PIE_ACTIVE` until the session ends; every tool
+stays listed. Reading, translation, migration plans, opening editors, the script library and `run-python` keep
+working.
 
 ## Reading tool results
 
