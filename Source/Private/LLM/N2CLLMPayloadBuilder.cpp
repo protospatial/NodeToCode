@@ -197,7 +197,7 @@ int32 UN2CLLMPayloadBuilder::ResolveMaxOutputTokens(EN2CLLMProvider Provider, co
     }
 
     // Auto
-    if (Provider == EN2CLLMProvider::LMStudio || Provider == EN2CLLMProvider::Ollama)
+    if (Provider == EN2CLLMProvider::LMStudio || Provider == EN2CLLMProvider::Ollama || Provider == EN2CLLMProvider::OpenAICompatible)
     {
         // The server knows its loaded context; omitting the field lets it use what the prompt leaves
         return 0;
@@ -466,35 +466,6 @@ void UN2CLLMPayloadBuilder::ConfigureForGemini()
     ApplyModelSamplingDefaults();
 }
 
-void UN2CLLMPayloadBuilder::ConfigureForDeepSeek(const FString& ReasoningEffort)
-{
-    ProviderType = EN2CLLMProvider::DeepSeek;
-    bProviderConfigured = true;
-    RequestedReasoningEffort = ReasoningEffort;
-
-    // Clear messages array and recreate it
-    MessagesArray.Empty();
-
-    // Thinking is switched per request (api-docs.deepseek.com/api/create-chat-completion): thinking.type
-    // enabled/disabled, and a top-level reasoning_effort (low/high/max) when it is on. The request's own value
-    // wins; otherwise the registry entry's. Unregistered IDs send neither, so the API default applies.
-    const FN2CModelMetadata* Meta = FindModelMetadata();
-    SentReasoningEffort = !RequestedReasoningEffort.IsEmpty() ? RequestedReasoningEffort
-        : (Meta ? Meta->ReasoningEffort : FString());
-    if (!SentReasoningEffort.IsEmpty())
-    {
-        const bool bThinking = SentReasoningEffort != TEXT("none");
-        GetOrCreateRootObjectField(TEXT("thinking"))->SetStringField(TEXT("type"), bThinking ? TEXT("enabled") : TEXT("disabled"));
-        if (bThinking)
-        {
-            RootObject->SetStringField(TEXT("reasoning_effort"), SentReasoningEffort);
-        }
-    }
-
-    // Temperature only in non-thinking mode, and only where the registry allows it
-    ApplyModelSamplingDefaults();
-}
-
 void UN2CLLMPayloadBuilder::ConfigureForOllama(const FN2COllamaConfig& OllamaConfig)
 {
     ProviderType = EN2CLLMProvider::Ollama;
@@ -559,19 +530,6 @@ void UN2CLLMPayloadBuilder::ConfigureForOllama(const FN2COllamaConfig& OllamaCon
     RootObject->SetBoolField(TEXT("stream"), false);
     // A number is seconds; 0 unloads right after the response, a negative value keeps the model loaded
     RootObject->SetNumberField(TEXT("keep_alive"), OllamaConfig.KeepAlive);
-}
-
-void UN2CLLMPayloadBuilder::ConfigureForLMStudio()
-{
-    ProviderType = EN2CLLMProvider::LMStudio;
-    bProviderConfigured = true;
-
-    // Clear messages array and recreate it
-    MessagesArray.Empty();
-
-    // No temperature: LM Studio's UI configures sampling.
-    // LM Studio uses OpenAI-compatible format with stream=false
-    RootObject->SetBoolField(TEXT("stream"), false);
 }
 
 FString UN2CLLMPayloadBuilder::Build()

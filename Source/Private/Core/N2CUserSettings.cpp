@@ -508,6 +508,29 @@ bool UN2CUserSettings::IsInsideProject(const FString& AbsolutePath, const FStrin
 	return FPaths::IsUnderDirectory(AbsolutePath, Root);
 }
 
+TArray<FString> UN2CUserSettings::GetProviderProfileOptions()
+{
+	TArray<FString> Options;
+	for (const FN2CProviderProfile* Preset : FN2CModelCatalog::Get().OpenAICompatiblePresets())
+	{
+		Options.Add(Preset->Id.ToString());
+	}
+	for (const FN2CCustomProviderProfile& Custom : GetDefault<UN2CUserSettings>()->CustomProviderProfiles)
+	{
+		const FString Id = Custom.Id.TrimStartAndEnd();
+		if (!Id.IsEmpty())
+		{
+			Options.AddUnique(Id);
+		}
+	}
+	return Options;
+}
+
+TArray<FString> UN2CUserSettings::GetAuthStyleOptions()
+{
+	return { TEXT("bearer"), TEXT("api-key"), TEXT("x-api-key"), TEXT("none") };
+}
+
 TArray<FString> UN2CUserSettings::GetReferenceSourceFiles()
 {
 	static const TArray<FFilePath> None;

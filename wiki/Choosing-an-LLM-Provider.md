@@ -39,6 +39,10 @@ models that are still listed in **Project Settings** show their shutdown date in
 > confidential logic, or use Ollama or LM Studio to keep everything on your machine.
 
 
+Any other server that speaks the OpenAI Chat Completions API (a vLLM or llama.cpp server of your own, OpenRouter,
+Groq, Together, Fireworks, xAI, Mistral, Azure OpenAI, Amazon Bedrock and others) works through the
+**OpenAI-Compatible** provider: see [Provider Configuration](Provider-Configuration#openai-compatible-vllm-llamacpp-openrouter-groq-azure-and-more).
+
 Each cloud provider here is billed to its API key, not to a Claude, ChatGPT or Google AI subscription. To use a
 subscription instead, see [Using a Claude or Gemini Subscription](Using-a-Claude-or-Gemini-Subscription).
 

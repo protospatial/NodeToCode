@@ -29,9 +29,8 @@
 #include "LLM/N2CBatchTranslationOrchestrator.h"
 #include "LLM/N2CLLMModule.h"
 #include "LLM/Providers/N2CAnthropicResponseParser.h"
-#include "LLM/Providers/N2CDeepSeekResponseParser.h"
+#include "LLM/Providers/N2COpenAICompatibleService.h"
 #include "LLM/Providers/N2CGeminiResponseParser.h"
-#include "LLM/Providers/N2CLMStudioResponseParser.h"
 #include "LLM/Providers/N2COllamaResponseParser.h"
 #include "LLM/Providers/N2COpenAIResponseParser.h"
 #include "MCP/Tools/Implementations/Translation/N2CTranslateBlueprintCall.h"
@@ -87,8 +86,8 @@ BEGIN_DEFINE_SPEC(FN2CErrorsSpec, "NodeToCode.LLM.Errors",
 		Parsers.Emplace(TEXT("Anthropic"), NewObject<UN2CAnthropicResponseParser>(GetTransientPackage()));
 		Parsers.Emplace(TEXT("OpenAI"), NewObject<UN2COpenAIResponseParser>(GetTransientPackage()));
 		Parsers.Emplace(TEXT("Gemini"), NewObject<UN2CGeminiResponseParser>(GetTransientPackage()));
-		Parsers.Emplace(TEXT("DeepSeek"), NewObject<UN2CDeepSeekResponseParser>(GetTransientPackage()));
-		Parsers.Emplace(TEXT("LMStudio"), NewObject<UN2CLMStudioResponseParser>(GetTransientPackage()));
+		Parsers.Emplace(TEXT("DeepSeek"), UN2COpenAICompatibleResponseParser::MakeFor(EN2CLLMProvider::DeepSeek, GetTransientPackage()));
+		Parsers.Emplace(TEXT("LMStudio"), UN2COpenAICompatibleResponseParser::MakeFor(EN2CLLMProvider::LMStudio, GetTransientPackage()));
 		Parsers.Emplace(TEXT("Ollama"), NewObject<UN2COllamaResponseParser>(GetTransientPackage()));
 		return Parsers;
 	}
@@ -250,7 +249,7 @@ void FN2CErrorsSpec::Define()
 		It(TEXT("keeps a plain-text body with quotes readable"), [this]()
 		{
 			AddExpectedError(TEXT("failed with HTTP 400"), EAutomationExpectedErrorFlags::Contains, 0);
-			UN2CResponseParserBase* Parser = NewObject<UN2CLMStudioResponseParser>(GetTransientPackage());
+			UN2CResponseParserBase* Parser = UN2COpenAICompatibleResponseParser::MakeFor(EN2CLLMProvider::LMStudio, GetTransientPackage());
 			const FN2CTranslationResponse Response = ThroughHandlerAndParser(Parser, 400,
 				TEXT("Error: \"model\" field is required\r\nsee \"docs\""), TEXT("LM Studio text"));
 			TestEqual(TEXT("kind"), Response.Error.Kind, EN2CTranslationErrorKind::InvalidRequest);
@@ -294,7 +293,7 @@ void FN2CErrorsSpec::Define()
 				{ TEXT("Gemini 429"), NewObject<UN2CGeminiResponseParser>(GetTransientPackage()), 429,
 					TEXT("[{\"error\":{\"code\":429,\"message\":\"You exceeded your current quota.\",\"status\":\"RESOURCE_EXHAUSTED\"}}]"),
 					EN2CTranslationErrorKind::RateLimited, TEXT("You exceeded your current quota."), true },
-				{ TEXT("DeepSeek 402"), NewObject<UN2CDeepSeekResponseParser>(GetTransientPackage()), 402,
+				{ TEXT("DeepSeek 402"), UN2COpenAICompatibleResponseParser::MakeFor(EN2CLLMProvider::DeepSeek, GetTransientPackage()), 402,
 					TEXT("{\"error\":{\"message\":\"Insufficient Balance\",\"type\":\"unknown_error\",\"param\":null,\"code\":\"invalid_request_error\"}}"),
 					EN2CTranslationErrorKind::Billing, TEXT("Insufficient Balance"), false },
 				{ TEXT("OpenAI 401"), NewObject<UN2COpenAIResponseParser>(GetTransientPackage()), 401,
