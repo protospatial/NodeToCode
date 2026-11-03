@@ -56,6 +56,8 @@ FMcpToolDefinition FN2CMcpTranslateBlueprintTool::GetDefinition() const
 
     // Not read-only, but it reads the focused graph and writes only translation output files: it keeps working during Play In Editor (card 0170)
     Definition.bAllowedDuringPlaySession = true;
+    // A session may run it as an MCP task (card 0211): CreateTaskResult now, then tasks/get, tasks/result, tasks/cancel
+    Definition.TaskSupport = TEXT("optional");
 
     return Definition;
 }

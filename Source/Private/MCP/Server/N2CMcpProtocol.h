@@ -363,7 +363,7 @@ private:
 	 * The capabilities initialize and server/discover advertise. bResourceSubscriptions: resources.subscribe true, for a
 	 * 2026-07-28 client on a transport that can keep a subscriptions/listen stream open (card 0214)
 	 */
-	static TSharedRef<FJsonObject> BuildServerCapabilities(bool bResourceSubscriptions = false);
+	static TSharedRef<FJsonObject> BuildServerCapabilities(bool bResourceSubscriptions = false, bool bTasks = false);
 
 	/**
 	 * {name, title, version, description, websiteUrl} of this server, plus icons (the plugin icon as a data: URI PNG)
@@ -428,10 +428,68 @@ private:
 	bool HandlePromptsList(const TSharedPtr<FJsonValue>& Params, const TSharedPtr<FJsonValue>& Id, FJsonRpcResponse& OutResponse);
 	bool HandlePromptsGet(const TSharedPtr<FJsonValue>& Params, const TSharedPtr<FJsonValue>& Id, FJsonRpcResponse& OutResponse);
 	bool HandleCancelTask(const TSharedPtr<FJsonValue>& Params, const TSharedPtr<FJsonValue>& Id, FJsonRpcResponse& OutResponse);
+	/**
+	 * MCP 2025-11-25 tasks (card 0211, N2CMcpProtocolTasks.cpp), for sessions: a tools/call of a tool whose
+	 * TaskSupport is set, with params.task {ttl?}, is answered at once with a CreateTaskResult and runs as a
+	 * long-running call whose result the task keeps. tasks/get and tasks/list answer the session's tasks, tasks/cancel
+	 * cancels the call, and tasks/result answers with the call's CallToolResult (and the related-task _meta) once the
+	 * task is terminal, holding the request until then. Tasks expire ttl after they were created.
+	 */
+	bool TryStartTaskCall(const TSharedRef<IN2CMcpResponder>& Responder, const TSharedPtr<FJsonObject>& RequestObject,
+		const TSharedPtr<FJsonObject>& Params, const FString& ToolName, const FString& SessionId);
+	bool TryHandleTasksResult(const TSharedRef<IN2CMcpResponder>& Responder, const TSharedPtr<FJsonObject>& RequestObject, const FString& SessionId);
+	bool HandleTasksGet(const TSharedPtr<FJsonValue>& Params, const TSharedPtr<FJsonValue>& Id, FJsonRpcResponse& OutResponse);
+	bool HandleTasksList(const TSharedPtr<FJsonValue>& Params, const TSharedPtr<FJsonValue>& Id, FJsonRpcResponse& OutResponse);
+	bool HandleTasksCancel(const TSharedPtr<FJsonValue>& Params, const TSharedPtr<FJsonValue>& Id, FJsonRpcResponse& OutResponse);
+	void PruneExpiredTasks();
+
 	/** completion/complete (card 0214, N2CMcpCompletion): -32602 for a malformed or unknown ref */
 	bool HandleCompletion(const TSharedPtr<FJsonValue>& Params, const TSharedPtr<FJsonValue>& Id, FJsonRpcResponse& OutResponse);
 
 	FN2CMcpCatalogs Catalogs;
+
+public:
+	/** One MCP task (card 0211): the call it runs, its status and, once terminal, its result */
+	struct FTask
+	{
+		FString TaskId;
+		FString SessionId;
+		FGuid CallId;
+		/** working, completed, failed or cancelled */
+		FString Status = TEXT("working");
+		FString StatusMessage;
+		FDateTime CreatedAt;
+		FDateTime LastUpdatedAt;
+		int64 TtlMs = 0;
+		/** The call's CallToolResult, once it completed or failed */
+		TSharedPtr<FJsonObject> Result;
+		/** tasks/result requests held until the task is terminal: the responder, the request id, the session */
+		struct FWaiter
+		{
+			TSharedPtr<IN2CMcpResponder> Responder;
+			TSharedPtr<FJsonValue> Id;
+		};
+		TArray<FWaiter> Waiters;
+
+		bool IsTerminal() const { return Status != TEXT("working"); }
+		TSharedRef<FJsonObject> ToJson() const;
+		/** Answers every held tasks/result request (the result, or an error for a cancelled task) */
+		void AnswerWaiters();
+		/** The tasks/result response body for request Id */
+		FString ResultResponse(const TSharedPtr<FJsonValue>& Id) const;
+	};
+
+	/** Default task ttl when the request names none, the longest one honoured, and the poll interval suggested */
+	static constexpr int64 DefaultTaskTtlMs = 3600000;
+	static constexpr int64 MaxTaskTtlMs = 86400000;
+	static constexpr int64 TaskPollIntervalMs = 2000;
+
+	/** Specs: the task with this id, or null */
+	TSharedPtr<FTask> FindTaskForTesting(const FString& TaskId) const { const TSharedRef<FTask>* Found = Tasks.Find(TaskId); return Found ? TSharedPtr<FTask>(*Found) : nullptr; }
+
+private:
+	/** The tasks of every session, by taskId (card 0211) */
+	TMap<FString, TSharedRef<FTask>> Tasks;
 
 	/** Resource updates (card 0214): Blueprints compiled or saved since the last beat, and the focused Blueprint then */
 	TArray<TWeakObjectPtr<class UBlueprint>> ChangedBlueprints;

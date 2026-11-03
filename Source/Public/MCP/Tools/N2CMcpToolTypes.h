@@ -127,6 +127,13 @@ struct NODETOCODE_API FMcpToolDefinition
 	bool bIsLongRunning = false;
 
 	/**
+	 * MCP 2025-11-25 Tool.execution.taskSupport (card 0211): "optional" when a session may call it as a task
+	 * (params.task: the call answers with a CreateTaskResult and runs on; tasks/get, tasks/result, tasks/cancel).
+	 * Empty: not sent, which means "forbidden". Only a long-running tool sets it.
+	 */
+	FString TaskSupport;
+
+	/**
 	 * Whether the tool's results carry text taken from the project's Blueprints (comments, titles, names, tooltips,
 	 * descriptions, string literals). FN2CMcpToolManager::ExecuteTool marks such a successful result as untrusted
 	 * data (FN2CMcpUntrustedContent, card 0124); a long-running tool marks its own result. Not sent to clients.

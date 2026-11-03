@@ -225,8 +225,10 @@ basic/versioning page), in `Source/Private/MCP/Server/N2CMcpProtocolModern.cpp`.
 *   **Stdio bridge**: a client message with the modern `_meta` is sent without a session, with `MCP-Protocol-Version`,
     `Mcp-Method` and `Mcp-Name` (Base64 sentinel when needed); its `notifications/cancelled` closes the request's HTTP
     stream instead of being forwarded (`Content/Python/mcp_bridge/nodetocode_bridge.py`).
-*   Not served: MRTR (`InputRequiredResult`; the server never asks the client for input), the Tasks extension (card
-    0211), `x-mcp-header` custom headers (no tool declares one), and `notifications/message` (no logging capability).
+*   Not served: MRTR (`InputRequiredResult`; the server never asks the client for input), the 2026-07-28 tasks
+    extension (`io.modelcontextprotocol/tasks`; sessions get the 2025-11-25 tasks, below, card 0211: a 2026-07-28
+    `tools/call` with `params.task` runs as an ordinary call), `x-mcp-header` custom headers (no tool declares one),
+    and `notifications/message` (no logging capability).
 *   Tests: `NodeToCode.MCP.Modern` (a full exchange and every error case, streaming, cancel on close,
     `subscriptions/listen`), `Tests/python/test_mcp_bridge_modern.py` (the bridge's headers and cancel by close), and
     `Tests/mcp_probe/live_modern_0210.py` (both eras on one editor, the listen stream, the bridge, Claude Code).
@@ -264,6 +266,22 @@ basic/versioning page), in `Source/Private/MCP/Server/N2CMcpProtocolModern.cpp`.
     plugin's HTTP route handler on the same listener would make the modal tick re-enter HTTPServer (not guarded; no
     such handler is known). The game-thread execution policy for tools (`ExecuteOnGameThread`, `RequiresGameThread`)
     is card 0340's.
+*   **Tasks** (MCP 2025-11-25 basic/utilities/tasks, card 0211, `N2CMcpProtocolTasks.cpp`, for sessions):
+    `initialize` advertises `capabilities.tasks {list, cancel, requests: {tools: {call}}}`. A tool whose definition
+    sets `TaskSupport` lists `execution: {taskSupport: "optional"}` (only `translate-focused-blueprint`). A session's
+    `tools/call` of such a tool with `params.task {ttl?}` answers at once with a `CreateTaskResult` `{task: {taskId,
+    status: "working", statusMessage, createdAt, lastUpdatedAt, ttl, pollInterval: 2000}}` and runs as a long-running
+    call (`LaunchTask`, the task id as its progress token) whose progress messages become `statusMessage`.
+    `tasks/get {taskId}` answers the task; `tasks/list` the session's tasks, oldest first; `tasks/result {taskId}`
+    answers the call's CallToolResult with `_meta["io.modelcontextprotocol/related-task"] {taskId}` once the task is
+    terminal, holding the request until then (a held JSON reply on every engine; poll `tasks/get` first rather than
+    holding a request for minutes); `tasks/cancel {taskId}` cancels the call through its context and answers the task
+    as `cancelled` (a held `tasks/result` then gets -32603). A result with `isError` true ends the task as `failed`
+    (its `tasks/result` is that result). Unknown ids, another session's tasks and cancelling a terminal task are
+    -32602. `ttl` is clamped to 1 s .. 24 h (default 1 h); a terminal task is dropped ttl after it was created.
+    `notifications/cancelled` for the original request id also cancels it; DELETE of the session cancels its calls.
+    The task-augmented call answers with one `application/json` response at once, so the keep-alive stream of card
+    0437 does not apply to it; a call without `params.task` keeps streaming as before. Spec `NodeToCode.MCP.Tasks`
 *   **Cancellation** (basic/utilities/cancellation): `notifications/cancelled {requestId, reason?}` cancels the
     running long-running call with that JSON-RPC id (string and number ids are distinct) in the same session, through
     its call context (`FN2CToolAsyncTaskManager::CancelTaskByRequestId`). No response is sent for that request,

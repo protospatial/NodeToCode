@@ -106,6 +106,14 @@ TSharedPtr<FJsonObject> FMcpToolDefinition::ToJson() const
 		JsonObject->SetObjectField(TEXT("annotations"), AnnotationsJson);
 	}
 
+	// MCP 2025-11-25 tool-level task negotiation (card 0211)
+	if (!TaskSupport.IsEmpty())
+	{
+		const TSharedRef<FJsonObject> Execution = MakeShared<FJsonObject>();
+		Execution->SetStringField(TEXT("taskSupport"), TaskSupport);
+		JsonObject->SetObjectField(TEXT("execution"), Execution);
+	}
+
 	// The toolset is not a Tool field in MCP: it travels in _meta under a prefixed key (MCP 2025-11-25, _meta)
 	if (const TSharedPtr<FJsonObject> MetaJson = BuildMeta())
 	{
