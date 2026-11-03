@@ -12,6 +12,7 @@ NodeToCode.Python.SkillScripts runs the scripts on real assets in the editor.
 import ast
 import importlib.util
 import json
+from types import SimpleNamespace
 import os
 
 import pytest
@@ -235,12 +236,16 @@ def test_check_for_empty_blueprints_counts_logic_nodes(registry, monkeypatch):
     graphs = {'/Game/E/BP_Empty.BP_Empty': [[entry], [ghost, ghost, ghost]],
               '/Game/E/BP_Full.BP_Full': [[entry, {'type': 'CallFunction'}], [ghost]]}
 
-    class Bridge:
+    class Subsystem:
+        """UN2CEditorSubsystem.GetBlueprintN2CJson (card 0301): the struct, with the document as text"""
         @staticmethod
         def get_blueprint_n2c_json(path, *args):
             doc = {'graphs': [{'name': 'G%d' % i, 'nodes': nodes} for i, nodes in enumerate(graphs[path])]}
-            return json.dumps({'success': True, 'data': {'n2c_json': doc}, 'error': None})
-    monkeypatch.setattr(UNREAL, 'N2CPythonBridge', Bridge, raising=False)
+            return SimpleNamespace(blueprint_path=path, blueprint_name=path.rsplit('.', 1)[-1], graph_count=len(doc['graphs']),
+                                   node_count=0, estimated_tokens=0, n2c_json=json.dumps(doc), file_path='', file_bytes=0,
+                                   graph_name='', graph_guid='', graph_kind='', resolved_by='', deprecated_id='', warning='')
+    monkeypatch.setattr(UNREAL, 'N2CEditorSubsystem', Subsystem, raising=False)
+    monkeypatch.setattr(UNREAL, 'get_editor_subsystem', lambda cls: Subsystem, raising=False)
     data = validator.check_for_empty_blueprints('/Game/E')['data']
     assert [b['name'] for b in data['empty_blueprints']] == ['BP_Empty']  # was every Blueprint
     assert data['checked'] == 2 and data['unreadable'] == []

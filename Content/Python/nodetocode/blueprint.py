@@ -2,7 +2,7 @@
 Blueprint manipulation functions for NodeToCode.
 
 These functions provide safe, error-handled wrappers around NodeToCode's C++ functionality
-via the UN2CPythonBridge class. All functions return standardized result dictionaries
+(UN2CEditorSubsystem, UN2CPythonBridge and the MCP tools). All functions return standardized result dictionaries
 with 'success', 'data', and 'error' keys.
 """
 
@@ -19,6 +19,8 @@ from .utils import (
     _parse_bridge_result,
     _invoke,
     _target_args,
+    editor_subsystem,
+    _subsystem_error,
 )
 
 
@@ -107,9 +109,30 @@ def get_blueprint_n2cjson(blueprint_path: str, graph_name: str = '', graph_guid:
     try:
         if not blueprint_path:
             return make_error_result('INVALID_ARGUMENT: blueprint_path is required')
-        result_json = unreal.N2CPythonBridge.get_blueprint_n2c_json(
-            blueprint_path, graph_name or '', graph_guid or '', int(depth), bool(to_file), bool(compact))
-        return _parse_bridge_result(result_json)
+        # UN2CEditorSubsystem.GetBlueprintN2CJson (card 0301): one graph argument, the GUID winning over the name
+        try:
+            read = editor_subsystem().get_blueprint_n2c_json(
+                blueprint_path, graph_guid or graph_name or '', int(depth), bool(to_file), bool(compact))
+        except RuntimeError as e:
+            return make_error_result(_subsystem_error(e, blueprint_path))
+        data = {
+            'blueprintPath': read.blueprint_path, 'blueprintName': read.blueprint_name,
+            'graphCount': read.graph_count, 'nodeCount': read.node_count, 'estimatedTokens': read.estimated_tokens,
+        }
+        if read.graph_name:
+            target = {'blueprintPath': read.blueprint_path, 'blueprintName': read.blueprint_name,
+                      'graphName': read.graph_name, 'graphGuid': read.graph_guid, 'graphKind': read.graph_kind,
+                      'resolvedBy': read.resolved_by}
+            if read.deprecated_id:
+                target['deprecatedId'] = read.deprecated_id
+                target['warning'] = read.warning
+            data['target'] = target
+        if read.file_path:
+            data['path'] = read.file_path
+            data['bytes'] = read.file_bytes
+        else:
+            data['n2c_json'] = json.loads(read.n2c_json)
+        return make_success_result(data)
     except Exception as e:
         log_error(f"get_blueprint_n2cjson failed: {e}")
         return make_error_result(str(e))
@@ -130,7 +153,7 @@ def list_blueprint_graphs(blueprint_path: str) -> Dict[str, Any]:
                 'blueprintPath': str, 'blueprintName': str, 'graphCount': int,
                 'graphs': [{'name': str, 'graphGuid': str,
                             'kind': str,         # event, function, macro, collapsed, delegate, interface
-                            'nodeCount': int, 'readOnly': bool,
+                            'nodeCount': int, 'readOnly': bool, 'translatable': bool,
                             'parentGraph': str}], # collapsed graphs only
             } or None,
             'error': str or None
@@ -139,7 +162,20 @@ def list_blueprint_graphs(blueprint_path: str) -> Dict[str, Any]:
     try:
         if not blueprint_path:
             return make_error_result('INVALID_ARGUMENT: blueprint_path is required')
-        return _parse_bridge_result(unreal.N2CPythonBridge.list_blueprint_graphs(blueprint_path))
+        # UN2CEditorSubsystem.ListBlueprintGraphs (card 0301)
+        try:
+            listed = editor_subsystem().list_blueprint_graphs(blueprint_path)
+        except RuntimeError as e:
+            return make_error_result(_subsystem_error(e, blueprint_path))
+        graphs = []
+        for graph in listed.graphs:
+            entry = {'name': graph.name, 'graphGuid': graph.graph_guid, 'kind': graph.kind,
+                     'nodeCount': graph.node_count, 'readOnly': graph.read_only, 'translatable': graph.translatable}
+            if graph.parent_graph:
+                entry['parentGraph'] = graph.parent_graph
+            graphs.append(entry)
+        return make_success_result({'blueprintPath': listed.blueprint_path, 'blueprintName': listed.blueprint_name,
+                                    'graphCount': len(graphs), 'graphs': graphs})
     except Exception as e:
         log_error(f"list_blueprint_graphs failed: {e}")
         return make_error_result(str(e))

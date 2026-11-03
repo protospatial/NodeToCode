@@ -448,6 +448,13 @@ void FN2CMcpProtocol::Handle(const FN2CMcpInbound& Inbound, const TSharedRef<IN2
 		return;
 	}
 
+	// tasks/result is answered once its task is terminal, holding the request until then (card 0211)
+	if (SingleType == FJsonRpcUtils::EJsonRpcMessageType::Request && SingleMethod == TEXT("tasks/result")
+		&& TryHandleTasksResult(Responder, SingleObject, SessionId))
+	{
+		return;
+	}
+
 	// Everything else is answered at once
 	FN2CMcpReply Reply;
 	bool bWasInitializeCall = false;
@@ -541,6 +548,12 @@ void FN2CMcpProtocol::HandleLongRunningToolCall(const FN2CMcpInbound& Inbound, c
 	const TSharedPtr<FJsonObject>& RequestObject, const TSharedPtr<FJsonObject>& Params, const FString& ToolName,
 	const FString& SessionId, bool bModern)
 {
+	// A session's call with params.task runs as an MCP task (card 0211); a 2026-07-28 call ignores it
+	if (!bModern && TryStartTaskCall(Responder, RequestObject, Params, ToolName, SessionId))
+	{
+		return;
+	}
+
 	const TSharedPtr<FJsonObject>* ArgsObj = nullptr;
 	const TSharedPtr<FJsonObject> ToolArguments = Params->TryGetObjectField(TEXT("arguments"), ArgsObj) && ArgsObj && ArgsObj->IsValid()
 		? *ArgsObj : MakeShared<FJsonObject>();
@@ -1032,6 +1045,18 @@ bool FN2CMcpProtocol::DispatchMethod(const FString& Method, const TSharedPtr<FJs
 	{
 		return HandleCompletion(Params, Id, OutResponse);
 	}
+	else if (Method == TEXT("tasks/get"))
+	{
+		return HandleTasksGet(Params, Id, OutResponse);
+	}
+	else if (Method == TEXT("tasks/list"))
+	{
+		return HandleTasksList(Params, Id, OutResponse);
+	}
+	else if (Method == TEXT("tasks/cancel"))
+	{
+		return HandleTasksCancel(Params, Id, OutResponse);
+	}
 	else
 	{
 		// Method not found
@@ -1127,7 +1152,7 @@ bool FN2CMcpProtocol::HandleInitialize(const TSharedPtr<FJsonValue>& Params, con
 	// Set protocol version
 	Result->SetStringField(TEXT("protocolVersion"), NegotiatedProtocolVersion);
 	
-	Result->SetObjectField(TEXT("capabilities"), BuildServerCapabilities());
+	Result->SetObjectField(TEXT("capabilities"), BuildServerCapabilities(/*bResourceSubscriptions=*/false, /*bTasks=*/true));
 
 	// Guidance for the agent (InitializeResult.instructions)
 	Result->SetStringField(TEXT("instructions"), GetServerInstructions());

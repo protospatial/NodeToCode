@@ -8,7 +8,7 @@
 #include "StructUtils/UserDefinedStruct.h"
 #include "UserDefinedStructure/UserDefinedStructEditorData.h"
 #include "EdGraphSchema_K2.h"
-#include "EditorAssetLibrary.h"
+#include "Subsystems/EditorAssetSubsystem.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "UObject/SavePackage.h"
 #include "AssetToolsModule.h"
@@ -337,19 +337,23 @@ TArray<FString> UN2CStructUtilsLibrary::GetStructVariableNames(UUserDefinedStruc
 	return Result;
 }
 
+// UEditorAssetSubsystem (UnrealEd) does what UEditorAssetLibrary did, so the plugin needs no EditorScriptingUtilities
+// module (card 0301)
 bool UN2CStructUtilsLibrary::StructExists(const FString& AssetPath)
 {
-	return UEditorAssetLibrary::DoesAssetExist(AssetPath);
+	UEditorAssetSubsystem* AssetSubsystem = GEditor ? GEditor->GetEditorSubsystem<UEditorAssetSubsystem>() : nullptr;
+	return AssetSubsystem && AssetSubsystem->DoesAssetExist(AssetPath);
 }
 
 UUserDefinedStruct* UN2CStructUtilsLibrary::LoadUserDefinedStruct(const FString& AssetPath)
 {
-	if (!UEditorAssetLibrary::DoesAssetExist(AssetPath))
+	UEditorAssetSubsystem* AssetSubsystem = GEditor ? GEditor->GetEditorSubsystem<UEditorAssetSubsystem>() : nullptr;
+	if (!AssetSubsystem || !AssetSubsystem->DoesAssetExist(AssetPath))
 	{
 		return nullptr;
 	}
 
-	UObject* LoadedAsset = UEditorAssetLibrary::LoadAsset(AssetPath);
+	UObject* LoadedAsset = AssetSubsystem->LoadAsset(AssetPath);
 	return Cast<UUserDefinedStruct>(LoadedAsset);
 }
 

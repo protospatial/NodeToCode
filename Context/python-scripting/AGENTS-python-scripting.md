@@ -139,11 +139,11 @@ tags = n2c.list_tags()
 | File | Purpose |
 |------|---------|
 | `__init__.py` | Module exports (`__all__`), version info (`__version__ = "1.0.0"`) |
-| `blueprint.py` | Blueprint get/read/load via `UN2CPythonBridge`; compile and save through the MCP tools (`invoke_tool`) |
+| `blueprint.py` | Blueprint get/read/load: by path through `UN2CEditorSubsystem`, the focused one and N2C JSON text via `UN2CPythonBridge`; compile and save through the MCP tools (`invoke_tool`) |
 | `graph.py` | Graph editing through the MCP tools (`invoke_tool`): node search, add, connect, pin values, delete, find, comments |
 | `functions.py` | Function input and return pins through the MCP pin tools (`invoke_tool`) |
 | `bridge.py` | Tagging, LLM provider info, `open_blueprint` and `open_blueprint_function` |
-| `utils.py` | Logging (`log_info`, `log_warning`, `log_error`), result helpers, `_parse_bridge_result`, `invoke_tool`, `_invoke` with `TOOL_NAMES` and `BRIDGE_ONLY`, `LegacyKeys` |
+| `utils.py` | Logging (`log_info`, `log_warning`, `log_error`), result helpers, `_parse_bridge_result`, `invoke_tool`, `_invoke` with `TOOL_NAMES` and `BRIDGE_ONLY`, `editor_subsystem` with `SUBSYSTEM`, `LegacyKeys` |
 
 ### Tools from Python: invoke_tool (card 0342)
 
@@ -182,15 +182,15 @@ arguments and the keys of its `data`. Grouped:
     those three nodes (card 0433). Translation leaves them out, and translating a graph of only those events fails
     with "Nothing to capture: the graph holds only unwired default events (ghost nodes)"
 *   `get_blueprint_n2cjson(blueprint_path, graph_name='', graph_guid='', depth=-1, to_file=False, compact=True)` -
-    Any Blueprint's graphs by asset path, with no editor open (`UN2CPythonBridge::GetBlueprintN2CJson`, card 0157):
+    Any Blueprint's graphs by asset path, with no editor open (`UN2CEditorSubsystem::GetBlueprintN2CJson`, cards 0157, 0301):
     `data` has `blueprintPath`, `blueprintName`, `graphCount`, `nodeCount`, `estimatedTokens`, `target` (when a graph
     was named) and `n2c_json`, the document the MCP get-blueprint-n2cjson tool returns; every graph when no graph is
     named. There is no size limit here: `to_file=True` writes the document under `Saved/NodeToCode/Exports` and
     returns `path` and `bytes` instead. Errors start with a code (`ASSET_NOT_FOUND`, `GRAPH_NOT_FOUND`, `EMPTY_GRAPH`,
     `UNSUPPORTED_GRAPH_TYPE`)
 *   `list_blueprint_graphs(blueprint_path)` - Every graph of a Blueprint by asset path, as list-blueprint-graphs
-    returns it (`UN2CPythonBridge::ListBlueprintGraphs`): `graphs` with `name`, `graphGuid`, `kind`, `nodeCount`,
-    `readOnly` and, for collapsed graphs, `parentGraph`
+    returns it (`UN2CEditorSubsystem::ListBlueprintGraphs`): `graphs` with `name`, `graphGuid`, `kind`, `nodeCount`,
+    `readOnly`, `translatable` and, for collapsed graphs, `parentGraph`
 *   `get_blueprint_dependencies(paths, include_call_graph=True, include_referenced=True, to_file=False)` - The
     dependency index under asset paths or content folders (a string or a list), as get-blueprint-dependencies returns
     it but always whole (the tool through `invoke_tool`, card 0319/0342: an index over the tool's inline limit gets its
@@ -298,6 +298,37 @@ an Agent Skill: a folder with a `SKILL.md` (frontmatter `name` and `description`
 script under its `scripts/`; the agent reads the skill and runs the script through `run-python`, or imports it
 after adding the folder to `sys.path`. The registry file can be deleted.
 
+## Editor subsystem (UN2CEditorSubsystem, card 0301)
+
+NodeToCode's typed, path-based Blueprint functions, for Python and Editor Utility Blueprints:
+`sub = unreal.get_editor_subsystem(unreal.N2CEditorSubsystem)` on UE 5.6, 5.7 and 5.8.
+
+*   **Location**: `Source/Public/Subsystems/N2CEditorSubsystem.h`, `Source/Private/Subsystems/N2CEditorSubsystem.cpp`
+*   **Functions** (each returns a struct): `compile_blueprint(path)` (`N2CCompileResult`: `status`, `error_count`,
+    `warning_count`, `note_count`, `compile_seconds`, `messages` with `severity`, `message`, `node_guid`, `node_title`,
+    `graph_name`, `pin_name`; compiler errors are data, not raised), `save_blueprint(path, only_if_dirty=True)`
+    (`N2CSaveResult`: `was_dirty`, `was_saved`, `file_name`; through `UEditorAssetSubsystem::SaveLoadedAsset`),
+    `list_blueprint_graphs(path)` (`N2CBlueprintGraphList`), `get_blueprint_parent_class(path)`
+    (`N2CBlueprintParentInfo`: `parent_class`, `parent_class_path`, `native_parent_class_path`),
+    `get_blueprint_n2c_json(path, graph='', depth=-1, to_file=False, compact=True)` (`N2CBlueprintN2CJson`: the
+    document as text in `n2c_json`, `untrusted_content`, counts, the graph read; no size limit), `tag_graph(path,
+    graph, tag, category='Default', description='')` (`N2CTagInfo`), `list_tags(category='', tag='',
+    blueprint_path='')` (a list of `N2CTagInfo`), `remove_tag(path, graph, tag)` (`N2CTagRemoval`). A graph argument
+    is a GraphGuid or a graph name.
+*   **Errors**: a failure raises a script error, in Python a `RuntimeError` whose text is `<Function>: <path>:
+    <CODE>: <message>` (`ASSET_NOT_FOUND`, `GRAPH_NOT_FOUND`, `INVALID_ARGUMENT` for an empty path, which never falls
+    back to the focused Blueprint). `utils._subsystem_error` gives the text from the code on.
+*   **One implementation**: the functions call what the MCP tools and the bridge call (`FN2CMcpBlueprintUtils::Compile`,
+    `N2CMcpBlueprintExport::Read` and `ListGraphs`, the graph state store). The bridge's `SaveFocusedBlueprint`,
+    `TagFocusedGraph`, `ListTags` and `RemoveTag` wrap the subsystem's `SaveBlueprintCore`, `TagGraphCore`,
+    `ListTagsCore` and `RemoveTagCore` and keep their JSON.
+*   **Python wrappers**: `utils.SUBSYSTEM` lists the `nodetocode` functions that call it (`get_blueprint_n2cjson`,
+    `list_blueprint_graphs`); they keep returning `{success, data, error}` dicts.
+*   **Not here**: a function-flags setter (pure, category, description of an existing function) is a new Blueprint
+    edit, which decision 0007 freezes and decision 0089 (b) leaves to Epic's BlueprintTools on 5.8.
+*   **Tests**: `NodeToCode.Editor.Subsystem` (`Source/Private/Tests/Editor/N2CEditorSubsystem.spec.cpp`), with its Python
+    half in `Source/Private/Tests/Fixtures/Python/n2c_editor_subsystem.py`.
+
 ## C++ Bridge (UN2CPythonBridge)
 
 Bridge class exposing NodeToCode functionality to Python via `unreal.N2CPythonBridge`:
@@ -314,6 +345,14 @@ Bridge class exposing NodeToCode functionality to Python via `unreal.N2CPythonBr
     `AddNodeToGraph`, `ConnectPins`, `SetPinValue`, `DeleteNodes`, `FindNodesInGraph`, `CreateCommentNode`
     (`graph.py`); `AddFunctionInputPin`, `AddFunctionReturnPin`, `RemoveFunctionEntryPin`, `RemoveFunctionReturnPin`
     (`functions.py`). The header comments become the Python docstrings (`help(unreal.N2CPythonBridge.open_blueprint)`).
+*   **Deprecated** (card 0301): `GetBlueprintN2CJson`, `ListBlueprintGraphs`, `CompileFocusedBlueprint`,
+    `SaveFocusedBlueprint` and `TagFocusedGraph` carry `DeprecatedFunction`: they still work and `dir()` lists them,
+    Python warns (`DeprecationWarning`) when one is called, and Blueprint action menus no longer offer them. Use the
+    `UN2CEditorSubsystem` function named in the deprecation message. `ListTags` and `RemoveTag` stay, since
+    `nodetocode.list_tags` and `remove_tag` build their dicts from them.
+*   **No EditorScriptingUtilities module**: the bridge and `UN2CStructUtilsLibrary` use `UEditorAssetSubsystem`
+    (UnrealEd), so `NodeToCode.Build.cs` no longer depends on it. The `.uplugin` still enables the plugin, which
+    scripts use as `unreal.EditorAssetLibrary`.
 
 All functions return JSON strings in format: `{"success": bool, "data": {...} or null, "error": "..." or null}`,
 built by one helper with `TJsonWriter` (`MakeResultJson`), so every value is escaped; `utils._parse_bridge_result`

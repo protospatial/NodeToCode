@@ -30,8 +30,10 @@
     Commit, branch or tag to package (default HEAD). Uncommitted changes are never included.
 
 .PARAMETER UEVersion
-    Engines to package (default 5.6, 5.7 and 5.8). Engines are found from the registry, the Epic launcher's
-    LauncherInstalled.dat, or $env:N2C_UE_<major>_<minor> (for example N2C_UE_5_8=D:\UE\UE_5.8).
+    Engines to package (default 5.6, 5.7 and 5.8). Engines are found as build.ps1 finds them (Find-N2CEngine in
+    Scripts/N2CEngines.ps1, card 0532): $env:N2C_UE_<major>_<minor> (for example N2C_UE_5_8=D:\UE\UE_5.8), $Engines
+    in build.local.ps1, the registry and the Epic launcher's LauncherInstalled.dat, registered source builds, then
+    the launcher's default folder (%ProgramFiles%\Epic Games\UE_<ver>).
 
 .PARAMETER OutDir
     Where packages, zips, checksums, logs and staging go (default ..\Packages next to the repo). Must be outside
@@ -123,24 +125,9 @@ function Write-Step($msg) { Write-Host "==> $msg" -ForegroundColor Cyan }
 function Write-Ok($msg)   { Write-Host "    OK   $msg" -ForegroundColor Green }
 function Write-Bad($msg)  { Write-Host "    FAIL $msg" -ForegroundColor Red }
 
-function Find-Engine([string]$ver) {
-    $envName = 'N2C_UE_' + $ver.Replace('.', '_')
-    $fromEnv = [Environment]::GetEnvironmentVariable($envName)
-    $candidates = @()
-    if ($fromEnv) { $candidates += $fromEnv }
-    $key = "HKLM:\SOFTWARE\EpicGames\Unreal Engine\$ver"
-    if (Test-Path $key) { $candidates += (Get-ItemProperty $key).InstalledDirectory }
-    $dat = 'C:\ProgramData\Epic\UnrealEngineLauncher\LauncherInstalled.dat'
-    if (Test-Path $dat) {
-        $hit = (Get-Content $dat -Raw | ConvertFrom-Json).InstallationList |
-            Where-Object { $_.AppName -eq "UE_$ver" } | Select-Object -First 1
-        if ($hit) { $candidates += $hit.InstallLocation }
-    }
-    foreach ($c in $candidates) {
-        if ($c -and (Test-Path (Join-Path $c 'Engine\Build\BatchFiles\RunUAT.bat'))) { return $c.TrimEnd('\') }
-    }
-    return $null
-}
+# Engine lookup shared with build.ps1 (card 0532)
+. (Join-Path $PSScriptRoot 'N2CEngines.ps1')
+$LocalEngines = Read-N2CLocalEngines (Join-Path $RepoRoot 'build.local.ps1')
 
 # Run a tool, write everything to $log, echo only the lines worth seeing. Returns the exit code.
 function Invoke-Logged([string]$exe, [string[]]$argList, [string]$log) {
@@ -356,8 +343,10 @@ foreach ($ver in $UEVersion) {
     $res = [ordered]@{ Zip = '-'; Size = '-'; Sha256 = '-'; Verify = 'not run'; Rebuild = 'not run'; Smoke = 'not run'; Failed = $false }
     $results[$ver] = $res
     $tag = $ver.Replace('.', '_')
-    $engine = Find-Engine $ver
-    if (-not $engine) { Write-Bad "UE $ver not found"; $res.Verify = 'NO ENGINE'; $res.Failed = $true; continue }
+    $found = Find-N2CEngine $ver -LocalEngines $LocalEngines
+    $engine = $found.Path
+    if (-not $engine) { Write-Bad "UE ${ver}: $($found.Source)"; $res.Verify = 'NO ENGINE'; $res.Failed = $true; continue }
+    Write-Ok "UE ${ver}: $engine ($($found.Source))"
 
     # 1. BuildPlugin
     $pkgDir = Join-Path $OutDir "NodeToCode_${VersionName}_UE$ver"

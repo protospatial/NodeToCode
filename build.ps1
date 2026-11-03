@@ -139,20 +139,8 @@ function Write-Step($msg) { Write-Host "==> $msg" -ForegroundColor Cyan }
 # ---------------------------------------------------------------------------
 # Engine discovery
 
-function Get-EngineVersion([string]$dir) {
-    $file = Join-Path $dir 'Engine/Build/Build.version'
-    if (-not (Test-Path $file)) { return $null }
-    try { $v = [IO.File]::ReadAllText($file) | ConvertFrom-Json } catch { return $null }
-    return "$($v.MajorVersion).$($v.MinorVersion)"
-}
-
-function Test-EngineDir([string]$dir, [string]$ver) {
-    if (-not $dir) { return $null }
-    $dir = $dir.Trim().Trim('"').TrimEnd('\', '/')
-    if (-not $dir -or -not (Test-Path $dir)) { return $null }
-    if ((Get-EngineVersion $dir) -ne $ver) { return $null }
-    return $dir
-}
+# Engine lookup, shared with Scripts/package-release.ps1 (card 0532): Find-N2CEngine in Scripts/N2CEngines.ps1
+. (Join-Path $PSScriptRoot 'Scripts/N2CEngines.ps1')
 
 function Get-EngineOverrides {
     $map = @{}
@@ -166,57 +154,7 @@ function Get-EngineOverrides {
 }
 
 function Find-Engine([string]$ver, $overrides) {
-    $envName = 'N2C_UE_' + $ver.Replace('.', '_')
-    $explicit = @(
-        @{ Source = '-Engine';           Path = $overrides[$ver] },
-        @{ Source = "`$env:$envName";    Path = [Environment]::GetEnvironmentVariable($envName) },
-        @{ Source = 'build.local.ps1';   Path = $Engines[$ver] }
-    )
-    foreach ($c in $explicit) {
-        if (-not $c.Path) { continue }
-        $dir = Test-EngineDir $c.Path $ver
-        if ($dir) { return [pscustomobject]@{ Path = $dir; Source = $c.Source } }
-        # An explicit setting that is wrong is an error, not a reason to quietly use another engine
-        return [pscustomobject]@{ Path = $null; Source = "$($c.Source) '$($c.Path)' is not a UE $ver install" }
-    }
-
-    if ($OnWindows) {
-        $key = "HKLM:\SOFTWARE\EpicGames\Unreal Engine\$ver"
-        if (Test-Path $key) {
-            $dir = Test-EngineDir (Get-ItemProperty $key).InstalledDirectory $ver
-            if ($dir) { return [pscustomobject]@{ Path = $dir; Source = 'registry' } }
-        }
-    }
-    $programData = if ($env:ProgramData) { $env:ProgramData } elseif ($OnMac) { '/Users/Shared' } else { $null }
-    if ($programData) {
-        $dat = Join-Path $programData 'Epic/UnrealEngineLauncher/LauncherInstalled.dat'
-        if (Test-Path $dat) {
-            $list = ([IO.File]::ReadAllText($dat) | ConvertFrom-Json).InstallationList
-            foreach ($hit in @($list | Where-Object { $_.AppName -eq "UE_$ver" })) {
-                $dir = Test-EngineDir $hit.InstallLocation $ver
-                if ($dir) { return [pscustomobject]@{ Path = $dir; Source = 'launcher' } }
-            }
-        }
-    }
-    if ($OnWindows) {
-        $builds = 'HKCU:\Software\Epic Games\Unreal Engine\Builds'
-        if (Test-Path $builds) {
-            $props = Get-ItemProperty $builds
-            foreach ($p in $props.PSObject.Properties) {
-                if ($p.Name -like 'PS*') { continue }
-                $dir = Test-EngineDir ([string]$p.Value) $ver
-                if ($dir) { return [pscustomobject]@{ Path = $dir; Source = 'source build' } }
-            }
-        }
-    }
-    $defaults = @()
-    if ($OnWindows -and $env:ProgramFiles) { $defaults += Join-Path $env:ProgramFiles "Epic Games\UE_$ver" }
-    if ($OnMac) { $defaults += "/Users/Shared/Epic Games/UE_$ver" }
-    foreach ($d in $defaults) {
-        $dir = Test-EngineDir $d $ver
-        if ($dir) { return [pscustomobject]@{ Path = $dir; Source = 'default folder' } }
-    }
-    return [pscustomobject]@{ Path = $null; Source = 'not found' }
+    return Find-N2CEngine $ver -Override $overrides[$ver] -LocalEngines $Engines
 }
 
 function Get-EngineTool([string]$engine, [string]$tool) {
