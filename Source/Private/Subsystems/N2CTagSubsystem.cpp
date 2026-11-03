@@ -2,6 +2,7 @@
 
 #include "Subsystems/N2CTagSubsystem.h"
 #include "Core/N2CGraphStateManager.h"
+#include "Subsystems/N2CGraphStateSubsystem.h"
 #include "Core/N2CEditorIntegration.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Models/N2CTaggedBlueprintGraph.h"
@@ -11,7 +12,10 @@
 void UN2CTagSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
-	
+
+	// The tag store lives in the graph state subsystem: it must exist (and have loaded) first
+	Collection.InitializeDependency<UN2CGraphStateSubsystem>();
+
 	// Subscribe to tag manager events
 	UN2CGraphStateManager& TagStore = UN2CGraphStateManager::Get();
 	TagStore.OnGraphTagAdded.AddUObject(this, &UN2CTagSubsystem::HandleTagAdded);

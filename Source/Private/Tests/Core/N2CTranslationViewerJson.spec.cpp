@@ -22,11 +22,19 @@
 #include "Models/N2CBlueprint.h"
 #include "Models/N2CTranslation.h"
 #include "Subsystems/N2CTranslationSubsystem.h"
+#include "Subsystems/N2CGraphStateSubsystem.h"
 #include "Tests/N2CTestHelpers.h"
 #include "UObject/StrongObjectPtr.h"
 
-// The graph state singleton, swapped for an isolated manager so the host project's BlueprintGraphState.json is untouched
-N2C_TEST_PRIVATE_MEMBER(FN2CViewerJsonStateInstance, UN2CGraphStateManager**, &UN2CGraphStateManager::Instance)
+// The editor graph state store (UN2CGraphStateSubsystem), replaced by an isolated manager so the host project's BlueprintGraphState.json is untouched
+// Puts an isolated graph state manager in the editor subsystem's place (null: the subsystem's own again)
+static void N2CViewerJsonSetState(UN2CGraphStateManager* Manager)
+{
+	if (UN2CGraphStateSubsystem* Subsystem = UN2CGraphStateSubsystem::Get())
+	{
+		Subsystem->SetManagerOverride(Manager);
+	}
+}
 
 // The main window's handler of translation sessions, and the viewer it shows
 N2C_TEST_PRIVATE_MEMBER(FN2CViewerJsonWindowViewer, TSharedPtr<SN2CTranslationViewer> SN2CMainWindow::*,
@@ -52,16 +60,13 @@ BEGIN_DEFINE_SPEC(FN2CTranslationViewerJsonSpec, "NodeToCode.UI.TranslationViewe
 	struct FScopedState
 	{
 		TStrongObjectPtr<UN2CGraphStateManager> Manager;
-		UN2CGraphStateManager* SavedInstance = nullptr;
 		EN2CCodeLanguage SavedLanguage;
 		FString SavedOutput;
 
 		FScopedState(const FString& StateDir, const FString& OutputDir)
 		{
-			UN2CGraphStateManager*& Instance = *N2CTest::GetPrivateMember(N2CTest::FN2CViewerJsonStateInstance());
-			SavedInstance = Instance;
 			Manager.Reset(UN2CGraphStateManager::CreateIsolated(StateDir));
-			Instance = Manager.Get();
+			N2CViewerJsonSetState(Manager.Get());
 
 			UN2CSettings* Settings = GetMutableDefault<UN2CSettings>();
 			SavedLanguage = Settings->TargetLanguage;
@@ -72,7 +77,7 @@ BEGIN_DEFINE_SPEC(FN2CTranslationViewerJsonSpec, "NodeToCode.UI.TranslationViewe
 
 		~FScopedState()
 		{
-			*N2CTest::GetPrivateMember(N2CTest::FN2CViewerJsonStateInstance()) = SavedInstance;
+			N2CViewerJsonSetState(nullptr);
 			UN2CSettings* Settings = GetMutableDefault<UN2CSettings>();
 			Settings->TargetLanguage = SavedLanguage;
 			GetMutableDefault<UN2CUserSettings>()->CustomTranslationOutputDirectory.Path = SavedOutput;
