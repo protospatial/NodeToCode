@@ -1,0 +1,468 @@
+{
+	"case": "MaterialAttributes",
+	"description": "Make Material Attributes into Set Material Attributes (adding Metallic by attribute GUID) into Break Material Attributes, whose BaseColor and Metallic feed the material: attribute pins are named by attribute",
+	"depth": 0,
+	"warnings": [],
+	"capture":
+	{
+		"version": "2.0.0",
+		"metadata":
+		{
+			"name": "M_N2CGolden_MaterialAttributes",
+			"asset_class": "Material",
+			"asset_kind": "Material",
+			"material":
+			{
+				"domain": "Surface",
+				"blend_mode": "Opaque",
+				"shading_models": [
+					"DefaultLit"
+				]
+			}
+		},
+		"graphs": [
+			{
+				"name": "M_N2CGolden_MaterialAttributes",
+				"graph_type": "Material",
+				"nodes": [
+					{
+						"id": "N1",
+						"type": "MaterialExpression",
+						"class": "MaterialExpressionConstant3Vector",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P1",
+								"name": "RGB",
+								"type": "Wildcard",
+								"connected": true
+							},
+							{
+								"id": "P2",
+								"name": "R",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P3",
+								"name": "G",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P4",
+								"name": "B",
+								"type": "Wildcard"
+							}
+						],
+						"properties":
+						{
+							"Constant": "(R=0.500000,G=0.500000,B=0.500000,A=1.000000)"
+						}
+					},
+					{
+						"id": "N2",
+						"type": "MaterialExpression",
+						"class": "MaterialExpressionConstant",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P5",
+								"name": "Output",
+								"type": "Wildcard",
+								"connected": true
+							}
+						],
+						"properties":
+						{
+							"R": "0.600000"
+						}
+					},
+					{
+						"id": "N3",
+						"type": "MaterialExpression",
+						"class": "MaterialExpressionMakeMaterialAttributes",
+						"input_pins": [
+							{
+								"id": "P6",
+								"name": "BaseColor",
+								"type": "Wildcard",
+								"connected": true
+							},
+							{
+								"id": "P7",
+								"name": "Metallic",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P8",
+								"name": "Specular",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P9",
+								"name": "Roughness",
+								"type": "Wildcard",
+								"connected": true
+							},
+							{
+								"id": "P10",
+								"name": "Anisotropy",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P11",
+								"name": "EmissiveColor",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P12",
+								"name": "Opacity",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P13",
+								"name": "OpacityMask",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P14",
+								"name": "Normal",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P15",
+								"name": "Tangent",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P16",
+								"name": "WorldPositionOffset",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P17",
+								"name": "SubsurfaceColor",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P18",
+								"name": "ClearCoat",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P19",
+								"name": "ClearCoatRoughness",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P20",
+								"name": "AmbientOcclusion",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P21",
+								"name": "Refraction",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P22",
+								"name": "CustomizedUVs[0]",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P23",
+								"name": "CustomizedUVs[1]",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P24",
+								"name": "CustomizedUVs[2]",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P25",
+								"name": "CustomizedUVs[3]",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P26",
+								"name": "CustomizedUVs[4]",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P27",
+								"name": "CustomizedUVs[5]",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P28",
+								"name": "CustomizedUVs[6]",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P29",
+								"name": "CustomizedUVs[7]",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P30",
+								"name": "PixelDepthOffset",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P31",
+								"name": "ShadingModel",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P32",
+								"name": "Displacement",
+								"type": "Wildcard"
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P33",
+								"name": "Output",
+								"type": "Wildcard",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N4",
+						"type": "MaterialExpression",
+						"class": "MaterialExpressionConstant",
+						"input_pins": [],
+						"output_pins": [
+							{
+								"id": "P34",
+								"name": "Output",
+								"type": "Wildcard",
+								"connected": true
+							}
+						],
+						"properties":
+						{
+							"R": "1.000000"
+						}
+					},
+					{
+						"id": "N5",
+						"type": "MaterialExpression",
+						"class": "MaterialExpressionSetMaterialAttributes",
+						"input_pins": [
+							{
+								"id": "P35",
+								"name": "MaterialAttributes",
+								"type": "Wildcard",
+								"connected": true
+							},
+							{
+								"id": "P36",
+								"name": "Metallic",
+								"type": "Wildcard",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P37",
+								"name": "Output",
+								"type": "Wildcard",
+								"connected": true
+							}
+						]
+					},
+					{
+						"id": "N6",
+						"type": "MaterialExpression",
+						"class": "MaterialExpressionBreakMaterialAttributes",
+						"input_pins": [
+							{
+								"id": "P38",
+								"name": "MaterialAttributes",
+								"type": "Wildcard",
+								"connected": true
+							}
+						],
+						"output_pins": [
+							{
+								"id": "P39",
+								"name": "BaseColor",
+								"type": "Wildcard",
+								"connected": true
+							},
+							{
+								"id": "P40",
+								"name": "Metallic",
+								"type": "Wildcard",
+								"connected": true
+							},
+							{
+								"id": "P41",
+								"name": "Specular",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P42",
+								"name": "Roughness",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P43",
+								"name": "Anisotropy",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P44",
+								"name": "EmissiveColor",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P45",
+								"name": "Opacity",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P46",
+								"name": "OpacityMask",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P47",
+								"name": "Normal",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P48",
+								"name": "Tangent",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P49",
+								"name": "WorldPositionOffset",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P50",
+								"name": "SubsurfaceColor",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P51",
+								"name": "ClearCoat",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P52",
+								"name": "ClearCoatRoughness",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P53",
+								"name": "AmbientOcclusion",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P54",
+								"name": "Refraction",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P55",
+								"name": "CustomizedUV0",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P56",
+								"name": "CustomizedUV1",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P57",
+								"name": "CustomizedUV2",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P58",
+								"name": "CustomizedUV3",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P59",
+								"name": "CustomizedUV4",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P60",
+								"name": "CustomizedUV5",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P61",
+								"name": "CustomizedUV6",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P62",
+								"name": "CustomizedUV7",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P63",
+								"name": "PixelDepthOffset",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P64",
+								"name": "ShadingModel",
+								"type": "Wildcard"
+							},
+							{
+								"id": "P65",
+								"name": "Displacement",
+								"type": "Wildcard"
+							}
+						]
+					},
+					{
+						"id": "N7",
+						"type": "MaterialOutput",
+						"class": "Material",
+						"input_pins": [
+							{
+								"id": "P66",
+								"name": "BaseColor",
+								"type": "Wildcard",
+								"connected": true
+							},
+							{
+								"id": "P67",
+								"name": "Metallic",
+								"type": "Wildcard",
+								"connected": true
+							}
+						],
+						"output_pins": []
+					}
+				],
+				"flows":
+				{
+					"execution": [],
+					"data":
+					{
+						"N1.P1": "N3.P6",
+						"N2.P5": "N3.P9",
+						"N3.P33": "N5.P35",
+						"N4.P34": "N5.P36",
+						"N5.P37": "N6.P38",
+						"N6.P39": "N7.P66",
+						"N6.P40": "N7.P67"
+					}
+				}
+			}
+		],
+		"structs": [],
+		"enums": []
+	}
+}

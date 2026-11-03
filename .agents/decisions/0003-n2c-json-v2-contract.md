@@ -167,6 +167,10 @@ Option 1, provisionally. The sub-choices of card 0117:
   followed within the capture depth (so `/Engine/Functions` are described by name at depth 0). Capture warnings
   `DUPLICATE_EXPRESSION_GUID` and `DANGLING_INPUT`. A reader that predates it keeps the new kinds as `Unknown` and the
   two fields as unknown fields.
+- Card 0450 (no new field or kind): composites (collapsed material nodes) and their pin bases are traced like reroutes;
+  Set Material Attributes' inputs and Get Material Attributes' outputs are named by attribute
+  (`FMaterialAttributeDefinitionMap::GetAttributeName`), "MaterialAttributes" for the whole set; an enum property is
+  written by its value's name.
 - If the owner chooses option 2 or 3, a new record supersedes this one; the data-edge fix itself stays, since it only
   adds an array where 1.0.0 dropped edges.
 
