@@ -69,7 +69,7 @@ META_TOOLS = ['call_tool', 'describe_toolset', 'list_toolsets']
 
 # An engine Blueprint present in UE 5.6, 5.7 and 5.8, and a graph of it with nodes (its EventGraph is empty)
 ENGINE_BLUEPRINT = '/Engine/EngineSky/BP_Sky_Sphere'
-ENGINE_GRAPH = 'UserConstructionScript'
+ENGINE_GRAPH = 'UpdateSunDirection'  # card 0420: failed with a duplicate pin ID before #101
 
 # Log lines that fail the smoke step
 FAIL_PATTERNS = [
