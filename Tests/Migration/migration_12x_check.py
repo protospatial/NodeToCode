@@ -63,6 +63,11 @@ FIXTURES = {
         'prerelease_tags': False, 'http_user': {'HttpConnectionTimeout': '120.000000', 'HttpTimeout': '180'},
     },
 }
+# The project's UN2CSettings::CurrentSettingsVersion, which the first start's 1.2.x clean-up writes (N2): read from the
+# header so a later version bump (5 since card 0188) does not leave this check asserting an old number
+SETTINGS_HEADER = os.path.join(HERE, '..', '..', 'Source', 'Public', 'Core', 'N2CSettings.h')
+with open(SETTINGS_HEADER, encoding='utf-8') as _f:
+    CURRENT_SETTINGS_VERSION = re.search(r'static constexpr int32 CurrentSettingsVersion = (\d+);', _f.read()).group(1)
 # Settings version 4 (card 0129): selections are model IDs; a retired or removed selection becomes the provider default
 RETIRED_TARGET = {'anthropic': 'claude-sonnet-5-5', 'openai': 'gpt-6.1-sol', 'gemini': 'gemini-3.8-flash'}
 KEPT_OPENAI = {'GPT4o_2024_08_06': 'gpt-4o-2024-08-06', 'GPT4o_Mini_2024_07_18': 'gpt-4o-mini-2024-07-18',
@@ -437,7 +442,7 @@ def check_fixture(fixture, ctx, rows, state):
                               'deep_seek_max_output_tokens', 'lm_studio_max_output_tokens')]
     rows.add('N1', tokens == [0] * 5, 'MaxOutputTokens %s' % tokens)
     left = [k for k in LEGACY_KEYS if ini_value(ini1t, sec, k) is not None]
-    rows.add('N2', ini_value(ini1t, sec, 'SettingsVersion') == '4' and not left,
+    rows.add('N2', ini_value(ini1t, sec, 'SettingsVersion') == CURRENT_SETTINGS_VERSION and not left,
              'ini SettingsVersion=%s after start 1; model enum keys left: %s' % (ini_value(ini1t, sec, 'SettingsVersion'), left))
     rows.add('N3', d1['mcp_server_port'] == 27000, 'McpServerPort %s' % d1['mcp_server_port'])
     # 1.2.x saved neither tool-mode switch: the card 0165 settings load at their defaults

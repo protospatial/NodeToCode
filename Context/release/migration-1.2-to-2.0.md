@@ -70,7 +70,7 @@ General rules for every row:
   as the 2.0 value instead: ..."). While `SettingsVersion` < 4 it writes the model ID conversion above and removes the
   eight enum keys (`AnthropicModel`, `OpenAI_Model`, `Gemini_Model`, `DeepSeekModel`, `OpenAIModelPricing`,
   `AnthropicModelPricing`, `GeminiModelPricing`, `DeepSeekModelPricing`). While `SettingsVersion` < 3 it also does
-  the one-time steps in S6, S11 to S23, F7 and F8. Then it writes `SettingsVersion=4`. A project with nothing to migrate is not written. One
+  the one-time steps in S6, S11 to S23, F7 and F8. Then it writes the current `SettingsVersion` (5 since card 0188). A project with nothing to migrate is not written. One
   Info line lists what it saved, dropped and removed ("Updated settings left by an earlier NodeToCode version:
   ..."). The second start logs none of these lines.
 - `UN2CUserSettings::UpgradeFromProjectSettings` (settings version 5, card 0188) runs right after it, once per user
@@ -123,7 +123,7 @@ New 2.0 keys in the same section (absent from a 1.2.x ini, so the default applie
 | ID | 2.0 key, default | Handling | Check |
 |---|---|---|---|
 | N1 | `AnthropicMaxOutputTokens`, `OpenAIMaxOutputTokens`, `GeminiMaxOutputTokens`, `DeepSeekMaxOutputTokens`, `LMStudioMaxOutputTokens`, all 0 = Auto (PR #41). 1.2.x had no setting and sent a fixed budget | New | All read 0 |
-| N2 | `SettingsVersion`, 0 when absent; `CurrentSettingsVersion` is 5 (5: the per-user fields moved to `UN2CUserSettings`, which keeps its own `SettingsVersion`, card 0188) | New: 0 makes S6, the LMStudioMaxTokens step, the 1.2.x clean-up (card 0418) and the model ID conversion (card 0129) run on load. The clean-up writes 4 when it found anything 1.2.x left or converted a model key; any Project Settings edit also writes it next to the edited key (3 while the model catalog file is missing, so the conversion still runs once it loads) | `SettingsVersion=4` and none of the eight model enum keys after the first start of a 1.2.x fixture; a 2.0 project with nothing to migrate gets no key until an edit |
+| N2 | `SettingsVersion`, 0 when absent; `CurrentSettingsVersion` is 5 (5: the per-user fields moved to `UN2CUserSettings`, which keeps its own `SettingsVersion`, card 0188) | New: 0 makes S6, the LMStudioMaxTokens step, the 1.2.x clean-up (card 0418) and the model ID conversion (card 0129) run on load. The clean-up writes the current version (5) when it found anything 1.2.x left or converted a model key; any Project Settings edit also writes it next to the edited key (3 while the model catalog file is missing, so the conversion still runs once it loads) | `SettingsVersion=5` (the current version; the check reads it from `N2CSettings.h`) and none of the eight model enum keys after the first start of a 1.2.x fixture; a 2.0 project with nothing to migrate gets no key until an edit |
 | N3 | `McpServerPort`, 27000 | New; per user (`UN2CUserSettings`) since settings version 5 | Reads 27000 |
 | N4 | `McpToolExposure`, `ListAllTools` (card 0165; replaced `bEnableDynamicToolDiscovery`) | New | Reads ListAllTools |
 | N5 | `McpToolProfile`, `DefaultToolsets` (card 0165; replaced `bEnablePythonScriptOnlyMode`, provisional 0019) | New | Reads DefaultToolsets |
