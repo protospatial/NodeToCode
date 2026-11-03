@@ -5,6 +5,7 @@
 #include "Models/N2CBlueprint.h"
 #include "Core/N2CSerializer.h"
 #include "Core/N2CSettings.h"
+#include "Core/N2CUserSettings.h"
 #include "Core/N2CTargetLanguage.h"
 #include "LLM/N2CSystemPromptManager.h"
 #include "LLM/N2CBaseLLMService.h"
@@ -75,7 +76,7 @@ FN2CLLMConfig UN2CLLMModule::MakeConfigFromSettings()
     {
         return Snapshot;
     }
-    Snapshot.Provider = Settings->Provider;
+    Snapshot.Provider = GetDefault<UN2CUserSettings>()->Provider;
 Settings->ResolveRequestModel(Snapshot.Provider, FString(), Snapshot);
     return Snapshot;
 }
@@ -93,7 +94,7 @@ FString UN2CLLMModule::GetLocalEndpointSetting(EN2CLLMProvider Provider)
     case EN2CLLMProvider::Ollama:
         return Settings->OllamaConfig.OllamaEndpoint;
     case EN2CLLMProvider::LMStudio:
-        return Settings->LMStudioEndpoint;
+        return GetDefault<UN2CUserSettings>()->LMStudioEndpoint;
     default:
         return FString();
     }

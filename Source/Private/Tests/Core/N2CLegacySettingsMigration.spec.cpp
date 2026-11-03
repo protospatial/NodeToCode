@@ -5,6 +5,7 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Core/N2CSettings.h"
+#include "Core/N2CUserSettings.h"
 #include "LLM/N2CLLMModels.h"
 #include "LLM/N2CModelCatalog.h"
 #include "Tests/N2CTestHelpers.h"
@@ -32,6 +33,9 @@ BEGIN_DEFINE_SPEC(FN2CLegacySettingsMigrationSpec, "NodeToCode.Settings.LegacyMi
 	FString Folder;
 	FString SettingsIni;
 	FString EngineIni;
+
+	/** The user's provider before the case: the prices below are the selected provider's (a per-user setting) */
+	EN2CLLMProvider ProviderBefore = EN2CLLMProvider::Anthropic;
 
 	/**
 	 * [/Script/NodeToCode.N2CSettings] as NodeToCode 1.2.x (origin/main) saved it: key names and value formats of its
@@ -154,8 +158,16 @@ END_DEFINE_SPEC(FN2CLegacySettingsMigrationSpec)
 
 void FN2CLegacySettingsMigrationSpec::Define()
 {
+	BeforeEach([this]()
+	{
+		// The fixtures' 1.2.x provider; since settings version 5 it is the user's, read from UN2CUserSettings
+		ProviderBefore = GetMutableDefault<UN2CUserSettings>()->Provider;
+		GetMutableDefault<UN2CUserSettings>()->Provider = EN2CLLMProvider::Anthropic;
+	});
+
 	AfterEach([this]()
 	{
+		GetMutableDefault<UN2CUserSettings>()->Provider = ProviderBefore;
 		Cleanup();
 		// A case may have replaced the catalog rows; later cases and tests get the shipped file again
 		FN2CModelCatalog::Get().ReloadBundled();
@@ -205,10 +217,10 @@ void FN2CLegacySettingsMigrationSpec::Define()
 		TestTrue(TEXT("user price for DeepSeek V3 kept as deepseek-flash"), Flash && FMath::IsNearlyEqual(Flash->InputCost, 0.2f) && FMath::IsNearlyEqual(Flash->OutputCost, 0.4f));
 		TestEqual(TEXT("only the two user prices are left"), Settings->ModelPricing.Num(), 2);
 		TestFalse(TEXT("o3's 1.2.x price (15/60) dropped"), Settings->ModelPricing.Contains(TEXT("o3")));
-		Settings->Provider = EN2CLLMProvider::OpenAI;
+		GetMutableDefault<UN2CUserSettings>()->Provider = EN2CLLMProvider::OpenAI;
 		TestFalse(TEXT("o3 now costs the catalog price, not 1.2.x's 15"), FMath::IsNearlyEqual(Settings->GetCurrentInputCost(), 15.0f));
 		TestTrue(TEXT("o3 costs something"), Settings->GetCurrentInputCost() > 0.0f);
-		Settings->Provider = EN2CLLMProvider::Anthropic;
+		GetMutableDefault<UN2CUserSettings>()->Provider = EN2CLLMProvider::Anthropic;
 
 		// Themes reported, CPU throttle reported because the project shows 1.2.x traces
 		TestEqual(TEXT("both theme keys reported"), First.LegacyThemeKeys, TArray<FString>({ TEXT("CPPThemes"), TEXT("PythonThemes") }));
@@ -312,7 +324,7 @@ void FN2CLegacySettingsMigrationSpec::Define()
 		TestEqual(TEXT("price loads"), Reloaded->ModelPricing.Num(), 1);
 
 		// Gemini costs its catalog price (GetCurrentInputCost used to return 0 for every Gemini model)
-		Reloaded->Provider = EN2CLLMProvider::Gemini;
+		GetMutableDefault<UN2CUserSettings>()->Provider = EN2CLLMProvider::Gemini;
 		const FN2CModelMetadata* Gemini = FN2CModelCatalog::Get().Find(TEXT("gemini"), N2CDefaultModelIds::Gemini);
 		if (TestNotNull(TEXT("Gemini default row"), Gemini))
 		{
@@ -337,6 +349,8 @@ void FN2CLegacySettingsMigrationSpec::Define()
 		FJsonSerializer::Serialize(Root.ToSharedRef(), TJsonWriterFactory<>::Create(&Trimmed));
 		if (!TestTrue(TEXT("trimmed catalog loads"), FN2CModelCatalog::Get().LoadFromString(Trimmed, TEXT("test without gpt-5")))) { return; }
 
+		// The fixture's provider is the user's own setting since settings version 5 (restored in AfterEach)
+		GetMutableDefault<UN2CUserSettings>()->Provider = EN2CLLMProvider::OpenAI;
 		WriteFixture(FString::Printf(TEXT("[%s]\nSettingsVersion=3\nProvider=OpenAI\nOpenAI_Model=GPT_5\n"), *UN2CSettings::StaticClass()->GetPathName()),
 			TEXT("[/Script/EngineSettings.GameMapsSettings]\n"));
 		UN2CSettings* Settings = LoadSettings();
@@ -361,6 +375,8 @@ void FN2CLegacySettingsMigrationSpec::Define()
 		TestFalse(TEXT("missing catalog does not load"), FN2CModelCatalog::Get().LoadFromFile(Dir / TEXT("missing.json")));
 		TestTrue(TEXT("fallback"), FN2CModelCatalog::Get().IsFallback());
 
+		// The fixture's provider is the user's own setting since settings version 5 (restored in AfterEach)
+		GetMutableDefault<UN2CUserSettings>()->Provider = EN2CLLMProvider::OpenAI;
 		const FString Settings = FString::Printf(TEXT("[%s]\nSettingsVersion=3\nProvider=OpenAI\nOpenAI_Model=GPT_6_Astra\nDeepSeekModel=DeepSeek_V3\n")
 			TEXT("OpenAIModelPricing=((GPT_6_Astra, (InputCost=11.000000,OutputCost=55.000000)))\n"), *UN2CSettings::StaticClass()->GetPathName());
 		WriteFixture(Settings, TEXT("[/Script/EngineSettings.GameMapsSettings]\n"));

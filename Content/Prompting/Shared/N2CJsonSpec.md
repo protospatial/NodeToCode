@@ -111,7 +111,8 @@ Optional fields are left out when they are empty, and the boolean flags ("pure",
 
 - "version": "2.0.0". Documents saved by NodeToCode 1.x say "1.0.0": in them a node's display title is "name" (there is no "class" or "title"), pin names are display names (an exec pin's is often empty), "execution" lists node pairs ("N1->N2") and every "data" value is a single pin.
 - "metadata":
-  - "name": the Blueprint's name.
+  - "name": the Blueprint's (or other asset's) name.
+  - "asset_kind" (optional): what the document describes: "Blueprint" (also when it is missing) or "Material" (a material or material function graph). "blueprint_type" and "blueprint_class" describe Blueprints and may be missing from a document of another kind.
   - "blueprint_type": "Normal", "Const", "MacroLibrary", "Interface", "LevelScript" or "FunctionLibrary".
   - "blueprint_class": the class the Blueprint generates (e.g. "BP_Example"); use it as the class name unless the user's own source files name another.
   - "parent_class" (optional): the class the Blueprint derives from, named like "member_parent": an engine or C++ class without its Unreal prefix ("Actor" is AActor, "UserWidget" is UUserWidget, "AnimInstance" is UAnimInstance), another Blueprint by its name (e.g. "BP_EnemyBase"). It is the base class of the code you write (unless the user's own source files give the class): do not guess the base class from the nodes. Missing in documents saved before it existed.
@@ -123,7 +124,7 @@ Optional fields are left out when they are empty, and the boolean flags ("pure",
   - "nodes": the graph's nodes. Each node has:
     - "id": a short ID, e.g. "N1", unique in the document.
     - "type": the node's kind, e.g. "CallFunction", "VariableGet", "VariableSet", "Event", "CustomEvent", "FunctionEntry", "FunctionResult", "Branch", "Sequence", "SwitchEnum", "DynamicCast", "MakeStruct", "BreakStruct", "MacroInstance" (a macro such as ForEachLoop, named by "member_name"), "Composite" (a collapsed graph, named by "member_name"), "Timeline". A function's local variables are "LocalVariableGet" and "LocalVariableSet", its parameters "FunctionParameter"; "InputAction" is an input action event (for Enhanced Input, "member_name" is the Input Action asset); For Each (Map) and For Each (Set) are "ForEachLoop". "Unknown" is a node class with no type of its own (often a plugin's node): read "class" and "title" to tell what it does.
-    - "class": the Unreal node class, e.g. "K2Node_CallFunction", "K2Node_IfThenElse", "K2Node_VariableGet".
+    - "class": the engine class of the node object; in a Blueprint the Unreal node class, e.g. "K2Node_CallFunction", "K2Node_IfThenElse", "K2Node_VariableGet".
     - "title" (optional): the node's title as the editor shows it, in English. A hint only, left out when it says no more than "member_name" (for example a call to PrintString has none): identify nodes by "type", "class" and "member_name".
     - "member_parent" (optional): for function, variable, event and macro nodes, the class, struct or macro library that declares the member. A Blueprint class is given by its Blueprint's name (e.g. "BP_Enemy"); a variable's type is on its pins.
     - "member_name" (optional): the function, variable, event or macro name exactly as declared, to use in code as it is. A trailing "_C" is part of the name. On a "MacroInstance" or "Composite" node it is the name of the graph the node runs: when that graph is in the document (a collapsed graph always is), its "name" is this "member_name".

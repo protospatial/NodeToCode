@@ -4,6 +4,7 @@
 #include "Core/N2CEditorIntegration.h"
 #include "Core/N2CBlueprintEditorTracker.h"
 #include "Core/N2CSettings.h"
+#include "Core/N2CUserSettings.h"
 #include "Core/N2CGraphStateManager.h"
 #include "Core/N2CGraphStateManager.h"
 #include "Core/N2CCapture.h"
@@ -629,7 +630,7 @@ FString UN2CPythonBridge::GetLLMProviders()
 		{TEXT("LMStudio"), TEXT("LM Studio (Local)"), true}
 	};
 
-	EN2CLLMProvider CurrentProvider = Settings->Provider;
+	EN2CLLMProvider CurrentProvider = GetDefault<UN2CUserSettings>()->Provider;
 
 	for (int32 i = 0; i < Providers.Num(); ++i)
 	{
@@ -670,7 +671,7 @@ FString UN2CPythonBridge::GetActiveProvider()
 		return MakeErrorJson(TEXT("Failed to get NodeToCode settings"));
 	}
 
-	EN2CLLMProvider CurrentProvider = Settings->Provider;
+	EN2CLLMProvider CurrentProvider = GetDefault<UN2CUserSettings>()->Provider;
 
 	FString ProviderName;
 	FString DisplayName;
@@ -720,7 +721,7 @@ FString UN2CPythonBridge::GetActiveProvider()
 		ProviderName = TEXT("LMStudio");
 		DisplayName = TEXT("LM Studio (Local)");
 		Model = Settings->LMStudioModel;
-		Endpoint = Settings->LMStudioEndpoint.IsEmpty() ? TEXT("http://localhost:1234/v1/chat/completions") : Settings->LMStudioEndpoint;
+		Endpoint = GetDefault<UN2CUserSettings>()->LMStudioEndpoint.IsEmpty() ? TEXT("http://localhost:1234/v1/chat/completions") : GetDefault<UN2CUserSettings>()->LMStudioEndpoint;
 		bIsLocal = true;
 		break;
 

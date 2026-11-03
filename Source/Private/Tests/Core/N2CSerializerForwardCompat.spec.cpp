@@ -96,7 +96,6 @@ void FN2CSerializerForwardCompatSpec::Define()
 			const FString Expected = FString::Join(TArray<FString>{
 				TEXT("NEWER_VERSION version 2.1.0"),
 				TEXT("UNKNOWN_BLUEPRINT_TYPE metadata.blueprint_type Material"),
-				TEXT("UNKNOWN_FIELD metadata.asset_kind asset_kind"),
 				TEXT("UNKNOWN_GRAPH_TYPE graphs[0].graph_type MaterialGraph"),
 				TEXT("UNKNOWN_NODE_TYPE graphs[0].nodes[0].type MaterialExpression"),
 				TEXT("UNKNOWN_PIN_TYPE graphs[0].nodes[0].input_pins[0].type Float2"),
@@ -134,7 +133,9 @@ void FN2CSerializerForwardCompatSpec::Define()
 			TestEqual(TEXT("the version stays 2.1.0"), Blueprint.Version.Value, FString(TEXT("2.1.0")));
 			TestTrue(TEXT("blueprint_type is Unknown"), Blueprint.Metadata.BlueprintType == EN2CBlueprintType::Unknown);
 			TestEqual(TEXT("blueprint_type text"), Blueprint.Metadata.UnknownBlueprintType, FString(TEXT("Material")));
-			TestEqual(TEXT("metadata.asset_kind kept"), Blueprint.Metadata.UnknownFields.FindRef(TEXT("asset_kind")), FString(TEXT("\"Material\"")));
+			// asset_kind is a known field since card 0447: read as the Material kind, not kept as unknown text
+			TestTrue(TEXT("metadata.asset_kind is Material"), Blueprint.Metadata.AssetKind == EN2CAssetKind::Material);
+			TestFalse(TEXT("asset_kind is not an unknown field"), Blueprint.Metadata.UnknownFields.Contains(TEXT("asset_kind")));
 			TestTrue(TEXT("the top-level extensions object kept"), Blueprint.UnknownFields.Contains(TEXT("extensions")));
 
 			const FN2CGraph& Material = Blueprint.Graphs[0];

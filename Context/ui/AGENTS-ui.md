@@ -42,17 +42,18 @@ has its own page: [code editor](../code-editor/AGENTS-code-editor.md). Styling i
   glyphs; the logo brushes are SVG (`Resources/button_icon.svg`, 20 px and 16 px); custom painting (`SN2CCircularProgressBar`) draws in local space with `AllottedGeometry.ToPaintGeometry()`,
   passes the draw effects and multiplies in the widget tint; UI click logs are `Verbose`.
 - `N2CUIColors.h`: `FN2CUIColors`, the configurable colours (backgrounds, buttons, borders, text, accents, editor), with
-  `ToLinear`/`ToLinearWithAlpha`. `N2C::UI::Colors()` returns `GetDefault<UN2CSettings>()->UIColors`
-  (`Source/Private/Core/Style/N2CUIColors.cpp`, the only style file that includes the settings header);
+  `ToLinear`/`ToLinearWithAlpha`. `N2C::UI::Colors()` returns `GetDefault<UN2CUserSettings>()->UIColors`
+  (`Source/Private/Core/Style/N2CUIColors.cpp`, the only style file that includes a settings header);
   `N2C::UI::Bind(&FN2CUIColors::Member)` gives a `TAttribute` read on every paint, so a widget bound with it follows a
   colour edit at once.
 - `N2CStyle.h`: `N2CStyle`, the plugin's `FSlateStyleSet` (`Initialize`, `Shutdown`, `Reinitialize`, `Get`), with style
   getters (`GetButtonStyle`, `GetPanelBorderBrush`, `GetComboBoxStyle`, `GetTableRowStyle`, `GetScrollBarStyle`, ...)
   and `UpdateButtonStyles`, `UpdateBorderBrushes`, `UpdateComboBoxStyle`, `UpdateWidgetStyles`. Its content root is the
   plugin's `Resources` folder.
-- The settings: `UIColors` and `CodeEditorTheme` in `UN2CSettings` (`Source/Public/Core/N2CSettings.h`, category
-  "Node to Code | Theming"). `UN2CSettings::PostEditChangeProperty` calls `FN2CCodeEditorStyle::Reinitialize()` on a
-  theme edit and the four `N2CStyle::Update*` functions on a colour edit.
+- The settings: `CodeEditorTheme` in `UN2CSettings` (`Source/Public/Core/N2CSettings.h`, category
+  "Node to Code | Theming"), whose `PostEditChangeProperty` calls `FN2CCodeEditorStyle::Reinitialize()` on a theme
+  edit; `UIColors` in `UN2CUserSettings` (per user since card 0188, Editor Preferences > Plugins > Node to Code (User) >
+  Theming), whose `PostEditChangeProperty` calls the four `N2CStyle::Update*` functions on a committed colour edit.
 
 ## Specs
 

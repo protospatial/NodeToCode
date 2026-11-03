@@ -46,7 +46,7 @@ hooks, and uses `curl`.
 
 ## Another port, or the stdio bridge
 
-If you changed **Server Port** (**Project Settings → Plugins → Node to Code → MCP Server**), set the plugin's
+If you changed **Server Port** (**Editor Preferences → Plugins → Node to Code (User) → MCP Server**), set the plugin's
 **NodeToCode MCP URL** to `http://127.0.0.1:<port>/mcp`: in `/plugin`, **Installed → nodetocode → Configure**, or
 install with `claude plugin install nodetocode@nodetocode --config mcp_url=http://127.0.0.1:<port>/mcp`. Then run
 `/mcp reconnect`.

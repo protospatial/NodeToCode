@@ -7,6 +7,7 @@
 #include "Core/N2CNodeCollector.h"
 #include "EdGraph/EdGraph.h"
 #include "K2Node.h"
+#include "Utils/N2CGraphUtils.h"
 #include "Utils/Validators/N2CBlueprintValidator.h"
 
 bool FN2CCapture::HasErrors() const
@@ -54,6 +55,14 @@ namespace N2C
 
 	TValueOrError<FN2CCapture, FString> CaptureGraph(const UEdGraph& Graph, const FN2CCaptureOptions& Options)
 	{
+		// A graph type NodeToCode refuses (decisions 0008 and 0009, card 0448) is refused here, at the entry point, by its
+		// schema: a material, Sound Cue or other non-K2 graph, an AnimGraph, state or state machine, a Control Rig graph.
+		// Without this a non-K2 graph came back as "No nodes to capture", since the collector keeps only K2 nodes.
+		const FString Unsupported = FN2CGraphUtils::UnsupportedGraphTypeError(Graph);
+		if (!Unsupported.IsEmpty())
+		{
+			return MakeError(Unsupported);
+		}
 		// The collector only reads the graph; its signature predates const-correct callers
 		TArray<UK2Node*> Nodes;
 		if (!FN2CNodeCollector::Get().CollectNodesFromGraph(const_cast<UEdGraph*>(&Graph), Nodes))
@@ -65,6 +74,15 @@ namespace N2C
 
 	TValueOrError<FN2CCapture, FString> CaptureGraphs(TConstArrayView<UEdGraph*> Graphs, const FN2CCaptureOptions& Options)
 	{
+		// Every listed graph must be of a type NodeToCode captures (card 0448); callers leave refused ones out
+		for (const UEdGraph* Graph : Graphs)
+		{
+			const FString Unsupported = Graph ? FN2CGraphUtils::UnsupportedGraphTypeError(*Graph) : FString();
+			if (!Unsupported.IsEmpty())
+			{
+				return MakeError(Unsupported);
+			}
+		}
 		FN2CCaptureContext Context(Options);
 		if (!Context.CaptureGraphs(Graphs))
 		{

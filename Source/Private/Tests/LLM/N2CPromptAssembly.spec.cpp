@@ -296,6 +296,15 @@ void FN2CPromptAssemblySpec::Define()
 			}
 			TSet<FString> Keys;
 			CollectKeys(MakeShared<FJsonValueObject>(Document), Keys);
+			// asset_kind is written only for a document that is not a Blueprint (card 0447)
+			FN2CBlueprint Material = MakeFullBlueprint();
+			Material.Metadata.AssetKind = EN2CAssetKind::Material;
+			const TSharedPtr<FJsonObject> MaterialDocument = ToJsonObject(Material);
+			if (TestTrue(TEXT("the material document serialized"), MaterialDocument.IsValid()))
+			{
+				CollectKeys(MakeShared<FJsonValueObject>(MaterialDocument), Keys);
+				TestTrue(TEXT("it has asset_kind"), Keys.Contains(N2CJsonContract::AssetKindField));
+			}
 			TestTrue(TEXT("the test document has the keys of every level"), Keys.Num() >= 40);
 			for (const FString& Key : Keys)
 			{

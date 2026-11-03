@@ -6,6 +6,7 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Core/N2CSettings.h"
+#include "Core/N2CUserSettings.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 #include "HAL/FileManager.h"
@@ -89,11 +90,11 @@ BEGIN_DEFINE_SPEC(FN2CPayloadGoldensSpec, "NodeToCode.LLM.Payload.Golden", N2C_T
 			UN2CSettings* Settings = GetMutableDefault<UN2CSettings>();
 			SavedFiles = Settings->ReferenceSourceFilePaths;
 			SavedOllama = Settings->OllamaConfig;
-			SavedLMStudioEndpoint = Settings->LMStudioEndpoint;
+			SavedLMStudioEndpoint = GetMutableDefault<UN2CUserSettings>()->LMStudioEndpoint;
 			SavedLMStudioCommand = Settings->LMStudioPrependedModelCommand;
 			Settings->ReferenceSourceFilePaths.Reset();
 			Settings->OllamaConfig = FN2COllamaConfig();
-			Settings->LMStudioEndpoint = TEXT("http://localhost:1234");
+			GetMutableDefault<UN2CUserSettings>()->LMStudioEndpoint = TEXT("http://localhost:1234");
 			Settings->LMStudioPrependedModelCommand.Reset();
 		}
 		~FScopedSettings()
@@ -101,7 +102,7 @@ BEGIN_DEFINE_SPEC(FN2CPayloadGoldensSpec, "NodeToCode.LLM.Payload.Golden", N2C_T
 			UN2CSettings* Settings = GetMutableDefault<UN2CSettings>();
 			Settings->ReferenceSourceFilePaths = SavedFiles;
 			Settings->OllamaConfig = SavedOllama;
-			Settings->LMStudioEndpoint = SavedLMStudioEndpoint;
+			GetMutableDefault<UN2CUserSettings>()->LMStudioEndpoint = SavedLMStudioEndpoint;
 			Settings->LMStudioPrependedModelCommand = SavedLMStudioCommand;
 		}
 		TArray<FFilePath> SavedFiles;

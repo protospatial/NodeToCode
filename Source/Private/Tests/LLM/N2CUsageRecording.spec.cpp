@@ -9,6 +9,7 @@
 #include "Core/N2CNodeCollector.h"
 #include "Core/N2CSerializer.h"
 #include "Core/N2CSettings.h"
+#include "Core/N2CUserSettings.h"
 #include "Dom/JsonObject.h"
 #include "EdGraph/EdGraph.h"
 #include "HAL/FileManager.h"
@@ -103,19 +104,19 @@ BEGIN_DEFINE_SPEC(FN2CUsageRecordingSpec, "NodeToCode.LLM.Usage", N2C_TEST_FLAGS
 		FScopedSettings(const FString& Endpoint, const FString& Output)
 		{
 			UN2CSettings* Settings = GetMutableDefault<UN2CSettings>();
-			SavedEndpoint = Settings->LMStudioEndpoint;
-			SavedProvider = Settings->Provider;
-			SavedOutput = Settings->CustomTranslationOutputDirectory.Path;
-			Settings->LMStudioEndpoint = Endpoint;
-			Settings->Provider = EN2CLLMProvider::LMStudio;
-			Settings->CustomTranslationOutputDirectory.Path = Output;
+			SavedEndpoint = GetMutableDefault<UN2CUserSettings>()->LMStudioEndpoint;
+			SavedProvider = GetMutableDefault<UN2CUserSettings>()->Provider;
+			SavedOutput = GetMutableDefault<UN2CUserSettings>()->CustomTranslationOutputDirectory.Path;
+			GetMutableDefault<UN2CUserSettings>()->LMStudioEndpoint = Endpoint;
+			GetMutableDefault<UN2CUserSettings>()->Provider = EN2CLLMProvider::LMStudio;
+			GetMutableDefault<UN2CUserSettings>()->CustomTranslationOutputDirectory.Path = Output;
 		}
 		~FScopedSettings()
 		{
 			UN2CSettings* Settings = GetMutableDefault<UN2CSettings>();
-			Settings->LMStudioEndpoint = SavedEndpoint;
-			Settings->Provider = SavedProvider;
-			Settings->CustomTranslationOutputDirectory.Path = SavedOutput;
+			GetMutableDefault<UN2CUserSettings>()->LMStudioEndpoint = SavedEndpoint;
+			GetMutableDefault<UN2CUserSettings>()->Provider = SavedProvider;
+			GetMutableDefault<UN2CUserSettings>()->CustomTranslationOutputDirectory.Path = SavedOutput;
 		}
 		FString SavedEndpoint;
 		EN2CLLMProvider SavedProvider;

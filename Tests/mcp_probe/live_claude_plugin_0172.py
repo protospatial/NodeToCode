@@ -7,7 +7,9 @@ Stdlib only; run with `python -I` (set N2C_PORT_OFFSET when other agents run pro
         --project "<Hosts>/NodeToCodeHost_5_8/NodeToCodeHost_5_8.uproject" --label 5.8 [--scenarios skills,...]
 
 1. `claude plugin validate` (also --strict) passes on Agents/claude-code/nodetocode and on the local marketplace
-   Agents/claude-code.
+   Agents/claude-code with no warning. Its "Plugin directory checks" block (what the plugin directory would ask for,
+   e.g. PRIVACY_URL_MISSING) does not change the result: those codes go to the report's plugin_directory_warnings and
+   are printed, not failed on (card 0511).
 2. In a new, empty CLAUDE_CONFIG_DIR (deleted afterwards, the user's own config is never read or changed):
    `claude plugin marketplace add <repo>/Agents/claude-code`, `claude plugin install nodetocode@nodetocode
    --config mcp_url=http://127.0.0.1:<port>/mcp`, and `claude plugin details` lists the three skills, the translate
@@ -42,6 +44,7 @@ import argparse
 import glob
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -94,6 +97,37 @@ def cli_env(config_dir, keys, extra=None):
 def run(cmd, env, cwd=None, timeout=300):
     proc = subprocess.run(cmd, capture_output=True, env=env, cwd=cwd, timeout=timeout, stdin=subprocess.DEVNULL)
     return proc.returncode, (proc.stdout + proc.stderr).decode('utf-8', 'replace')
+
+
+DIRECTORY_START = 'Plugin directory checks'
+DIRECTORY_END = 'These plugin directory checks do not change the result below.'
+
+
+def split_validate_output(out):
+    """(plugin-directory warning codes, the rest of the output) of `claude plugin validate` (card 0511).
+
+    Since Claude Code 2.1.310 the command prints a "Plugin directory checks" block (what the plugin directory, the
+    catalog plugins are submitted to, would ask for: an icon, a privacy policy URL) that "does not change the result":
+    its warnings are reported, not failed on; a warning outside that block still fails the validate step."""
+    lines = out.splitlines()
+    start = next((i for i, line in enumerate(lines) if line.strip().startswith(DIRECTORY_START)), None)
+    if start is None:
+        return [], out
+    end = next((i for i in range(start, len(lines)) if lines[i].strip() == DIRECTORY_END), None)
+    if end is None:
+        return [], out  # an unknown layout: judge the whole output
+    block = '\n'.join(lines[start:end + 1])
+    codes = []
+    for code in re.findall(r'\(([A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+)\)', block):
+        if code not in codes:
+            codes.append(code)
+    return codes, '\n'.join(lines[:start] + lines[end + 1:])
+
+
+def validate_passed(code, out):
+    """True when `claude plugin validate` passed with no warning outside the plugin-directory block"""
+    _codes, rest = split_validate_output(out)
+    return code == 0 and 'Validation passed' in rest and 'warning' not in rest.lower()
 
 
 def parse_stream(out):
@@ -283,8 +317,11 @@ def main():
         for target in (PLUGIN, MARKETPLACE):
             for strict in ([], ['--strict']):
                 code, out = run([claude_exe(), 'plugin', 'validate'] + strict + [target], env)
-                steps['validate %s%s' % (os.path.relpath(target, REPO), ' --strict' if strict else '')] = (
-                    code == 0 and 'Validation passed' in out and 'warning' not in out.lower())
+                label = 'validate %s%s' % (os.path.relpath(target, REPO), ' --strict' if strict else '')
+                steps[label] = validate_passed(code, out)
+                directory_codes, _rest = split_validate_output(out)
+                if directory_codes:
+                    report.setdefault('plugin_directory_warnings', {})[label] = directory_codes
         code, out = run([claude_exe(), 'plugin', 'marketplace', 'add', MARKETPLACE], env)
         steps['marketplace_add'] = code == 0
         code, out = run([claude_exe(), 'plugin', 'install', 'nodetocode@nodetocode', '--config',
@@ -296,6 +333,8 @@ def main():
             'blueprint-comprehension', 'blueprint-migration', 'blueprint-to-cpp', 'translate', 'SessionStart',
             'MCP servers (1)'))
         record('install', steps)
+        for label, codes in sorted((report.get('plugin_directory_warnings') or {}).items()):
+            print('  %s: plugin directory warnings (not failed on): %s' % (label, ', '.join(codes)))
         hook_script = installed_hook(config_dir)
         report['hook_script'] = hook_script
 

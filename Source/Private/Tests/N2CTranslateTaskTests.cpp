@@ -6,6 +6,7 @@
 
 #include "Core/N2CEditorIntegration.h"
 #include "Core/N2CSettings.h"
+#include "Core/N2CUserSettings.h"
 #include "Dom/JsonObject.h"
 #include "HttpManager.h"
 #include "HttpModule.h"
@@ -150,10 +151,10 @@ bool FN2CTranslateTaskCancelTest::RunTest(const FString& Parameters)
     UN2CLLMModule* Module = UN2CLLMModule::Get();
     {
         UN2CSettings* Settings = GetMutableDefault<UN2CSettings>();
-        const EN2CLLMProvider SavedProvider = Settings->Provider;
-        Settings->Provider = EN2CLLMProvider::Ollama;
+        const EN2CLLMProvider SavedProvider = GetMutableDefault<UN2CUserSettings>()->Provider;
+        GetMutableDefault<UN2CUserSettings>()->Provider = EN2CLLMProvider::Ollama;
         const bool bInitialized = Module->Initialize();
-        Settings->Provider = SavedProvider;
+        GetMutableDefault<UN2CUserSettings>()->Provider = SavedProvider;
         if (!TestTrue(TEXT("module initializes with Ollama"), bInitialized))
         {
             return false;

@@ -163,7 +163,9 @@
  * struct is kept), and a dangling exec or data flow is a DANGLING_FLOW error that fails the document.
  * "Metadata" checks the class metadata (card 0518, finding F4): parent_class and asset_class of an Actor Blueprint, a
  * child of another Blueprint and a Widget Blueprint; both fields read and write back, a document without them stays
- * without, and an asset class without a parent class is a MISSING_PARENT_CLASS warning.
+ * without, and an asset class without a parent class is a MISSING_PARENT_CLASS warning. It also checks asset_kind (card
+ * 0447): a Material document without blueprint_type or blueprint_class reads, validates and round-trips, a Blueprint
+ * document is unchanged and still needs both, and an unknown kind is kept with UNKNOWN_ASSET_KIND.
  */
 BEGIN_DEFINE_SPEC(FN2CCaptureGoldenSpec, "NodeToCode.Capture.Golden", N2C_TEST_FLAGS)
 
@@ -220,48 +222,16 @@ BEGIN_DEFINE_SPEC(FN2CCaptureGoldenSpec, "NodeToCode.Capture.Golden", N2C_TEST_F
 		return IFileManager::Get().FileExists(*PerEngine) ? PerEngine : GoldenDir() / CaseName + TEXT(".json");
 	}
 
-	static bool UpdateGoldens()
-	{
-		return FPlatformMisc::GetEnvironmentVariable(TEXT("N2C_UPDATE_GOLDENS")) == TEXT("1")
-			|| FParse::Param(FCommandLine::Get(), TEXT("N2CUpdateGoldens"));
-	}
-
-	static FString PrettyJson(const TSharedPtr<FJsonObject>& Object)
-	{
-		FString Text;
-		const TSharedRef<TJsonWriter<TCHAR, TPrettyJsonPrintPolicy<TCHAR>>> Writer =
-			TJsonWriterFactory<TCHAR, TPrettyJsonPrintPolicy<TCHAR>>::Create(&Text);
-		FJsonSerializer::Serialize(Object.ToSharedRef(), Writer);
-		return Text.Replace(TEXT("\r\n"), TEXT("\n")) + TEXT("\n");
-	}
-
-	/** Replaces capture group 1 of every match of Pattern with Token (the whole match when there is no group) */
-	static FString ReplaceMatches(const FString& Text, const TCHAR* Pattern, const TCHAR* Token)
-	{
-		const FRegexPattern Compiled(Pattern);
-		FRegexMatcher Matcher(Compiled, Text);
-		FString Result;
-		int32 Last = 0;
-		while (Matcher.FindNext())
-		{
-			const int32 Begin = Matcher.GetCaptureGroupBeginning(1) >= 0 ? Matcher.GetCaptureGroupBeginning(1) : Matcher.GetMatchBeginning();
-			const int32 End = Matcher.GetCaptureGroupEnding(1) >= 0 ? Matcher.GetCaptureGroupEnding(1) : Matcher.GetMatchEnding();
-			Result += Text.Mid(Last, Begin - Last) + Token;
-			Last = End;
-		}
-		return Result + Text.Mid(Last);
-	}
+	// The golden helpers live in N2CTestHelpers.h (card 0448), shared with the material capture goldens
+	static bool UpdateGoldens() { return N2CTest::UpdateGoldens(); }
+	static FString PrettyJson(const TSharedPtr<FJsonObject>& Object) { return N2CTest::PrettyJson(Object); }
 
 	/**
 	 * Replaces what changes from run to run with stable tokens: the case's transient package path (<PACKAGE>) and any
 	 * GUID (<GUID>). Nothing else may change between sessions (the UObject index FN2CVariableProcessor once put in a
 	 * member_name is gone, card 0234, so a golden shows it if it comes back)
 	 */
-	static FString Normalise(const FString& Text, const FString& PackagePath)
-	{
-		const FString Out = PackagePath.IsEmpty() ? Text : Text.Replace(*PackagePath, TEXT("<PACKAGE>"), ESearchCase::CaseSensitive);
-		return ReplaceMatches(Out, TEXT("[0-9A-Fa-f]{8}-?[0-9A-Fa-f]{4}-?[0-9A-Fa-f]{4}-?[0-9A-Fa-f]{4}-?[0-9A-Fa-f]{12}"), TEXT("<GUID>"));
-	}
+	static FString Normalise(const FString& Text, const FString& PackagePath) { return N2CTest::NormaliseCapture(Text, PackagePath); }
 
 	/** Captures Case's graph; DuringCapture, when set, runs once right after the capture's first node */
 	FCaptured Capture(const FCaptureCase& Case, TFunction<void()> DuringCapture = nullptr)
@@ -2699,8 +2669,14 @@ void FN2CCaptureGoldenSpec::Define()
 			}
 			FN2CCaptureOptions Options;
 			Options.Depth = 0;
-			const TValueOrError<FN2CCapture, FString> Result = N2C::CaptureGraph(*Graph, Options);
-			if (TestTrue(TEXT("the anim graph is captured"), Result.HasValue()) && TestEqual(TEXT("one graph"), Result.GetValue().Blueprint.Graphs.Num(), 1))
+			// N2C::CaptureGraph refuses an AnimGraph (decision 0008, card 0448); its nodes still capture, typed by schema
+			const TValueOrError<FN2CCapture, FString> Refused = N2C::CaptureGraph(*Graph, Options);
+			TestTrue(TEXT("CaptureGraph refuses the anim graph with UNSUPPORTED_GRAPH_TYPE"),
+				Refused.HasError() && Refused.GetError().StartsWith(TEXT("UNSUPPORTED_GRAPH_TYPE: ")));
+			TArray<UK2Node*> Nodes;
+			FN2CNodeCollector::Get().CollectNodesFromGraph(Graph, Nodes);
+			const TValueOrError<FN2CCapture, FString> Result = N2C::CaptureNodes(Nodes, Options);
+			if (TestTrue(TEXT("the anim graph's nodes are captured"), Result.HasValue()) && TestEqual(TEXT("one graph"), Result.GetValue().Blueprint.Graphs.Num(), 1))
 			{
 				TestEqual(TEXT("graph_type"), StaticEnum<EN2CGraphType>()->GetNameStringByValue(
 					static_cast<int64>(Result.GetValue().Blueprint.Graphs[0].GraphType)), FString(TEXT("Animation")));
@@ -3575,6 +3551,87 @@ void FN2CCaptureGoldenSpec::Define()
 			Diagnostics.Reset();
 			TestTrue(TEXT("both fields: valid"), Validator.Validate(Read, Diagnostics));
 			TestFalse(TEXT("both fields: no MISSING_PARENT_CLASS"), HasMissingParent(Diagnostics));
+		});
+
+		// Card 0447 (epic 0442, decision 0009 item 6): metadata.asset_kind, absent meaning Blueprint
+		It(TEXT("reads and writes asset_kind: a Material document without Blueprint fields round-trips, a Blueprint one is unchanged"), [this]()
+		{
+			const FString Graphs = FString(TEXT("\"graphs\":[{\"name\":\"G\",\"graph_type\":\"Function\",\"nodes\":[{\"id\":\"N1\",\"type\":\"FunctionEntry\","))
+				+ TEXT("\"class\":\"K2Node_FunctionEntry\",\"input_pins\":[],\"output_pins\":[]}],\"flows\":{\"execution\":[],\"data\":{}}}],\"structs\":[],\"enums\":[]}");
+			const FString Material = FString(TEXT("{\"version\":\"2.0.0\",\"metadata\":{\"name\":\"M_Rock\",\"asset_kind\":\"Material\"},")) + Graphs;
+			const FString Blueprint = FString(TEXT("{\"version\":\"2.0.0\",\"metadata\":{\"name\":\"BP\",\"blueprint_type\":\"Normal\",\"blueprint_class\":\"BP\"},")) + Graphs;
+			FN2CBlueprintValidator Validator;
+
+			FN2CBlueprint Read;
+			TArray<FN2CJsonReadWarning> Warnings;
+			if (TestTrue(TEXT("FromJson reads a Material document with no blueprint_type or blueprint_class"), FN2CSerializer::FromJson(Material, Read, Warnings)))
+			{
+				TestTrue(TEXT("asset_kind Material"), Read.Metadata.AssetKind == EN2CAssetKind::Material);
+				TestEqual(TEXT("a known field: no warning"), Warnings.Num(), 0);
+				TestEqual(TEXT("written back byte for byte"), FN2CSerializer::ToJson(Read, EN2CJsonStyle::Condensed), Material);
+				TArray<FN2CDiagnostic> Diagnostics;
+				TestTrue(TEXT("valid without a blueprint_class"), Validator.Validate(Read, Diagnostics));
+				TestFalse(TEXT("no MISSING_NAME"), Diagnostics.ContainsByPredicate([](const FN2CDiagnostic& Diagnostic)
+				{
+					return Diagnostic.Code == N2CJsonContract::Diagnostic::MissingName;
+				}));
+			}
+
+			// A Blueprint document reads as the Blueprint kind and is written back without asset_kind, as before
+			Warnings.Reset();
+			if (TestTrue(TEXT("FromJson reads a Blueprint document"), FN2CSerializer::FromJson(Blueprint, Read, Warnings)))
+			{
+				TestTrue(TEXT("no asset_kind means Blueprint"), Read.Metadata.AssetKind == EN2CAssetKind::Blueprint);
+				TestEqual(TEXT("written back byte for byte, without asset_kind"), FN2CSerializer::ToJson(Read, EN2CJsonStyle::Condensed), Blueprint);
+
+				// The validator still requires a Blueprint document's class
+				AddExpectedError(TEXT("Missing Blueprint class"), EAutomationExpectedErrorFlags::Contains, 0);
+				Read.Metadata.BlueprintClass.Reset();
+				TArray<FN2CDiagnostic> Diagnostics;
+				TestFalse(TEXT("a Blueprint without its class is not valid"), Validator.Validate(Read, Diagnostics));
+			}
+			FN2CBlueprint Explicit;
+			if (TestTrue(TEXT("FromJson reads an explicit Blueprint kind"), FN2CSerializer::FromJson(Blueprint.Replace(
+				TEXT("\"blueprint_class\":\"BP\"}"), TEXT("\"blueprint_class\":\"BP\",\"asset_kind\":\"Blueprint\"}")), Explicit)))
+			{
+				TestTrue(TEXT("asset_kind Blueprint"), Explicit.Metadata.AssetKind == EN2CAssetKind::Blueprint);
+			}
+
+			// The reader still requires blueprint_type and blueprint_class of a Blueprint document
+			AddExpectedError(TEXT("Missing required metadata fields"), EAutomationExpectedErrorFlags::Contains, 1);
+			FN2CBlueprint Rejected;
+			TestFalse(TEXT("a Blueprint document without blueprint_class is rejected"), FN2CSerializer::FromJson(
+				Blueprint.Replace(TEXT(",\"blueprint_class\":\"BP\""), TEXT("")), Rejected));
+
+			// An unknown kind is kept with its text and a warning, written back, and accepted by the validator with a warning
+			AddExpectedMessage(TEXT("N2C JSON "), ELogVerbosity::Warning, EAutomationExpectedMessageFlags::Contains, 0, false);
+			AddExpectedMessage(TEXT("this build does not know"), ELogVerbosity::Warning, EAutomationExpectedMessageFlags::Contains, 0, false);
+			const FString Later = Material.Replace(TEXT("\"asset_kind\":\"Material\""), TEXT("\"blueprint_type\":\"System\",\"asset_kind\":\"Niagara\""));
+			Warnings.Reset();
+			if (TestTrue(TEXT("FromJson reads an unknown kind"), FN2CSerializer::FromJson(Later, Read, Warnings)))
+			{
+				TestTrue(TEXT("asset_kind Unknown"), Read.Metadata.AssetKind == EN2CAssetKind::Unknown);
+				TestEqual(TEXT("its text kept"), Read.Metadata.UnknownAssetKind, FString(TEXT("Niagara")));
+				TestTrue(TEXT("an UNKNOWN_ASSET_KIND warning"), Warnings.ContainsByPredicate([](const FN2CJsonReadWarning& Warning)
+				{
+					return Warning.Code == N2CJsonContract::ReadWarning::UnknownAssetKind && Warning.Path == TEXT("metadata.asset_kind");
+				}));
+				TestEqual(TEXT("written back with its text, blueprint_type kept"), FN2CSerializer::ToJson(Read, EN2CJsonStyle::Condensed),
+					Material.Replace(TEXT("\"asset_kind\":\"Material\""), TEXT("\"blueprint_type\":\"System\",\"asset_kind\":\"Niagara\"")));
+				TArray<FN2CDiagnostic> Diagnostics;
+				TestTrue(TEXT("valid"), Validator.Validate(Read, Diagnostics));
+				TestTrue(TEXT("with an UNKNOWN_KIND warning at asset_kind"), Diagnostics.ContainsByPredicate([](const FN2CDiagnostic& Diagnostic)
+				{
+					return Diagnostic.Code == N2CJsonContract::Diagnostic::UnknownKind && Diagnostic.Path == TEXT("metadata.asset_kind");
+				}));
+			}
+
+			// A known blueprint_type in a document of another kind does not apply and is not written back
+			if (TestTrue(TEXT("FromJson reads a Material document with a blueprint_type"), FN2CSerializer::FromJson(
+				Material.Replace(TEXT("\"asset_kind\""), TEXT("\"blueprint_type\":\"Normal\",\"asset_kind\"")), Read)))
+			{
+				TestEqual(TEXT("written back without it"), FN2CSerializer::ToJson(Read, EN2CJsonStyle::Condensed), Material);
+			}
 		});
 	});
 

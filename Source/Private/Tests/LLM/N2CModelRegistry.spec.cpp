@@ -5,6 +5,8 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Core/N2CSettings.h"
+#include "Core/N2CUserSettings.h"
+#include "Misc/ScopeExit.h"
 #include "LLM/N2CLLMModelRegistry.h"
 #include "LLM/N2CLLMModels.h"
 #include "LLM/Providers/N2COpenAIService.h"
@@ -294,7 +296,7 @@ void FN2CModelRegistrySpec::Define()
 					TEXT("SettingsVersion=4\nProvider=DeepSeek\nDeepSeekModelId=deepseek-flash\nDeepSeekReasoningEffort=%s"), Effort));
 				if (!TestNotNull(TEXT("settings loaded"), Settings)) { continue; }
 				TestEqual(FString::Printf(TEXT("'%s' not migrated"), Effort), Settings->MigrateRetiredModelSelections(), 0);
-				TestEqual(FString::Printf(TEXT("'%s' sends deepseek-flash"), Effort), Settings->GetActiveModel(), FString(TEXT("deepseek-flash")));
+				TestEqual(FString::Printf(TEXT("'%s' sends deepseek-flash"), Effort), Settings->GetActiveModelForProvider(EN2CLLMProvider::DeepSeek), FString(TEXT("deepseek-flash")));
 				TestEqual(FString::Printf(TEXT("'%s' thinking"), Effort), Settings->GetActiveReasoningEffortForProvider(EN2CLLMProvider::DeepSeek),
 					FString(*Effort ? Effort : TEXT("high")));
 			}
@@ -368,7 +370,11 @@ void FN2CModelRegistrySpec::Define()
 		It(TEXT("prices Gemini from the registry when there is no override"), [this]()
 		{
 			UN2CSettings* Settings = NewObject<UN2CSettings>(GetTransientPackage());
-			Settings->Provider = EN2CLLMProvider::Gemini;
+			// The provider is the user's (UN2CUserSettings) since settings version 5
+			UN2CUserSettings* UserSettings = GetMutableDefault<UN2CUserSettings>();
+			const EN2CLLMProvider ProviderBefore = UserSettings->Provider;
+			ON_SCOPE_EXIT { UserSettings->Provider = ProviderBefore; };
+			UserSettings->Provider = EN2CLLMProvider::Gemini;
 			Settings->GeminiModelId = N2CDefaultModelIds::Gemini;
 			Settings->GeminiCustomModelId.Reset();
 			Settings->ModelPricing.Empty();

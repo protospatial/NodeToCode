@@ -4,6 +4,7 @@
 #include "MCP/Tools/N2CMcpOutputSchema.h"
 #include "MCP/Tools/N2CMcpToolRegistry.h"
 #include "Core/N2CSettings.h"
+#include "Core/N2CUserSettings.h"
 #include "Core/N2CSecretStore.h"
 #include "LLM/N2CLLMModels.h"
 #include "LLM/N2CModelCatalog.h"
@@ -112,7 +113,7 @@ FMcpToolCallResult FN2CMcpGetAvailableLLMProvidersTool::Execute(const TSharedPtr
         ResponseObject->SetArrayField(TEXT("providers"), ProvidersArray);
         
         // Add current provider
-        FString CurrentProviderId = ProviderEnum->GetNameStringByValue(static_cast<int64>(Settings->Provider));
+        FString CurrentProviderId = ProviderEnum->GetNameStringByValue(static_cast<int64>(GetDefault<UN2CUserSettings>()->Provider));
         if (CurrentProviderId.Contains(TEXT("::")))
         {
             CurrentProviderId = CurrentProviderId.RightChop(CurrentProviderId.Find(TEXT("::")) + 2);
@@ -334,7 +335,7 @@ FString FN2CMcpGetAvailableLLMProvidersTool::GetProviderEndpoint(EN2CLLMProvider
         case EN2CLLMProvider::Ollama:
             return Settings->OllamaConfig.OllamaEndpoint;
         case EN2CLLMProvider::LMStudio:
-            return Settings->LMStudioEndpoint;
+            return GetDefault<UN2CUserSettings>()->LMStudioEndpoint;
         default:
             return FString();
     }

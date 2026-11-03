@@ -744,7 +744,7 @@ Engine source: `Engine/Plugins/Experimental/Toolsets/MCPClientToolset/` (`FMCPCl
         *   `SerializeN2CBlueprintToJson()`: Serialization
 
 *   **Plugin Settings** (`N2CSettings.h/.cpp`):
-    *   `McpServerPort`: Configurable server port (default 27000, 1024-65535);
+    *   `McpServerPort` (per user since settings version 5: `UN2CUserSettings`, `N2CUserSettings.h`): Configurable server port (default 27000, 1024-65535);
         `McpServerPortRange` (default 10): ports tried from there when one is taken; `McpServerStatus` (transient,
         read-only): where the server listens now. A port change restarts the server on the next tick
         (`FN2CMcpHttpServerManager::HandlePortSettingsChanged`), no editor restart

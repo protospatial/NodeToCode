@@ -10,7 +10,6 @@
 #include "LLM/N2COllamaConfig.h"
 #include "MCP/Tools/N2CMcpToolsets.h"
 #include "Models/N2CLogging.h"
-#include "Core/Style/N2CUIColors.h"
 #include "N2CSettings.generated.h"
 
 struct FN2CModelMetadata;
@@ -238,10 +237,6 @@ public:
     virtual FText GetSectionText() const override;
     // End UDeveloperSettings Interface
 
-    /** Selected LLM provider */
-    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Provider")
-    EN2CLLMProvider Provider = EN2CLLMProvider::Anthropic;
-
     /**
      * Seconds a translation request may wait without receiving any data from the provider before it fails with a
      * Timeout error (the HTTP activity timeout). Requests are not streamed: the provider sends nothing until the whole
@@ -412,8 +407,12 @@ public:
      * 4: model selections and price overrides stored by string model ID (AnthropicModelId, ..., ModelPricing) instead
      *    of the model enums (AnthropicModel, ..., AnthropicModelPricing): MigrateModelSelectionsToIds converts a saved
      *    config, and MigrateLegacy12Settings writes the result once at editor start and removes the old keys.
+     * 5: the per-user fields (Provider, LMStudioEndpoint, McpServerPort, UIColors, CustomTranslationOutputDirectory, and
+     *    reference files outside the project) live in UN2CUserSettings (card 0188). Each user's values are copied there
+     *    once by UN2CUserSettings::UpgradeFromProjectSettings, which stamps the user's own SettingsVersion; the old keys
+     *    in this config are no longer read and are left for the user to delete.
      */
-    static constexpr int32 CurrentSettingsVersion = 4;
+    static constexpr int32 CurrentSettingsVersion = 5;
 
     /** The version whose migration stores model selections and prices by string model ID */
     static constexpr int32 ModelIdSettingsVersion = 4;
@@ -427,11 +426,6 @@ public:
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | LM Studio",
         meta=(DisplayName="Model Name"))
     FString LMStudioModel = "qwen3-32b";
-    
-    /** LM Studio Endpoint - Default is localhost:1234 */
-    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | LM Studio",
-        meta=(DisplayName="Server Endpoint"))
-    FString LMStudioEndpoint = "http://localhost:1234";
     
     /** LM Studio Prepended Model Command - Text to prepend to user messages (e.g., '/no_think' to disable thinking for reasoning models, or other model-specific commands). This text will appear at the start of each user message. */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | LLM Services | LM Studio",
@@ -459,28 +453,26 @@ public:
         meta=(DisplayName="Target Language"))
     EN2CCodeLanguage TargetLanguage = EN2CCodeLanguage::Cpp;
 
-    /** Maximum depth for nested graph translation (0 = No nested translation). This setting can greatly impact costs and context window utilization, so be mindful! */
+    /**
+     * How many calls away from the translated graph to follow the project's own functions and macros (project content
+     * and project plugins; engine functions are never added). 0 = the graph alone. Collapsed graphs always come with the
+     * graph that holds them, at every depth. Higher depths can greatly raise cost and context window use.
+     */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | Code Generation",
-        meta=(DisplayName="Max Translation Depth", ClampMin="0", ClampMax="5", UIMin="0", UIMax="5"))
+        meta=(DisplayName="Max Translation Depth", ClampMin="0", ClampMax="5", UIMin="0", UIMax="5",
+              ToolTip="Also translate the user functions and macros (project content and project plugins) the graph calls, up to this many calls away; engine functions are never added. 0 = the graph alone. Collapsed graphs always come with the graph that holds them, at every depth. Higher depths can greatly raise cost and context window use."))
     int32 TranslationDepth = 0;
     
     /** Minimum severity level for logging */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | Logging")
     EN2CLogSeverity MinSeverity = EN2CLogSeverity::Info;
 
-    /** MCP server port (Model Context Protocol HTTP server, http://127.0.0.1:<port>/mcp). When another program
-     * already uses it, the server takes the next free port in Port Fallback Range and says so in a notification.
-     * Changing it restarts the server on the new port. */
-    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | MCP Server",
-        meta=(DisplayName="Server Port", ClampMin="1024", ClampMax="65535", UIMin="1024", UIMax="65535",
-              ToolTip="Port of the MCP server (http://127.0.0.1:<port>/mcp). If another program already uses it, the server takes the next free port in Port Fallback Range and shows a notification. Changing it restarts the server on the new port."))
-    int32 McpServerPort = 27000;
-
-    /** How many ports, starting at Server Port, the MCP server tries when a port is already in use (1 = only Server
-     * Port). If none is free the server does not start and an error notification says so. */
+    /** How many ports, starting at Server Port (a per-user setting, UN2CUserSettings::McpServerPort), the MCP server
+     * tries when a port is already in use (1 = only Server Port). If none is free the server does not start and an
+     * error notification says so. */
     UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | MCP Server",
         meta=(DisplayName="Port Fallback Range", ClampMin="1", ClampMax="100", UIMin="1", UIMax="100",
-              ToolTip="How many ports, starting at Server Port, the MCP server tries when a port is already in use (1 = only Server Port). If none is free the server does not start and an error notification says so."))
+              ToolTip="How many ports, starting at your Server Port (Editor Preferences > Plugins > Node to Code (User)), the MCP server tries when a port is already in use (1 = only Server Port). If none is free the server does not start and an error notification says so."))
     int32 McpServerPortRange = 10;
 
     /** Where the MCP server is listening now (set by the server; not saved) */
@@ -629,11 +621,6 @@ public:
 
     /** Notify that model settings have changed - call this to update token estimation UI */
     void NotifyModelSettingsChanged();
-
-    /** UI Color palette for all NodeToCode widgets. Widgets read it through N2C::UI::Colors() (Core/Style/N2CUIColors.h). */
-    UPROPERTY(Config, EditAnywhere, Category = "Node to Code | Theming",
-        meta=(DisplayName="UI Colors"))
-    FN2CUIColors UIColors;
 
     /** Code editor theme colors */
     UPROPERTY(Config, EditAnywhere, Category = "Node to Code | Theming",
@@ -819,22 +806,28 @@ public:
         meta = (DisplayName = "Estimated Reference File Tokens"))
     int32 EstimatedReferenceTokens = 0;
 
-    /** Source files to provide as context to the LLM */
-    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | Code Generation", 
-        meta = (DisplayName = "Reference Source Files",
-               FilePathFilter = "C++ Files (*.h;*.cpp)|*.h;*.cpp",
-               ToolTip="Source files to include as context in LLM prompts"))
-    TArray<FFilePath> ReferenceSourceFilePaths;
-    
-    /** Custom output directory for translations */
-    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | Code Generation",
-        meta = (DisplayName = "Custom Translation Output Directory",
-               ToolTip="If set, translations will be saved to this directory instead of the default location in Saved/NodeToCode/Translations"))
-    FDirectoryPath CustomTranslationOutputDirectory;
-    
     /**
-     * Drops reference source files that do not exist (one warning per missing path per editor session) and warns
-     * once about a missing Custom Translation Output Directory. Runs after the config is loaded (RefreshReferenceFiles);
+     * The project's reference source files, shared by the team and stored relative to the project folder
+     * (RelativeToGameDir). Editing the list in Project Settings moves an entry outside the project to the editing
+     * user's My Reference Source Files (UN2CUserSettings), so no developer's own paths are committed.
+     */
+    UPROPERTY(Config, EditAnywhere, BlueprintReadOnly, Category = "Node to Code | Code Generation",
+        meta = (DisplayName = "Reference Source Files", RelativeToGameDir,
+               FilePathFilter = "C++ Files (*.h;*.cpp)|*.h;*.cpp",
+               ToolTip="Source files of this project to include as context in LLM prompts, shared by everyone on the project and stored relative to the project folder. A file outside the project moves to your own list (Editor Preferences > Plugins > Node to Code (User) > My Reference Source Files)."))
+    TArray<FFilePath> ReferenceSourceFilePaths;
+
+    /**
+     * Makes each entry of ProjectList inside ProjectDir (FPaths::ProjectDir() when empty) project-relative, and moves
+     * each entry outside it to UserList (as an absolute path, once). Called when the list is edited in Project Settings.
+     * @return the number of entries moved to UserList
+     */
+    static int32 NormalizeReferenceSourceFilePaths(TArray<FFilePath>& ProjectList, TArray<FFilePath>& UserList, const FString& ProjectDir = FString());
+
+    /**
+     * Drops reference source files that do not exist (one warning per missing path per editor session; a relative
+     * entry is under the project folder) and notes once a Custom Translation Output Directory (UN2CUserSettings) that
+     * does not exist yet. Runs after the config is loaded (RefreshReferenceFiles);
      * the dropped paths stay in the config file, so a file missing on one machine is not removed for the team.
      */
     void ValidateReferenceSourcePaths();

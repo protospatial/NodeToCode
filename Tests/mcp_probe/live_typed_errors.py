@@ -51,7 +51,7 @@ CASES = [
 # Runs in the editor: points the settings at a provider for the batch and returns the previous value
 PROVIDER_PY = r'''
 import unreal
-settings = unreal.get_default_object(unreal.N2CSettings)
+settings = unreal.get_default_object(unreal.N2CUserSettings)  # the provider is per user since settings version 5
 previous = settings.get_editor_property("provider").name
 target = getattr(unreal.N2CLLMProvider, %(member)r)
 settings.set_editor_property("provider", target)
