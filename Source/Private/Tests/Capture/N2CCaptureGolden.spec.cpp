@@ -4248,6 +4248,54 @@ void FN2CCaptureGoldenSpec::Define()
 	// Card 0134: IDs are allocated per node and pin object, graphs are deduplicated by identity
 	Describe(TEXT("Identity"), [this]()
 	{
+		// Card 0420: on UE 5.8 these engine graphs failed with "Duplicate pin ID P95 found on node N37" (UpdateSunDirection)
+		// and "Duplicate pin ID P31 on node N2" (Create and Assign MID) before capture gave IDs per pin object (#101)
+		It(TEXT("captures BP_Sky_Sphere's functions and StandardMacros' Create and Assign MID with one ID per pin"), [this]()
+		{
+			const auto FindGraph = [](const UBlueprint* Blueprint, const FName Name) -> UEdGraph*
+			{
+				TArray<UEdGraph*> Graphs;
+				if (Blueprint)
+				{
+					Blueprint->GetAllGraphs(Graphs);
+				}
+				UEdGraph* const* Found = Graphs.FindByPredicate([Name](const UEdGraph* Graph) { return Graph && Graph->GetFName() == Name; });
+				return Found ? *Found : nullptr;
+			};
+			const UBlueprint* SkySphere = LoadObject<UBlueprint>(nullptr, TEXT("/Engine/EngineSky/BP_Sky_Sphere.BP_Sky_Sphere"));
+			const UBlueprint* Macros = LoadObject<UBlueprint>(nullptr, TEXT("/Engine/EditorBlueprintResources/StandardMacros.StandardMacros"));
+			if (!TestNotNull(TEXT("BP_Sky_Sphere"), SkySphere) || !TestNotNull(TEXT("StandardMacros"), Macros))
+			{
+				return;
+			}
+			const TPair<const UBlueprint*, const TCHAR*> Targets[] = {
+				{ SkySphere, TEXT("UpdateSunDirection") },
+				{ SkySphere, TEXT("RefreshMaterial") },
+				{ SkySphere, TEXT("UserConstructionScript") },
+				{ Macros, TEXT("Create and Assign MID") },
+			};
+			for (const TPair<const UBlueprint*, const TCHAR*>& Target : Targets)
+			{
+				const FString What = FString::Printf(TEXT("%s:%s"), *Target.Key->GetName(), Target.Value);
+				UEdGraph* Graph = FindGraph(Target.Key, Target.Value);
+				if (!TestNotNull(What + TEXT(" exists"), Graph))
+				{
+					continue;
+				}
+				// Max Translation Depth 1, so the macros and functions these graphs use are captured too
+				FN2CCaptureOptions Options;
+				Options.Depth = 1;
+				const TValueOrError<FN2CCapture, FString> Result = N2C::CaptureGraph(*Graph, Options);
+				if (!TestTrue(What + TEXT(" is captured (") + (Result.HasError() ? Result.GetError() : FString()) + TEXT(")"), Result.HasValue()))
+				{
+					continue;
+				}
+				TestTrue(What + TEXT(" has nodes"), Result.GetValue().Blueprint.Graphs.Num() > 0
+					&& Result.GetValue().Blueprint.Graphs[0].Nodes.Num() > 0);
+				ExpectConsistentIDs(What, Result.GetValue());
+			}
+		});
+
 		It(TEXT("gives a pasted node's pins IDs of their own and the capture validates"), [this]()
 		{
 			const FCaptureCase* Case = FindCase(TEXT("CopyPaste"));

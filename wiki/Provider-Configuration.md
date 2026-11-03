@@ -146,8 +146,10 @@ also limited to 3600 seconds.
 **LLM Provider → Max Request Retries** (default 3, 0 to 10) is how many times NodeToCode sends a request again when
 the provider answers 429 (rate limited), 529 (overloaded) or another 5xx server error. It waits as long as the
 provider asks (`Retry-After`), or else 1 second, then 2, then 4 (each with a little random extra), never more than 60
-seconds; a provider that asks for a longer wait gets no retry and the translation fails at once. Other errors (a bad
-key, a bad request) are not retried. The Output Log shows each retry ("HTTP 429 from ...: retrying in 2.0 s"). 0
+seconds; a provider that asks for a longer wait gets no retry and the translation fails at once. A 429 that says the
+account is out of credit or quota (OpenAI's "You exceeded your current quota" or "no credits remaining", Gemini's
+spent daily quota or depleted prepayment credits, DeepSeek's "Insufficient Balance") is not retried either: it fails
+at once as a `Billing` error, since waiting cannot fix it. Other errors (a bad key, a bad request) are not retried. The Output Log shows each retry ("HTTP 429 from ...: retrying in 2.0 s"). 0
 turns retries off.
 
 Settings are read again for every request: a provider, model, API key or timeout you change applies to the next

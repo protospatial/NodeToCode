@@ -7,6 +7,10 @@
 #include "HttpModule.h"
 #include "Interfaces/IHttpRequest.h"
 #include "Interfaces/IHttpResponse.h"
+#include "Dom/JsonObject.h"
+#include "Models/N2CTranslation.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
 
 FString FN2CHttpResponseData::GetHeader(const FString& Name) const
 {
@@ -154,6 +158,21 @@ bool FN2CRetryPolicy::IsRetryableStatus(int32 Status)
 	return Status == 429 || Status == 529 || (Status >= 500 && Status <= 599);
 }
 
+bool FN2CRetryPolicy::IsQuotaExhausted(const FN2CHttpResponseData& Response)
+{
+	if (!Response.bReceived || Response.Body.IsEmpty())
+	{
+		return false;
+	}
+	TSharedPtr<FJsonObject> Root;
+	const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(Response.Body);
+	if (!FJsonSerializer::Deserialize(Reader, Root) || !Root.IsValid() || !Root->HasField(TEXT("error")))
+	{
+		return false;
+	}
+	return FN2CTranslationError::FromErrorJson(Root).Kind == EN2CTranslationErrorKind::Billing;
+}
+
 float FN2CRetryPolicy::GetServerDelaySeconds(const FN2CHttpResponseData& Response, const FDateTime& Now)
 {
 	float Number = 0.0f;
@@ -182,6 +201,11 @@ float FN2CRetryPolicy::GetServerDelaySeconds(const FN2CHttpResponseData& Respons
 float FN2CRetryPolicy::GetDelaySeconds(int32 RetryIndex, const FN2CHttpResponseData& Response, float Jitter01, const FDateTime& Now) const
 {
 	if (!Response.bReceived || !IsRetryableStatus(Response.Status) || RetryIndex < 0 || RetryIndex >= MaxRetries)
+	{
+		return -1.0f;
+	}
+	// Out of credit or quota (card 0529): the same request fails again however long it waits
+	if (IsQuotaExhausted(Response))
 	{
 		return -1.0f;
 	}
