@@ -16,6 +16,7 @@ Run (from the repo root; 3.11 is the Python UE 5.6-5.8 embed):
 Tests/python/editor holds tests that need the real editor (run_editor_tests.py, see README.md); pytest skips it.
 """
 
+import json
 import os
 import shutil
 import sys
@@ -181,3 +182,32 @@ def real_plugin_lookup(ue, monkeypatch):
 def scripts_module():
     import nodetocode.scripts as scripts
     return scripts
+
+
+class ToolStub:
+    """Stand-in for unreal.N2CPythonBridge.invoke_tool (card 0342): records (tool, arguments) and answers with the
+    envelope InvokeTool writes. answers maps a tool name to the tool's value (a dict), to an error string (sent as
+    a failure with code TOOL_FAILED), or to a callable(arguments) returning either."""
+
+    def __init__(self, answers=None):
+        self.calls = []
+        self.answers = dict(answers or {})
+
+    def invoke_tool(self, tool_name, arguments_json):
+        arguments = json.loads(arguments_json)
+        self.calls.append((tool_name, arguments))
+        answer = self.answers.get(tool_name, {})
+        if callable(answer):
+            answer = answer(arguments)
+        if isinstance(answer, str):
+            return json.dumps({'success': False, 'data': None, 'error': answer, 'code': 'TOOL_FAILED'},
+                              ensure_ascii=False)
+        return json.dumps({'success': True, 'data': answer, 'error': None}, ensure_ascii=False)
+
+
+@pytest.fixture
+def tools(monkeypatch):
+    """unreal.N2CPythonBridge as a ToolStub; set stub.answers[tool] to answer a tool"""
+    stub = ToolStub()
+    monkeypatch.setattr(UNREAL, 'N2CPythonBridge', stub, raising=False)
+    return stub

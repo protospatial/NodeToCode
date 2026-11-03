@@ -21,7 +21,7 @@ Quick Start:
 
     # Save the blueprint
     result = n2c.save_blueprint()
-    if result['success'] and result['data']['was_saved']:
+    if result['success'] and 'sourceControl' in result['data']:   # set when the file was written
         print("Saved to disk")
 
 Script Management:
@@ -41,17 +41,17 @@ Graph Editing:
     added = n2c.add_node_to_graph(node['spawnMetadata']['nodeName'], node['spawnMetadata']['actionIdentifier'])
 
     # Connect nodes: pins are picked by their stable pinName ('execute', 'then', 'ReturnValue', ...)
-    begin = n2c.find_nodes_in_graph(["BeginPlay"])['data']['nodes'][0]
+    begin = n2c.find_nodes_in_graph(["BeginPlay"])['data']['nodes'][0]   # N2C JSON nodes
     n2c.connect_pins([{
-        "from": {"nodeGuid": begin['nodeGuid'],
-                 "pinGuid": next(p['pinGuid'] for p in begin['outputPins'] if p['pinName'] == 'then')},
+        "from": {"nodeGuid": begin['ids']['guid'],
+                 "pinGuid": next(p['ids']['guid'] for p in begin['output_pins'] if p['ids']['name'] == 'then')},
         "to": {"nodeGuid": added['data']['nodeGuid'],
                "pinGuid": next(p['pinGuid'] for p in added['data']['inputPins'] if p['pinName'] == 'execute')},
     }])
 
     # Find and delete nodes
     found = n2c.find_nodes_in_graph(["PrintString"])
-    n2c.delete_nodes([found['data']['nodes'][0]['nodeGuid']])
+    n2c.delete_nodes([found['data']['nodes'][0]['ids']['guid']])
 
 Function Pin Management (with a function graph focused, for example after open_blueprint_function):
     # Add function parameters
@@ -116,6 +116,11 @@ Available Functions (the authoritative list is __all__ below):
     - get_project_content_dir(), get_project_dir() - Project paths
     - log_info/warning/error(msg) - Log messages
     - make_success_result(data), make_error_result(error) - Build the standard result dict
+    - invoke_tool(name, arguments) - Run any NodeToCode MCP tool by name (not run-python or the script library)
+
+    The graph, function-pin, compile, save, tag_graph and open functions run the matching MCP tool through
+    invoke_tool (card 0342): their data is the tool's result, plus the 1.x keys for one release (reading one logs a
+    deprecation warning naming the tool's key). utils.TOOL_NAMES lists the pairs, utils.BRIDGE_ONLY the rest.
 """
 
 __version__ = "1.0.0"
@@ -187,6 +192,7 @@ from .utils import (
     log_error,
     make_success_result,
     make_error_result,
+    invoke_tool,
 )
 
 __all__ = [
@@ -243,4 +249,5 @@ __all__ = [
     'log_error',
     'make_success_result',
     'make_error_result',
+    'invoke_tool',
 ]
