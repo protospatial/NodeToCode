@@ -320,7 +320,7 @@
 						"input_pins": [
 							{
 								"id": "P31",
-								"name": "Inputs[0]",
+								"name": "x",
 								"type": "Wildcard",
 								"connected": true
 							}

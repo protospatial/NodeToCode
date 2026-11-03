@@ -10,6 +10,9 @@
 #include "Materials/MaterialAttributeDefinitionMap.h"
 #include "Materials/MaterialExpression.h"
 #include "Materials/MaterialExpressionComment.h"
+#include "Materials/MaterialExpressionCustom.h"
+#include "HAL/IConsoleManager.h"
+#include "UObject/SoftObjectPath.h"
 #include "Materials/MaterialExpressionComposite.h"
 #include "Materials/MaterialExpressionGetMaterialAttributes.h"
 #include "Materials/MaterialExpressionPinBase.h"
@@ -214,6 +217,13 @@ namespace N2CMaterialCapture
 	 */
 	FString ExportValue(const FProperty* Property, const void* Container)
 	{
+		// An object reference (a texture, a parameter collection, a virtual texture, a function) as its soft object path
+		// (card 0451), "/Engine/EngineResources/DefaultTexture.DefaultTexture", not Unreal's typed export text
+		if (const FObjectPropertyBase* Object = CastField<FObjectPropertyBase>(Property))
+		{
+			const UObject* Referenced = Object->GetObjectPropertyValue_InContainer(Container);
+			return Referenced ? FSoftObjectPath(Referenced).ToString() : FString(TEXT("None"));
+		}
 		if (const FByteProperty* Byte = CastField<FByteProperty>(Property); Byte && Byte->Enum)
 		{
 			return Byte->Enum->GetNameStringByValue(*Byte->ContainerPtrToValuePtr<uint8>(Container));
@@ -226,6 +236,23 @@ namespace N2CMaterialCapture
 		FString Value;
 		Property->ExportText_InContainer(0, Value, Container, nullptr, nullptr, PPF_None);
 		return Value;
+	}
+
+	/**
+	 * An expression NodeToCode does not read (card 0451): a deprecated class, or part of the material layer system that
+	 * decision 0009 refuses (the layer stack and a layer's output)
+	 */
+	bool IsUnsupportedExpression(const UMaterialExpression& Expression)
+	{
+		return Expression.GetClass()->HasAnyClassFlags(CLASS_Deprecated) || IsA(Expression, TEXT("MaterialExpressionMaterialAttributeLayers"))
+			|| IsA(Expression, TEXT("MaterialExpressionMaterialLayerOutput"));
+	}
+
+	/** True when the project renders materials with Substrate (r.Substrate, read-only, set in the project's config) */
+	bool IsSubstrateProject()
+	{
+		const IConsoleVariable* Substrate = IConsoleManager::Get().FindConsoleVariable(TEXT("r.Substrate"));
+		return Substrate && Substrate->GetInt() > 0;
 	}
 
 	FString PinRef(const FString& NodeID, const FString& PinID)
@@ -264,6 +291,7 @@ void FN2CMaterialCaptureContext::CaptureMaterial(UMaterial& Material)
 		}
 	}
 	Metadata.Material.bTwoSided = Material.IsTwoSided();
+	Metadata.Material.bSubstrate = IsSubstrateProject();
 
 	CaptureGraph(Material.GetName(), EN2CGraphType::Material, Material.GetExpressions(), Material.GetEditorComments(), &Material, 0);
 	while (PendingFunctions.Num() > 0)
@@ -415,6 +443,15 @@ void FN2CMaterialCaptureContext::CaptureGraph(const FString& Name, EN2CGraphType
 		// Inputs, named by their property (a function call's by its function input's name)
 		const TMap<const FExpressionInput*, FString> PropertyNames = InputPropertyNames(*Expression);
 		const UMaterialExpressionMaterialFunctionCall* Call = Cast<UMaterialExpressionMaterialFunctionCall>(Expression);
+		const UMaterialExpressionCustom* Custom = Cast<UMaterialExpressionCustom>(Expression);
+		const bool bUnsupported = IsUnsupportedExpression(*Expression);
+		if (bUnsupported)
+		{
+			AddWarning(N2CJsonContract::Diagnostic::UnsupportedExpression, FString::Printf(TEXT("%s.nodes[%d]"), *GraphPath, NodeIndex),
+				FString::Printf(TEXT("%s %s is not read (deprecated, or part of the material layer system NodeToCode does not capture): ")
+					TEXT("its settings are left out and the assets it references are not followed"),
+					*Expression->GetClass()->GetName(), *Expression->GetName()));
+		}
 		TArray<const FExpressionInput*>& Inputs = NodeInputs.AddDefaulted_GetRef();
 		TSet<FString> UsedNames;
 		// GetInput, not GetInputsView (deprecated on UE 5.8); a function call overrides both with its function's inputs
@@ -428,13 +465,23 @@ void FN2CMaterialCaptureContext::CaptureGraph(const FString& Name, EN2CGraphType
 				{
 					PinName = Call->FunctionInputs[Index].Input.InputName.ToString();
 				}
+				// A Custom node's inputs by the names its HLSL uses (card 0451)
+				else if (Custom && Custom->Inputs.IsValidIndex(Index) && !Custom->Inputs[Index].InputName.IsNone())
+				{
+					PinName = Custom->Inputs[Index].InputName.ToString();
+				}
 				else if (const FString* Found = PropertyNames.Find(Input))
 				{
 					PinName = *Found;
 				}
 				else
 				{
+					// The reflection fallback (card 0451): an input the class supplies some other way keeps its index
 					PinName = FString::Printf(TEXT("Input%d"), Index);
+					AddWarning(N2CJsonContract::Diagnostic::UnmappedPin,
+						FString::Printf(TEXT("%s.nodes[%d].input_pins[%d]"), *GraphPath, NodeIndex, Node.InputPins.Num()),
+						FString::Printf(TEXT("Input %d of %s %s is not a property NodeToCode knows; it is captured as %s"),
+							Index, *Expression->GetClass()->GetName(), *Expression->GetName(), *PinName));
 				}
 			}
 			if (UsedNames.Contains(PinName))
@@ -458,8 +505,12 @@ void FN2CMaterialCaptureContext::CaptureGraph(const FString& Name, EN2CGraphType
 			Inputs.Add(Input);
 		}
 
-		// Settings, after the inputs: an input's Const<Name> value is its default_value, not a property
-		CaptureProperties(*Expression, Node);
+		// Settings, after the inputs: an input's Const<Name> value is its default_value, not a property. An unsupported
+		// expression's are not read, so nothing it references is followed
+		if (!bUnsupported)
+		{
+			CaptureProperties(*Expression, Node);
+		}
 
 		// Outputs, named by their OutputName or "Output"
 		FCapturedExpression& Entry = Captured.Add(Expression);
