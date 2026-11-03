@@ -72,7 +72,7 @@ public:
     /**
      * True for paths MCP clients must never read or list because they hold credentials:
      * <ProjectSaved>/NodeToCode/User (where 1.x kept secrets), <UserSettingsDir>/NodeToCode (the per-user secret
-     * store, FN2CSecretStore), any secrets.json* file, <Project>/.git, and .env files.
+     * store, FN2CSecretStore), any secrets.json* file, the MCP audit trail (mcp-audit.*, card 0424), <Project>/.git, and .env files.
      * @param AbsolutePath A normalized absolute path
      */
     static bool IsDeniedForAgentAccess(const FString& AbsolutePath);
