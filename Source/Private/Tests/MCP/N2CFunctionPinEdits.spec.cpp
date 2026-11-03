@@ -454,7 +454,9 @@ void FN2CFunctionPinEditsSpec::Define()
 			return Json;
 		};
 
-		// A misspelled name first: refused, no transaction, package clean
+		// A misspelled name first: refused, no transaction, package clean. The bridge forwards to remove-function-entry-pin
+		// (card 0343), which logs the refusal
+		AddExpectedError(TEXT("RemoveFunctionEntryPin: Failed to remove pin"), EAutomationExpectedErrorFlags::Contains, 1);
 		const int32 QueueBefore = GEditor->Trans->GetQueueLength();
 		Bridge(TEXT("bridge remove Typo"), UN2CPythonBridge::RemoveFunctionEntryPin(TEXT("Typo")), false);
 		TestFalse(TEXT("bridge remove Typo: package clean"), Test->GetPackage()->IsDirty());

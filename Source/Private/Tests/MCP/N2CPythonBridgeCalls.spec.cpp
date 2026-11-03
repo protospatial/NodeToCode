@@ -222,6 +222,8 @@ void FN2CPythonBridgeCallsSpec::Define()
 
 	It(TEXT("calls every bridge function with no Blueprint focused, and json.loads reads every response, also with an apostrophe in any string argument"), [this]()
 	{
+		// The editing and navigation functions forward to their MCP tool (card 0343), which logs what it refuses
+		AddExpectedError(TEXT("open-blueprint-asset:"), EAutomationExpectedErrorFlags::Contains, 0);
 		if (!TestTrue(TEXT("Python is available"), PythonAvailable()) || !Function)
 		{
 			return;
@@ -277,6 +279,8 @@ void FN2CPythonBridgeCallsSpec::Define()
 
 	It(TEXT("on a focused Blueprint, every editing call succeeds with normal arguments, and json.loads reads every response, also with an apostrophe in any string argument"), [this]()
 	{
+		// The editing and navigation functions forward to their MCP tool (card 0343), which logs what it refuses
+		AddExpectedError(TEXT("open-blueprint-asset:"), EAutomationExpectedErrorFlags::Contains, 0);
 		if (!TestTrue(TEXT("Python is available"), PythonAvailable()) || !Function)
 		{
 			return;

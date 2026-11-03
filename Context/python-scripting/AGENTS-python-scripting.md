@@ -164,8 +164,8 @@ warning naming the tool's key; the tool's own key wins where both exist, e.g. a 
 value with `"success": false` (compile errors) makes the result a failure with the tool's `message` as `error`.
 `utils.BRIDGE_ONLY` lists the functions still on their own bridge UFUNCTION and why: `get_focused_blueprint` (the
 tool's N2C JSON uses `ids` objects), `list_tags` and `remove_tag` (the tag tools take no Blueprint path, card 0498),
-`get_llm_providers` (the tool lists configured providers only). The UFUNCTIONs themselves stay until card 0343 turns
-them into forwarders.
+`get_llm_providers` (the tool lists configured providers only). The 13 graph-editing and navigation UFUNCTIONs
+are deprecated forwarders to their tool since card 0343 (see "C++ Bridge").
 
 ### Available Functions
 
@@ -335,16 +335,27 @@ Bridge class exposing NodeToCode functionality to Python via `unreal.N2CPythonBr
 
 *   **Location**: `Source/Private/MCP/Python/N2CPythonBridge.h/.cpp`
 *   **UFunction Category**: `NodeToCode|Python`
-*   **Functions**: every public `UFUNCTION` in the header. `InvokeTool` (`utils.invoke_tool`) runs any MCP tool, and
-    the 17 wrappers in `utils.TOOL_NAMES` call it rather than their own UFUNCTION below (card 0342; card 0343 turns
-    those into forwarders). The rest have their own `nodetocode` wrapper (call the wrapper, which parses the JSON and
-    checks arguments): `GetFocusedBlueprintJson`, `GetBlueprintN2CJson`,
-    `ListBlueprintGraphs`, `GetBlueprintDependencies`, `ReadN2CJson`, `CompileFocusedBlueprint`,
-    `SaveFocusedBlueprint` (`blueprint.py`); `TagFocusedGraph`, `ListTags`, `RemoveTag`, `GetLLMProviders`,
-    `GetActiveProvider`, `OpenBlueprint`, `OpenBlueprintFunction` (`bridge.py`); `SearchBlueprintNodes`,
-    `AddNodeToGraph`, `ConnectPins`, `SetPinValue`, `DeleteNodes`, `FindNodesInGraph`, `CreateCommentNode`
-    (`graph.py`); `AddFunctionInputPin`, `AddFunctionReturnPin`, `RemoveFunctionEntryPin`, `RemoveFunctionReturnPin`
-    (`functions.py`). The header comments become the Python docstrings (`help(unreal.N2CPythonBridge.open_blueprint)`).
+*   **Functions**: every public `UFUNCTION` in the header. `InvokeTool` (`utils.invoke_tool`) runs any MCP tool;
+    `InvokeToolWith` (C++ only) is the same with the arguments as an object.
+*   **Forwarders** (card 0343): `OpenBlueprint`, `OpenBlueprintFunction`, `SearchBlueprintNodes`, `AddNodeToGraph`,
+    `ConnectPins`, `SetPinValue`, `DeleteNodes`, `FindNodesInGraph`, `CreateCommentNode`, `AddFunctionInputPin`,
+    `AddFunctionReturnPin`, `RemoveFunctionEntryPin` and `RemoveFunctionReturnPin` build their tool's arguments and
+    return InvokeTool's answer: `data` is the tool's result (its own keys, `Context/mcp-server/tools.generated.md`), and
+    `success` is false also when that result says `"success": false`, as `utils._invoke` does. They carry
+    `DeprecatedFunction` (use the `nodetocode` function of the same name, which adds the 1.x keys for one release, or
+    `invoke_tool`), so Blueprint menus hide them and Python warns when one is called. The bridge copies they replaced
+    are gone, with three behaviours of their own: `DeleteNodes` with a GUID that is not in the graph is refused as a
+    whole (the copy deleted the rest and listed it under `skipped`), `ConnectPins` needs each pin's `pinGuid`
+    (`pinName` is the fallback when the GUID matches no pin), and `OpenBlueprint` reports the tool's error for a path
+    it cannot load.
+*   **Own code**: `GetFocusedBlueprintJson` (the focused graph through `N2CMcpBlueprintExport::CaptureGraph`, the
+    capture get-focused-blueprint runs, written in the serializer's own form with each node's `id`),
+    `GetBlueprintN2CJson`, `ListBlueprintGraphs`, `GetBlueprintDependencies`, `ReadN2CJson`, `CompileFocusedBlueprint`,
+    `SaveFocusedBlueprint`, `TagFocusedGraph`, `ListTags`, `RemoveTag` (the subsystem's cores, see above),
+    `GetLLMProviders` and `GetActiveProvider` (names, display names, locality and endpoints from the model catalog,
+    `Content/Data/N2CModelCatalog.json`; Ollama's and LM Studio's endpoint is the user's with the path their service
+    adds), `GetTranslationTargets`, `MarkUntrustedContent`, `GetUntrustedContentNotice` and `SubmitMcpResult`. The
+    header comments become the Python docstrings (`help(unreal.N2CPythonBridge.open_blueprint)`).
 *   **Deprecated** (card 0301): `GetBlueprintN2CJson`, `ListBlueprintGraphs`, `CompileFocusedBlueprint`,
     `SaveFocusedBlueprint` and `TagFocusedGraph` carry `DeprecatedFunction`: they still work and `dir()` lists them,
     Python warns (`DeprecationWarning`) when one is called, and Blueprint action menus no longer offer them. Use the
