@@ -41,6 +41,8 @@ namespace N2CStructuredOutputSpec
 		TEXT("place-cpp-translation"),
 		// Card 0319: its structured result is checked by NodeToCode.MCP.BlueprintDependencies (the dependency fixtures)
 		TEXT("get-blueprint-dependencies"),
+		// Card 0323: its structured result is checked by NodeToCode.Migration.Plan (the dependency fixtures)
+		TEXT("create-migration-plan"),
 	};
 
 	FString Condensed(const TSharedPtr<FJsonObject>& Object)
