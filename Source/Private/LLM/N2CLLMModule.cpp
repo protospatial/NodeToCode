@@ -117,6 +117,7 @@ bool UN2CLLMModule::RefreshFromSettings()
         && Snapshot.ReasoningEffort.Equals(Config.ReasoningEffort, ESearchCase::CaseSensitive)
         && Snapshot.MaxOutputTokens == Config.MaxOutputTokens
         && FMath::IsNearlyEqual(Snapshot.ActivityTimeoutSeconds, Config.ActivityTimeoutSeconds)
+        && Snapshot.MaxRetries == Config.MaxRetries
         && EndpointSetting.Equals(ServiceEndpointSetting, ESearchCase::CaseSensitive);
     if (bUnchanged)
     {
