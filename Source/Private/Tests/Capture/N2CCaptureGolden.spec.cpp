@@ -1530,6 +1530,32 @@ void FN2CCaptureGoldenSpec::AddCases()
 			return Graph;
 		} });
 
+	// Card 0484: the key and value pins' labels are stored without a source text; capture reads them in source text
+	Cases.Add({ TEXT("ForEachMapSet"),
+		TEXT("Function MapSetLoops(Scores: Name to int map, Tags: Name set): For Each (Map) over Scores, whose Loop Body runs "
+			"CollectGarbage and whose Completed runs For Each (Set) over Tags, whose Loop Body runs ControlScreensaver."),
+		{},
+		[](FTestBlueprint& BP) -> UEdGraph*
+		{
+			FEdGraphPinType NameSet = NamePinType();
+			NameSet.ContainerType = EPinContainerType::Set;
+			UEdGraph* Graph = BP.AddFunction(TEXT("MapSetLoops"));
+			BP.AddFunctionInput(Graph, TEXT("Scores"), MapPinType(NamePinType(), FTestBlueprint::IntPinType()));
+			BP.AddFunctionInput(Graph, TEXT("Tags"), NameSet);
+			UK2Node_MapForEach* MapLoop = AddNode<UK2Node_MapForEach>(Graph);
+			UK2Node_SetForEach* SetLoop = AddNode<UK2Node_SetForEach>(Graph);
+			UK2Node_CallFunction* Collect = AddCollectGarbage(BP, Graph);
+			UK2Node_CallFunction* Screensaver = AddControlScreensaver(BP, Graph);
+			UK2Node_FunctionEntry* Entry = BP.FunctionEntry(Graph);
+			BP.Link(Entry, UEdGraphSchema_K2::PN_Then, MapLoop, UEdGraphSchema_K2::PN_Execute);
+			BP.Link(Entry, TEXT("Scores"), MapLoop, TEXT("MapPin"));
+			BP.Link(MapLoop, UEdGraphSchema_K2::PN_Then, Collect, UEdGraphSchema_K2::PN_Execute);
+			BP.Link(MapLoop, TEXT("CompletedPin"), SetLoop, UEdGraphSchema_K2::PN_Execute);
+			BP.Link(Entry, TEXT("Tags"), SetLoop, TEXT("SetPin"));
+			BP.Link(SetLoop, UEdGraphSchema_K2::PN_Then, Screensaver, UEdGraphSchema_K2::PN_Execute);
+			return Graph;
+		} });
+
 	// Card 0127: user types, recursion and depth, copy-paste, nested graphs, Enhanced Input
 
 	Cases.Add({ TEXT("UserStruct"),
@@ -2222,36 +2248,93 @@ void FN2CCaptureGoldenSpec::Define()
 			TestEqual(TEXT("member_name"), Action->GetStringField(TEXT("member_name")), FString(TEXT("IA_GoldenJump")));
 		});
 
-		// Not a golden case: the loops' key and value pin labels are display text the engine makes with
-		// FText::FromString, so their capture differs in Japanese (StableNames would fail on an engine quirk)
-		It(TEXT("captures For Each (Map) and For Each (Set) as loops and To Text as GenericToText"), [this]()
+		It(TEXT("captures For Each (Map) and For Each (Set) as loops with their key and value labels in source text"), [this]()
 		{
-			const FCaptureCase Loops{ TEXT("NodeTypesLoops"),
-				TEXT("Event graph: Custom event Go runs For Each (Map), whose Completed runs For Each (Set); an unwired To Text."),
+			const FCaptured Captured = CaptureNamed(TEXT("ForEachMapSet"));
+			if (!Captured.Capture.IsValid())
+			{
+				return;
+			}
+			struct FExpectedLabel { const TCHAR* Class; const TCHAR* Pin; const TCHAR* Label; };
+			for (const FExpectedLabel& Expected : {
+				FExpectedLabel{ TEXT("K2Node_MapForEach"), TEXT("KeyPin"), TEXT("Map Key") },
+				FExpectedLabel{ TEXT("K2Node_MapForEach"), TEXT("ValuePin"), TEXT("Map Value") },
+				FExpectedLabel{ TEXT("K2Node_SetForEach"), TEXT("ValuePin"), TEXT("Set Value") } })
+			{
+				const TSharedPtr<FJsonObject> Loop = FindNode(Captured.Capture, Expected.Class);
+				if (!Loop.IsValid())
+				{
+					continue;
+				}
+				TestEqual(FString(Expected.Class) + TEXT(" type"), Loop->GetStringField(TEXT("type")), FString(TEXT("ForEachLoop")));
+				TestEqual(FString::Printf(TEXT("%s %s label"), Expected.Class, Expected.Pin),
+					PinField(FindPinObject(Loop, TEXT("output_pins"), Expected.Pin), N2CJsonContract::PinLabelField), FString(Expected.Label));
+			}
+		});
+
+		// The culture check is in StableNames; this one shows the pin label hint without a capture
+		It(TEXT("keeps a key or value name the user typed, and reads the engine's default names in source text in Japanese"), [this]()
+		{
+			N2CTest::FTestBlueprint BP(TEXT("BP_N2CGolden_ForEachNames"), TEXT("/Game"));
+			UEdGraph* Graph = BP.EventGraph();
+			using namespace N2CCaptureGolden;
+			// KeyName and ValueName are private UPROPERTYs the user edits in Details; set them before the pins are made
+			const auto SetName = [](UObject* Node, const TCHAR* Property, const TCHAR* Value)
+			{
+				if (FStrProperty* Name = FindFProperty<FStrProperty>(Node->GetClass(), Property))
+				{
+					Name->SetPropertyValue_InContainer(Node, Value);
+				}
+			};
+			UK2Node_MapForEach* Renamed = AddNode<UK2Node_MapForEach>(Graph,
+				[&SetName](UK2Node_MapForEach* Node) { SetName(Node, TEXT("KeyName"), TEXT("Player")); SetName(Node, TEXT("ValueName"), TEXT("Score")); });
+			TestEqual(TEXT("a renamed key"), N2CStableNames::PinLabel(Renamed->FindPin(TEXT("KeyPin"))), FString(TEXT("Player")));
+			TestEqual(TEXT("a renamed value"), N2CStableNames::PinLabel(Renamed->FindPin(TEXT("ValuePin"))), FString(TEXT("Score")));
+
+			FInternationalization& I18N = FInternationalization::Get();
+			const FString SavedLanguage = I18N.GetCurrentLanguage()->GetName();
+			const FString SavedLocale = I18N.GetCurrentLocale()->GetName();
+			ON_SCOPE_EXIT
+			{
+				I18N.SetCurrentLanguage(SavedLanguage);
+				I18N.SetCurrentLocale(SavedLocale);
+			};
+			if (!TestTrue(TEXT("the editor switches to Japanese"), I18N.SetCurrentCulture(TEXT("ja"))))
+			{
+				return;
+			}
+			UK2Node_MapForEach* MapLoop = AddNode<UK2Node_MapForEach>(Graph);
+			UK2Node_SetForEach* SetLoop = AddNode<UK2Node_SetForEach>(Graph);
+			const UEdGraphPin* Key = MapLoop->FindPin(TEXT("KeyPin"));
+			// The engine's Editor/ja localization must translate the default, or this check would prove nothing
+			if (!TestNotEqual(TEXT("the engine shows the key pin in Japanese"), Key->PinFriendlyName.ToString(), FString(TEXT("Map Key"))))
+			{
+				return;
+			}
+			TestEqual(TEXT("the key label in Japanese"), N2CStableNames::PinLabel(Key), FString(TEXT("Map Key")));
+			TestEqual(TEXT("the value label in Japanese"), N2CStableNames::PinLabel(MapLoop->FindPin(TEXT("ValuePin"))), FString(TEXT("Map Value")));
+			TestEqual(TEXT("the set value label in Japanese"), N2CStableNames::PinLabel(SetLoop->FindPin(TEXT("ValuePin"))), FString(TEXT("Set Value")));
+			UK2Node_MapForEach* RenamedJa = AddNode<UK2Node_MapForEach>(Graph,
+				[&SetName](UK2Node_MapForEach* Node) { SetName(Node, TEXT("KeyName"), TEXT("Player")); });
+			TestEqual(TEXT("a renamed key in Japanese"), N2CStableNames::PinLabel(RenamedJa->FindPin(TEXT("KeyPin"))), FString(TEXT("Player")));
+		});
+
+		It(TEXT("captures To Text as GenericToText"), [this]()
+		{
+			const FCaptureCase ToTextCase{ TEXT("NodeTypesToText"),
+				TEXT("Event graph: an unwired To Text."),
 				{},
 				[](N2CTest::FTestBlueprint& BP) -> UEdGraph*
 				{
 					using namespace N2CCaptureGolden;
 					UEdGraph* Graph = BP.EventGraph();
-					UK2Node_CustomEvent* Go = BP.AddCustomEvent(Graph, TEXT("Go"));
-					UK2Node_MapForEach* MapLoop = AddNode<UK2Node_MapForEach>(Graph);
-					UK2Node_SetForEach* SetLoop = AddNode<UK2Node_SetForEach>(Graph);
 					AddNode<UK2Node_GenericToText>(Graph);
-					BP.Link(Go, UEdGraphSchema_K2::PN_Then, MapLoop, UEdGraphSchema_K2::PN_Execute);
-					BP.Link(MapLoop, TEXT("CompletedPin"), SetLoop, UEdGraphSchema_K2::PN_Execute);
 					return Graph;
 				} };
-			const FCaptured Captured = Capture(Loops);
+			const FCaptured Captured = Capture(ToTextCase);
 			if (!Captured.Capture.IsValid())
 			{
 				return;
-			}
-			for (const TCHAR* Class : { TEXT("K2Node_MapForEach"), TEXT("K2Node_SetForEach") })
-			{
-				if (const TSharedPtr<FJsonObject> Loop = FindNode(Captured.Capture, Class))
-				{
-					TestEqual(FString(Class) + TEXT(" type"), Loop->GetStringField(TEXT("type")), FString(TEXT("ForEachLoop")));
-				}
 			}
 			if (const TSharedPtr<FJsonObject> ToText = FindNode(Captured.Capture, TEXT("K2Node_GenericToText")))
 			{

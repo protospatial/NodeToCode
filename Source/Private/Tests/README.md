@@ -376,6 +376,11 @@ whole output to `<Project>/Saved/Automation/N2CCaptureGolden/<case>.actual.json`
   Reverse of an empty timeline).
 - **Exec pins (card 0136):** `BranchSameTarget` (True and False into one node), `Sequence` (then_0 and then_1) and
   `ForEachLoop` (the StandardMacros loop over an int array input: Loop Body and Completed).
+- **Map and set loops (card 0484):** `ForEachMapSet` (For Each (Map) over a Name-to-int map input, whose Completed runs
+  For Each (Set) over a Name set input). The engine stores their key and value pin labels with `FText::FromString`, so
+  `N2CStableNames::PinLabel` maps the engine's default names back to "Map Key", "Map Value" and "Set Value"; the
+  `NodeTypes` tests check those labels in the capture, and that a name the user typed (`KeyName`, `ValueName`) is kept
+  and the defaults read in source text with the editor in Japanese.
 - **Harder shapes (card 0127):** `UserStruct` (a user struct with an Actor object member, an int and a user enum
   member, through Break and Make), `UserEnum` (Switch on a user enum with the entries Min, Max and MaxHealth),
   `Recursion_Depth1` and `Recursion_Depth2` (Root calls Child and itself, Child calls Grandchild, Grandchild calls
@@ -438,15 +443,14 @@ whole output to `<Project>/Saved/Automation/N2CCaptureGolden/<case>.actual.json`
   `CommentBoxes` (`comments`: a box around two nodes lists their IDs, an empty box only its text). `Discovery` checks
   a null entry in `UEdGraph::Nodes` (main, nested and listed graph), an anim graph typed `Animation` by its schema, and
   that a StandardMacros ForEachLoop (engine content) adds no graph at depth 2.
-- **Node types (card 0234):** `NodeTypes` (Set members in Vector, For Each (Map), For Each (Set), a local
-  variable's Get and Set, an unwired To Text (`K2Node_GenericToText`), and two test-only classes from
+- **Node types (card 0234):** `NodeTypes` (Set members in Vector, a local variable's Get and Set, and two test-only classes from
   `Capture/N2CTestNodeClasses.h`: `K2Node_N2CTestUnmapped`, a UK2Node subclass with no mapping, and
   `K2Node_N2CTestCallFunction`, a CallFunction subclass with none of its own). The `NodeTypes` tests check the
   registry's nearest-ancestor rule class by class (Enhanced Input's classes found by name) and, in the captures, that
   Break Struct is `BreakStruct` named by its struct, Set members is `SetFieldsInStruct` and not titled Make, the
-  Enhanced Input event is `InputAction` named by its action, both map and set loops are `ForEachLoop`, a local
-  variable's Get and Set are `LocalVariableGet` and `LocalVariableSet`, and the unmapped class is `Unknown` with its
-  `class`.
+  Enhanced Input event is `InputAction` named by its action, both map and set loops (`ForEachMapSet`) are `ForEachLoop`, a
+  local variable's Get and Set are `LocalVariableGet` and `LocalVariableSet`, an unwired To Text (not a golden case) is
+  `GenericToText`, and the unmapped class is `Unknown` with its `class`.
 - **Liveness (card 0137, issue #13):** `Issue13` (the issue's graph: one output into To Text (String) and a Format
   Text whose result nothing reads), `GhostEvents` (the default BeginPlay wired, Overlap and Tick left as ghosts),
   `DisabledNodes` (a disabled Print String between two calls, a Development Only call, a disabled Branch and the call

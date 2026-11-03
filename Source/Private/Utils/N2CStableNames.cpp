@@ -9,6 +9,8 @@
 #include "Engine/Blueprint.h"
 #include "Engine/BlueprintGeneratedClass.h"
 #include "K2Node_CallFunction.h"
+#include "K2Node_MapForEach.h"
+#include "K2Node_SetForEach.h"
 #include "K2Node_Variable.h"
 #include "Models/N2CJsonContract.h"
 
@@ -114,6 +116,50 @@ namespace N2CStableNames
 		return Node ? SourceText(Node->GetNodeTitle(ENodeTitleType::MenuTitle)) : FString();
 	}
 
+	namespace
+	{
+		/** A pin label the engine localizes once and stores with FText::FromString, so its FText keeps no source */
+		struct FUnsourcedPinLabel
+		{
+			UClass* (*NodeClass)();
+			const TCHAR* PinName;
+			const TCHAR* Namespace;
+			const TCHAR* Key;
+			const TCHAR* Source;
+		};
+
+		/**
+		 * For Each (Map) and For Each (Set) copy LOCTEXT(...).ToString() into their KeyName/ValueName properties and set
+		 * the key and value pins' friendly names from those strings (K2Node_MapForEach.cpp, K2Node_SetForEach.cpp, UE
+		 * 5.6-5.8). A label that still matches the engine's text in the current language goes back to the source text;
+		 * a name the user typed into KeyName or ValueName is kept as typed.
+		 */
+		FString SourceOfUnsourcedLabel(const UEdGraphPin& Pin, const UEdGraphNode& Node, const FString& Label)
+		{
+			static const FUnsourcedPinLabel Labels[] = {
+				{ &UK2Node_MapForEach::StaticClass, TEXT("KeyPin"), TEXT("K2Node_MapForEach"), TEXT("KeyPin_FriendlyName"), TEXT("Map Key") },
+				{ &UK2Node_MapForEach::StaticClass, TEXT("ValuePin"), TEXT("K2Node_MapForEach"), TEXT("ValuePin_FriendlyName"), TEXT("Map Value") },
+				{ &UK2Node_SetForEach::StaticClass, TEXT("ValuePin"), TEXT("K2Node_SetForEach"), TEXT("ValuePin_FriendlyName"), TEXT("Set Value") },
+			};
+			for (const FUnsourcedPinLabel& Entry : Labels)
+			{
+				if (!Node.IsA(Entry.NodeClass()) || Pin.PinName != FName(Entry.PinName))
+				{
+					continue;
+				}
+				const FString Source(Entry.Source);
+				FText Localized;
+				if (Label == Source
+					|| (FText::FindTextInLiveTable_Advanced(Entry.Namespace, Entry.Key, Localized, &Source) && Label == Localized.ToString()))
+				{
+					return Source;
+				}
+				break;
+			}
+			return Label;
+		}
+	}
+
 	FString PinLabel(const UEdGraphPin* Pin)
 	{
 		if (!Pin)
@@ -129,6 +175,10 @@ namespace N2CStableNames
 		else if (!Pin->PinFriendlyName.IsEmpty())
 		{
 			Label = SourceText(Pin->PinFriendlyName);
+			if (Node && Label == Pin->PinFriendlyName.ToString())
+			{
+				Label = SourceOfUnsourcedLabel(*Pin, *Node, Label);
+			}
 		}
 		Label.TrimStartAndEndInline();
 		return N2CJsonContract::IsRedundantHint(Label, Pin->PinName.ToString()) ? FString() : Label;
