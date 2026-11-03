@@ -222,48 +222,16 @@ BEGIN_DEFINE_SPEC(FN2CCaptureGoldenSpec, "NodeToCode.Capture.Golden", N2C_TEST_F
 		return IFileManager::Get().FileExists(*PerEngine) ? PerEngine : GoldenDir() / CaseName + TEXT(".json");
 	}
 
-	static bool UpdateGoldens()
-	{
-		return FPlatformMisc::GetEnvironmentVariable(TEXT("N2C_UPDATE_GOLDENS")) == TEXT("1")
-			|| FParse::Param(FCommandLine::Get(), TEXT("N2CUpdateGoldens"));
-	}
-
-	static FString PrettyJson(const TSharedPtr<FJsonObject>& Object)
-	{
-		FString Text;
-		const TSharedRef<TJsonWriter<TCHAR, TPrettyJsonPrintPolicy<TCHAR>>> Writer =
-			TJsonWriterFactory<TCHAR, TPrettyJsonPrintPolicy<TCHAR>>::Create(&Text);
-		FJsonSerializer::Serialize(Object.ToSharedRef(), Writer);
-		return Text.Replace(TEXT("\r\n"), TEXT("\n")) + TEXT("\n");
-	}
-
-	/** Replaces capture group 1 of every match of Pattern with Token (the whole match when there is no group) */
-	static FString ReplaceMatches(const FString& Text, const TCHAR* Pattern, const TCHAR* Token)
-	{
-		const FRegexPattern Compiled(Pattern);
-		FRegexMatcher Matcher(Compiled, Text);
-		FString Result;
-		int32 Last = 0;
-		while (Matcher.FindNext())
-		{
-			const int32 Begin = Matcher.GetCaptureGroupBeginning(1) >= 0 ? Matcher.GetCaptureGroupBeginning(1) : Matcher.GetMatchBeginning();
-			const int32 End = Matcher.GetCaptureGroupEnding(1) >= 0 ? Matcher.GetCaptureGroupEnding(1) : Matcher.GetMatchEnding();
-			Result += Text.Mid(Last, Begin - Last) + Token;
-			Last = End;
-		}
-		return Result + Text.Mid(Last);
-	}
+	// The golden helpers live in N2CTestHelpers.h (card 0448), shared with the material capture goldens
+	static bool UpdateGoldens() { return N2CTest::UpdateGoldens(); }
+	static FString PrettyJson(const TSharedPtr<FJsonObject>& Object) { return N2CTest::PrettyJson(Object); }
 
 	/**
 	 * Replaces what changes from run to run with stable tokens: the case's transient package path (<PACKAGE>) and any
 	 * GUID (<GUID>). Nothing else may change between sessions (the UObject index FN2CVariableProcessor once put in a
 	 * member_name is gone, card 0234, so a golden shows it if it comes back)
 	 */
-	static FString Normalise(const FString& Text, const FString& PackagePath)
-	{
-		const FString Out = PackagePath.IsEmpty() ? Text : Text.Replace(*PackagePath, TEXT("<PACKAGE>"), ESearchCase::CaseSensitive);
-		return ReplaceMatches(Out, TEXT("[0-9A-Fa-f]{8}-?[0-9A-Fa-f]{4}-?[0-9A-Fa-f]{4}-?[0-9A-Fa-f]{4}-?[0-9A-Fa-f]{12}"), TEXT("<GUID>"));
-	}
+	static FString Normalise(const FString& Text, const FString& PackagePath) { return N2CTest::NormaliseCapture(Text, PackagePath); }
 
 	/** Captures Case's graph; DuringCapture, when set, runs once right after the capture's first node */
 	FCaptured Capture(const FCaptureCase& Case, TFunction<void()> DuringCapture = nullptr)
@@ -2701,8 +2669,14 @@ void FN2CCaptureGoldenSpec::Define()
 			}
 			FN2CCaptureOptions Options;
 			Options.Depth = 0;
-			const TValueOrError<FN2CCapture, FString> Result = N2C::CaptureGraph(*Graph, Options);
-			if (TestTrue(TEXT("the anim graph is captured"), Result.HasValue()) && TestEqual(TEXT("one graph"), Result.GetValue().Blueprint.Graphs.Num(), 1))
+			// N2C::CaptureGraph refuses an AnimGraph (decision 0008, card 0448); its nodes still capture, typed by schema
+			const TValueOrError<FN2CCapture, FString> Refused = N2C::CaptureGraph(*Graph, Options);
+			TestTrue(TEXT("CaptureGraph refuses the anim graph with UNSUPPORTED_GRAPH_TYPE"),
+				Refused.HasError() && Refused.GetError().StartsWith(TEXT("UNSUPPORTED_GRAPH_TYPE: ")));
+			TArray<UK2Node*> Nodes;
+			FN2CNodeCollector::Get().CollectNodesFromGraph(Graph, Nodes);
+			const TValueOrError<FN2CCapture, FString> Result = N2C::CaptureNodes(Nodes, Options);
+			if (TestTrue(TEXT("the anim graph's nodes are captured"), Result.HasValue()) && TestEqual(TEXT("one graph"), Result.GetValue().Blueprint.Graphs.Num(), 1))
 			{
 				TestEqual(TEXT("graph_type"), StaticEnum<EN2CGraphType>()->GetNameStringByValue(
 					static_cast<int64>(Result.GetValue().Blueprint.Graphs[0].GraphType)), FString(TEXT("Animation")));
