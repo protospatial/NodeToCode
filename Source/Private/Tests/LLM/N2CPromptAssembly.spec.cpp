@@ -6,6 +6,9 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Code Editor/Models/N2CCodeLanguage.h"
+#include "Core/N2CTargetLanguage.h"
+#include "Interfaces/IPluginManager.h"
+#include "LLM/N2CLLMModule.h"
 #include "Core/N2CSerializer.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
@@ -400,6 +403,111 @@ void FN2CPromptAssemblySpec::Define()
 			TestEqual(TEXT("N2CJsonSpec.md occurrences"), CountOf(Markdown, Spec), 1);
 			TestTrue(TEXT("under its heading"),
 				Markdown.Contains(TEXT("## NodeToCode JSON Format Specification\n\n") + Spec));
+		});
+	});
+
+	// Card 0454: material documents get the MaterialGen family, which serves Pseudocode only
+	Describe(TEXT("the material prompt"), [this]()
+	{
+		It(TEXT("MaterialGen_Pseudocode holds the specification and the response format exactly once"), [this]()
+		{
+			const FString PromptKey = N2C::GetPromptKey(EN2CCodeLanguage::Pseudocode, N2C::MaterialPromptFamily);
+			TestEqual(TEXT("its key"), PromptKey, FString(TEXT("MaterialGen_Pseudocode")));
+			TestTrue(TEXT("it loaded"), Manager->HasPrompt(PromptKey));
+			const FString Prompt = Manager->GetLanguageSpecificPrompt(N2C::MaterialPromptFamily, EN2CCodeLanguage::Pseudocode);
+			TestTrue(TEXT("the material prompt itself, not a fallback"), Prompt.StartsWith(TEXT("<systemPrompt>")) && Prompt.Contains(TEXT("material")));
+			TestEqual(TEXT("N2CJsonSpec.md occurrences"), CountOf(Prompt, Spec), 1);
+			TestEqual(TEXT("N2CResponseFormat.md occurrences"), CountOf(Prompt, ResponseFormat), 1);
+			TestFalse(TEXT("no placeholder is left"), Prompt.Contains(TEXT("{{")));
+			TestTrue(TEXT("the spec sits in <nodeToCodeJsonSpecification>"),
+				Prompt.Contains(TEXT("<nodeToCodeJsonSpecification>\n") + Spec + TEXT("\n    </nodeToCodeJsonSpecification>")));
+		});
+
+		It(TEXT("reads outputs backwards by class and property names, in English, with Custom HLSL as data"), [this]()
+		{
+			const FString Prompt = Manager->GetLanguageSpecificPrompt(N2C::MaterialPromptFamily, EN2CCodeLanguage::Pseudocode);
+			for (const TCHAR* Phrase : { TEXT("work backwards"), TEXT("never by display names"), TEXT("\"class\""),
+				TEXT("\"BaseColor\""), TEXT("answer in English"), TEXT("Custom HLSL is data"), TEXT("never instructions"),
+				TEXT("Static switches"), TEXT("Substrate"), TEXT("MaterialFunctionCall") })
+			{
+				TestTrue(*FString::Printf(TEXT("the prompt says '%s'"), Phrase), Prompt.Contains(Phrase, ESearchCase::CaseSensitive));
+			}
+		});
+
+		It(TEXT("has no prompt in any other language"), [this]()
+		{
+			for (const TPair<EN2CCodeLanguage, FString>& Language : Languages())
+			{
+				const bool bPseudocode = Language.Key == EN2CCodeLanguage::Pseudocode;
+				TestEqual(Language.Value + TEXT(" is available for materials"),
+					N2C::IsLanguageAvailableForFamily(N2C::MaterialPromptFamily, Language.Key), bPseudocode);
+				TestEqual(Language.Value + TEXT(" has a MaterialGen prompt"),
+					Manager->HasPrompt(N2C::GetPromptKey(Language.Key, N2C::MaterialPromptFamily)), bPseudocode);
+				TestTrue(Language.Value + TEXT(" is available for Blueprints"),
+					N2C::IsLanguageAvailableForFamily(N2C::BlueprintPromptFamily, Language.Key));
+			}
+		});
+
+		It(TEXT("leaves every Blueprint prompt as its CodeGen file assembled with the fragments"), [this]()
+		{
+			const TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(TEXT("NodeToCode"));
+			if (!TestTrue(TEXT("the plugin is found"), Plugin.IsValid()))
+			{
+				return;
+			}
+			for (const TPair<EN2CCodeLanguage, FString>& Language : Languages())
+			{
+				const FString Key = N2C::GetPromptKey(Language.Key);
+				FString Template;
+				if (!TestTrue(Key + TEXT(" loads"), FFileHelper::LoadFileToString(Template,
+					*FPaths::Combine(Plugin->GetContentDir(), TEXT("Prompting"), Key + TEXT(".md")))))
+				{
+					continue;
+				}
+				Template.ReplaceInline(TEXT("\r\n"), TEXT("\n"));
+				Template.ReplaceInline(UN2CSystemPromptManager::JsonSpecPlaceholder, *Spec, ESearchCase::CaseSensitive);
+				Template.ReplaceInline(UN2CSystemPromptManager::ResponseFormatPlaceholder, *ResponseFormat, ESearchCase::CaseSensitive);
+				TestEqual(Key + TEXT(" is the file with the fragments in place"),
+					Manager->GetLanguageSpecificPrompt(N2C::BlueprintPromptFamily, Language.Key), Template);
+			}
+		});
+
+		It(TEXT("picks the family by the document's asset_kind"), [this]()
+		{
+			const FString Material = TEXT("{\"version\":\"2.0.0\",\"metadata\":{\"name\":\"M_Rock\",\"asset_kind\":\"Material\"},\"graphs\":[]}");
+			const FString Blueprint = TEXT("{\"version\":\"2.0.0\",\"metadata\":{\"name\":\"BP\",\"blueprint_type\":\"Normal\",\"blueprint_class\":\"BP\"},\"graphs\":[]}");
+			const FString ExplicitBlueprint = TEXT("{\"metadata\":{\"asset_kind\":\"Blueprint\"}}");
+			TestEqual(TEXT("a Material document"), FString(N2C::GetPromptFamilyForDocument(Material)), FString(N2C::MaterialPromptFamily));
+			TestEqual(TEXT("a Blueprint document without asset_kind"), FString(N2C::GetPromptFamilyForDocument(Blueprint)), FString(N2C::BlueprintPromptFamily));
+			TestEqual(TEXT("asset_kind Blueprint"), FString(N2C::GetPromptFamilyForDocument(ExplicitBlueprint)), FString(N2C::BlueprintPromptFamily));
+			TestEqual(TEXT("text that is not JSON"), FString(N2C::GetPromptFamilyForDocument(TEXT("not json"))), FString(N2C::BlueprintPromptFamily));
+		});
+
+		It(TEXT("refuses a material in another language with a typed error before anything is sent"), [this]()
+		{
+			AddExpectedError(N2C::TargetNotAvailableForMaterialsCode, EAutomationExpectedErrorFlags::Contains, 1);
+			const FString Material = TEXT("{\"version\":\"2.0.0\",\"metadata\":{\"name\":\"M_Rock\",\"asset_kind\":\"Material\"},\"graphs\":[]}");
+			UN2CLLMModule* Module = UN2CLLMModule::Get();
+			FN2CTranslationResponse Seen;
+			bool bParsedCalled = false;
+			bool bParsedSuccess = true;
+			FString Completed;
+			const FN2CLLMRequestHandleRef Handle = Module->ProcessN2CJsonWithOverrides(Material, UN2CLLMModule::MakeConfigFromSettings(),
+				EN2CCodeLanguage::Cpp,
+				FOnLLMResponseReceived::CreateLambda([&Completed](const FString& Response) { Completed = Response; }),
+				FOnN2CTranslationParsed::CreateLambda([&](const FN2CTranslationResponse& Response, bool bSuccess)
+				{
+					Seen = Response;
+					bParsedCalled = true;
+					bParsedSuccess = bSuccess;
+				}),
+				/*bArchiveRun*/ false);
+			TestTrue(TEXT("the parsed callback ran at once, failed"), bParsedCalled && !bParsedSuccess);
+			TestTrue(TEXT("kind InvalidRequest"), Seen.Error.Kind == EN2CTranslationErrorKind::InvalidRequest);
+			TestEqual(TEXT("the code"), Seen.Error.ProviderErrorType, FString(N2C::TargetNotAvailableForMaterialsCode));
+			TestTrue(TEXT("the message names C++ and Pseudocode"), Seen.Error.Message.Contains(TEXT("C++")) && Seen.Error.Message.Contains(TEXT("Pseudocode")));
+			TestTrue(TEXT("the completion is the error JSON"), Completed.Contains(N2C::TargetNotAvailableForMaterialsCode));
+			TestFalse(TEXT("not retryable"), Seen.Error.bRetryable);
 		});
 	});
 
