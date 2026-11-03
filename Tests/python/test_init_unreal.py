@@ -132,7 +132,8 @@ def test_skills_register_on_5_8_even_when_the_toolset_fails(engine, monkeypatch)
            registry_package=_registry_with_agent_skill(monkeypatch, registered))
     _run()
     assert [c.__name__ for c in registered] == [
-        'NodeToCodeBlueprintComprehensionSkill', 'NodeToCodeBlueprintToCppSkill', 'NodeToCodeBlueprintMigrationSkill']
+        'NodeToCodeBlueprintComprehensionSkill', 'NodeToCodeBlueprintToCppSkill', 'NodeToCodeBlueprintMigrationSkill',
+        'NodeToCodeAssetIteratorSkill', 'NodeToCodeAssetValidatorSkill', 'NodeToCodeProjectFolderScaffoldSkill']
     warnings = UNREAL.messages('warning')
     assert len(warnings) == 1 and warnings[0].startswith('NodeToCode: NodeToCodeTools toolset not registered')
     assert UNREAL.messages('error') == []

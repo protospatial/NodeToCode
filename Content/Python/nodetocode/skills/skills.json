@@ -1,4 +1,10 @@
 {
+  "asset-iterator": {
+    "description": "Finds and walks an Unreal Engine project's assets from the editor's Python: every asset in a Content Browser folder, assets of one class (Blueprints, Widget Blueprints, static meshes, textures, ...) in a folder or the whole project, Blueprints with a given parent class, and a callback over a list of assets. Read-only. Use when the user wants to list, count, find or audit assets by folder, class, name pattern or parent class, or run a check over many assets. SKIP for: reading a Blueprint's graphs (use blueprint-comprehension), naming and compile checks (use asset-validator), and moving, renaming or deleting assets."
+  },
+  "asset-validator": {
+    "description": "Checks an Unreal Engine project's assets against naming conventions (BP_, WBP_, ABP_, M_, MI_, SM_, T_, ... by exact asset class), compiles Blueprints and reports their compile errors, and finds Blueprints with no logic, from the editor's Python. Use when the user wants to audit or lint a folder or the project: naming, Blueprints that do not compile, empty Blueprints. SKIP for: fixing what it finds without the user's go-ahead (renames and edits are separate steps), explaining a Blueprint (use blueprint-comprehension) and plain asset listing (use asset-iterator)."
+  },
   "blueprint-comprehension": {
     "description": "Reads an Unreal Engine Blueprint as NodeToCode's N2C JSON through the NodeToCode MCP tools and explains what it does: events, functions, execution order, data flow, variables and the nodes that never run. Use when the user asks what a Blueprint or one of its graphs does, wants it explained, summarized, reviewed, debugged or documented, or wants it read before editing, translating or migrating it; when a tool result holds N2C JSON (\"version\": \"2.0.0\", nodes, pins, flows.execution, flows.data); or when the user names a Blueprint asset such as /Game/Characters/BP_Hero. SKIP for: writing C++ from a Blueprint (use blueprint-to-cpp), moving a Blueprint's logic into C++ (use blueprint-migration), materials, and adding or wiring nodes."
   },
@@ -7,5 +13,8 @@
   },
   "blueprint-to-cpp": {
     "description": "Translates Unreal Engine Blueprint graphs into Unreal C++ (.h and .cpp) from NodeToCode's N2C JSON: export the graph through the NodeToCode MCP tools, translate it yourself or with NodeToCode's translate tool, place the code in the project's module and compile it. Use when the user asks to convert, port, rewrite or translate a Blueprint, a Blueprint function or event graph to C++, wants the C++ equivalent of a Blueprint, asks for NodeToCode's own translator (translate-focused-blueprint, translate-batch), wants a tagged set of graphs exported or translated in one batch, or hands you N2C JSON to turn into code. SKIP for: only explaining a Blueprint (use blueprint-comprehension), replacing a Blueprint with a C++ class in the project, reparenting or removing Blueprint logic (use blueprint-migration), and languages other than C++."
+  },
+  "project-folder-scaffold": {
+    "description": "Creates a standard Content Browser folder layout in an Unreal Engine project from the editor's Python: one folder, a list of folders, a feature folder with chosen subfolders, or a named template (feature_standard, character, level, ui_module, gameplay_system, ai, weapon, environment). Only creates folders, under /Game or a project plugin. Use when the user wants to set up, scaffold or organize the folders for a new feature, character, level or module. SKIP for: moving, renaming or deleting folders and assets (the Content Browser tools do that, with the user's go-ahead), and creating assets."
   }
 }

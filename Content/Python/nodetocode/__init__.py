@@ -98,6 +98,8 @@ Available Functions (the authoritative list is __all__ below):
     - log_info/warning/error(msg) - Log messages
     - make_success_result(data), make_error_result(error) - Build the standard result dict
     - invoke_tool(name, arguments) - Run any NodeToCode MCP tool by name (not run-python)
+    - skill_script(skill, script=None) - Load an Agent Skill's script (asset-iterator, asset-validator,
+      project-folder-scaffold) as a module
 
     The graph, function-pin, compile, save, tag_graph and open functions run the matching MCP tool through
     invoke_tool (card 0342): their data is the tool's result, plus the 1.x keys for one release (reading one logs a
@@ -162,6 +164,7 @@ from .utils import (
     make_success_result,
     make_error_result,
     invoke_tool,
+    skill_script,
 )
 
 __all__ = [
@@ -210,4 +213,5 @@ __all__ = [
     'make_success_result',
     'make_error_result',
     'invoke_tool',
+    'skill_script',
 ]

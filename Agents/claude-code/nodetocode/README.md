@@ -9,6 +9,7 @@ default).
 |---|---|
 | MCP server `nodetocode` | Connects to the editor at `http://127.0.0.1:27000/mcp`. Claude sees NodeToCode's tools as `mcp__plugin_nodetocode_nodetocode__<tool>` |
 | Skills `blueprint-comprehension`, `blueprint-to-cpp`, `blueprint-migration` | Claude uses them by itself when you ask what a Blueprint does, ask to translate one to C++, or ask to migrate one to C++ |
+| Skills `asset-iterator`, `asset-validator`, `project-folder-scaffold` | Claude uses them when you ask to list or audit assets, check naming, compile errors or empty Blueprints, or set up folders; their scripts run in the editor through `run-python` (Allow MCP Python Execution) |
 | Command `/nodetocode:translate` | Translates a Blueprint graph with NodeToCode's own translator and saves the files |
 | Session-start check | Prints one line at the start of each session saying whether the editor answers, and what to do if it doesn't |
 
@@ -31,7 +32,7 @@ Then start a new session in your Unreal project's folder, with the editor open:
 
 - the first line says `NodeToCode: the editor's MCP server answers at http://127.0.0.1:27000/mcp ...`;
 - `/mcp` lists `plugin:nodetocode:nodetocode` as connected;
-- `/skills` lists the three `nodetocode:` skills, and `/nodetocode:translate` is a command.
+- `/skills` lists the six `nodetocode:` skills, and `/nodetocode:translate` is a command.
 
 Claude Code reads a plugin installed this way in place, from the NodeToCode folder, so after you update NodeToCode a
 new session picks up the new version. If you move or delete that folder, run the two commands again with the new
@@ -95,8 +96,8 @@ when you want that. Each run is one billed provider request. Claude only runs th
 
 ## Codex, Cursor, GitHub Copilot and other agents
 
-The three skills follow the open Agent Skills format, so other agents can use them without this plugin. Copy the
-skill folders (whole folders, with their `references/`) into the skills folder the agent reads:
+The six skills follow the open Agent Skills format, so other agents can use them without this plugin. Copy the
+skill folders (whole folders, with their `references/` and `scripts/`) into the skills folder the agent reads:
 
 | Agent | Project folder | Personal folder |
 |---|---|---|
