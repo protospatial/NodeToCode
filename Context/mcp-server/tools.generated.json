@@ -3019,7 +3019,7 @@
 			"name": "get-available-llm-providers",
 			"title": "List LLM providers",
 			"toolset": "TranslationTools",
-			"description": "Returns the LLM providers available for Blueprint translation: cloud providers with an API key (saved in Project Settings or from an environment variable; keySource says which, never the key) and the local providers.",
+			"description": "Returns the LLM providers available for Blueprint translation: cloud providers with an API key (saved in Project Settings or from an environment variable; keySource says which, never the key) and the local providers. Names, locality and model rows come from NodeToCode's model catalog; each model has status active or deprecated (with shutdownDate, also from the provider's live model list when it was fetched), contextWindow, maxOutput and isSelected. Retired models are left out; every listed id is accepted as translate-focused-blueprint's model.",
 			"defaultEnabled": true,
 			"longRunning": false,
 			"returnsUntrustedContent": false,
@@ -3071,6 +3071,11 @@
 								{
 									"type": "boolean"
 								},
+								"keyConfigured":
+								{
+									"type": "boolean",
+									"description": "An API key is saved or in the environment (never the key)"
+								},
 								"isLocal":
 								{
 									"type": "boolean"
@@ -3111,13 +3116,38 @@
 											{
 												"type": "string"
 											},
+											"status":
+											{
+												"type": "string",
+												"description": "deprecated: still served until shutdownDate",
+												"enum": [
+													"active",
+													"deprecated"
+												]
+											},
 											"deprecated":
 											{
 												"type": "boolean"
 											},
 											"shutdownDate":
 											{
-												"type": "string"
+												"type": "string",
+												"description": "YYYY-MM-DD, from the catalog or the provider's live model list"
+											},
+											"contextWindow":
+											{
+												"type": "integer",
+												"description": "Input context in tokens"
+											},
+											"maxOutput":
+											{
+												"type": "integer",
+												"description": "Output limit in tokens"
+											},
+											"isSelected":
+											{
+												"type": "boolean",
+												"description": "The model Project Settings selects for this provider"
 											},
 											"supportsSystemPrompts":
 											{
@@ -3129,7 +3159,8 @@
 											}
 										},
 										"required": [
-											"id"
+											"id",
+											"status"
 										]
 									}
 								},
