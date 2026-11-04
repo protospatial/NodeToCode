@@ -96,6 +96,7 @@ void SN2CCodeEditor::RebuildEditor(TOptional<TAttribute<FText>> InitialText)
                 .OnTextChanged(this, &SN2CCodeEditor::HandleTextChanged)
                 .OnCursorMoved(this, &SN2CCodeEditor::HandleCursorMoved)
                 .AllowMultiLine(true)
+                .IsReadOnly_Lambda([this]() { return bReadOnly; })
                 .HScrollBar(HorizontalScrollBar)
                 .VScrollBar(VerticalScrollBar)
             ]
