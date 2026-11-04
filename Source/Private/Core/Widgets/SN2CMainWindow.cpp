@@ -793,13 +793,17 @@ void SN2CMainWindow::HandleSessionChanged(const FN2CTranslationSession& Session)
 void SN2CMainWindow::ShowSessionResult(const FN2CTranslationSession& Session)
 {
 	// The root entry (the graph that was asked for), with the N2C JSON it was made from in the JSON tab
-	if (const FN2CGraphTranslation* Translation = Session.GetRootTranslation())
+	if (Session.GetRootTranslation())
 	{
-		ShowTranslationViewer(*Translation, Session.Info.GraphName, Session.Json);
-		// How Verify and Refine ended for it (card 0313)
+		// Every graph of the response, the one asked for first (card 0257), in the session's language
 		if (TranslationViewer.IsValid())
 		{
+			const FN2CArchivedEntry* Root = Session.Saved.GetRoot();
+			TranslationViewer->LoadResponse(Session.Response, Session.Info.GraphName, Session.Json, Session.Info.Language,
+				Root ? Root->ResponseIndex : INDEX_NONE);
+			// How Verify and Refine ended for it (card 0313)
 			TranslationViewer->SetVerifyOutcome(&Session.Verify);
+			bShowTranslationViewer = true;
 		}
 	}
 }

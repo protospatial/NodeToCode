@@ -112,7 +112,10 @@ document or a file summary), nor list-blueprint-functions and list-overridable-f
   `toFile`, the document is written to
   `<Project>/Saved/NodeToCode/Exports/<Blueprint>__<graph or AllGraphs>__<hash>.json` (UTF-8, written to a temporary
   file and moved into place; the same read again replaces the same file) and the result is `{"path", "bytes",
-  "estimatedTokens", "maxInlineTokens", "reason": "size" | "toFile", "graphCount", "nodeCount"}`. Read the file in
+  "estimatedTokens", "maxInlineTokens", "reason": "size" | "toFile", "graphCount", "nodeCount", "warnings"}`. The
+  capture's `warnings` ({code, path, message}: DEPTH_LIMIT for a call beyond depth, and the rest of card 0240's codes)
+  are in the document and, since card 0538, also in that file result, so a spilled read still says what was left
+  out; absent when there are none (`NodeToCode.MCP.BlueprintByPath`, BP_N2CDep_A at depth 0). Read the file in
   parts (read-file returns 500 KB of whole lines per call; `nextOffset` continues it). A graph found by an old function ID also gets `target` with the deprecation
   warning
 - **Errors**: `INVALID_ARGUMENT` (no `blueprintPath`; `depth` not a whole number from 0 to 5), `ASSET_NOT_FOUND`,

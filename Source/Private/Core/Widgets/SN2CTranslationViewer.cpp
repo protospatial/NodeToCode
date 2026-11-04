@@ -28,6 +28,10 @@
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "Utils/N2CPathUtils.h"
+#include "LLM/N2CTranslationArchive.h"
+#include "Widgets/Views/SListView.h"
+#include "Widgets/Views/STableRow.h"
+#include "Dom/JsonObject.h"
 
 #define LOCTEXT_NAMESPACE "SN2CTranslationViewer"
 
@@ -109,6 +113,27 @@ void SN2CTranslationViewer::Construct(const FArguments& InArgs)
 						})
 						.Visibility_Lambda([this]() { return VerifyStatusText.IsEmpty() ? EVisibility::Collapsed : EVisibility::Visible; })
 					]
+					// Edit toggle (card 0257): the code is read-only until it is on
+					+ SHorizontalBox::Slot()
+					.AutoWidth()
+					.Padding(0.0f, 0.0f, FN2CSpacing::SM, 0.0f)
+					[
+						SNew(SButton)
+						.ButtonStyle(&N2CStyle::GetButtonStyle())
+						.ContentPadding(FMargin(FN2CSpacing::MD, FN2CSpacing::XS))
+						.IsEnabled_Lambda([this]() { return bHasTranslation && ActiveFileType != TEXT("json"); })
+						.OnClicked_Lambda([this]() { SetEditing(!bEditing); return FReply::Handled(); })
+						.ToolTipText(LOCTEXT("EditTooltip", "Edit the code here. Edits stay in the viewer (Copy copies them) until another translation is loaded; the saved files do not change."))
+						[
+							SNew(STextBlock)
+							.Text_Lambda([this]() { return bEditing ? LOCTEXT("EditOn", "Editing") : LOCTEXT("EditOff", "Edit"); })
+							.Font(FN2CFonts::Medium())
+							.ColorAndOpacity_Lambda([this]()
+							{
+								return bEditing ? N2C::UI::Linear(N2C::UI::Colors().AccentOrange) : N2C::UI::Linear(N2C::UI::Colors().TextSecondary);
+							})
+						]
+					]
 					// Copy button
 					+ SHorizontalBox::Slot()
 					.AutoWidth()
@@ -124,10 +149,39 @@ void SN2CTranslationViewer::Construct(const FArguments& InArgs)
 				]
 			]
 
-			// Code viewer
+			// Code viewer, with the translation's graphs listed beside it when there is more than one (card 0257)
 			+ SVerticalBox::Slot()
 			.FillHeight(1.0f)
 			[
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot()
+				.AutoWidth()
+				[
+					SNew(SBox)
+					.WidthOverride(200.0f)
+					.Visibility_Lambda([this]() { return Entries.Num() > 1 ? EVisibility::Visible : EVisibility::Collapsed; })
+					[
+						SNew(SN2CPanel)
+						.Variant(EN2CPanelVariant::Light)
+						.Padding(FMargin(0.0f, FN2CSpacing::SM))
+						[
+							SAssignNew(EntryList, SListView<TSharedPtr<int32>>)
+							.ListItemsSource(&EntryItems)
+							.SelectionMode(ESelectionMode::Single)
+							.OnGenerateRow(this, &SN2CTranslationViewer::GenerateEntryRow)
+							.OnSelectionChanged_Lambda([this](TSharedPtr<int32> Item, ESelectInfo::Type SelectInfo)
+							{
+								if (Item.IsValid() && SelectInfo != ESelectInfo::Direct)
+								{
+									SelectEntry(*Item);
+								}
+							})
+						]
+					]
+				]
+				+ SHorizontalBox::Slot()
+				.FillWidth(1.0f)
+				[
 				SNew(SN2CPanel)
 				.Variant(EN2CPanelVariant::Dark)
 				.Padding(0)
@@ -151,6 +205,7 @@ void SN2CTranslationViewer::Construct(const FArguments& InArgs)
 						.Justification(ETextJustify::Center)
 						.ColorAndOpacity(N2C::UI::Bind(&FN2CUIColors::TextMuted))
 					]
+				]
 				]
 			]
 
@@ -212,6 +267,12 @@ void SN2CTranslationViewer::Construct(const FArguments& InArgs)
 	// Only C++ translations have a declaration; hide the tab (and its slot) for the other languages
 	HeaderTabButton->SetVisibility(TAttribute<EVisibility>::CreateSP(this, &SN2CTranslationViewer::GetHeaderTabVisibility));
 
+	// Read-only until Edit (card 0257)
+	if (CodeEditor.IsValid())
+	{
+		CodeEditor->SetReadOnly(true);
+	}
+
 	UpdateTabStyles();
 }
 
@@ -247,11 +308,17 @@ bool SN2CTranslationViewer::LoadTranslation(const FN2CTagInfo& GraphInfo)
 		FString JsonContent;
 		UN2CGraphStateManager::Get().LoadN2CJson(Key, JsonContent);
 
-		LoadTranslation(Translation, GraphInfo.GraphName, JsonContent, Language);
+		// The whole run (every graph of the response) through its manifest, else the recorded graph alone
+		const FN2CGraphState* State = UN2CGraphStateManager::Get().FindGraphState(Key);
+		const FString Manifest = State && !State->Translation.ManifestPath.IsEmpty()
+			? FN2CPathUtils::ResolveTranslationRecordPath(State->Translation.ManifestPath) : FString();
+		if (Manifest.IsEmpty() || !LoadRunManifest(Manifest, GraphInfo.GraphGuid, GraphInfo.GraphName, JsonContent))
+		{
+			LoadTranslation(Translation, GraphInfo.GraphName, JsonContent, Language);
+		}
 
 		// How Verify and Refine ended for it, when it ran (Verify.json beside the entry folder)
 		FN2CVerifyOutcome Verify;
-		const FN2CGraphState* State = UN2CGraphStateManager::Get().FindGraphState(Key);
 		SetVerifyOutcome(State && LoadRecordedVerifyOutcome(State->Translation.OutputPath, Verify) ? &Verify : nullptr);
 		return true;
 	}
@@ -269,6 +336,150 @@ void SN2CTranslationViewer::LoadTranslation(const FN2CGraphTranslation& Translat
 void SN2CTranslationViewer::LoadTranslation(const FN2CGraphTranslation& Translation, const FString& GraphName, const FString& JsonContent,
 	EN2CCodeLanguage Language)
 {
+	TArray<FN2CViewerEntry> One;
+	FN2CViewerEntry& Entry = One.AddDefaulted_GetRef();
+	Entry.Translation = Translation;
+	Entry.Role = TEXT("root");
+	SetEntries(MoveTemp(One), GraphName, JsonContent, Language);
+}
+
+void SN2CTranslationViewer::LoadResponse(const FN2CTranslationResponse& Response, const FString& GraphName, const FString& JsonContent,
+	EN2CCodeLanguage Language, int32 RootIndex)
+{
+	const int32 Root = Response.Graphs.IsValidIndex(RootIndex) ? RootIndex : 0;
+	TArray<FN2CViewerEntry> List;
+	for (int32 Pass = 0; Pass < 2; ++Pass)
+	{
+		for (int32 Index = 0; Index < Response.Graphs.Num(); ++Index)
+		{
+			if ((Pass == 0) != (Index == Root))
+			{
+				continue;
+			}
+			FN2CViewerEntry& Entry = List.AddDefaulted_GetRef();
+			Entry.Translation = Response.Graphs[Index];
+			Entry.Role = Index == Root ? FString(TEXT("root")) : FN2CTranslationArchive::GetEntryRole(Entry.Translation.GraphType);
+		}
+	}
+	SetEntries(MoveTemp(List), GraphName, JsonContent, Language);
+}
+
+bool SN2CTranslationViewer::LoadRunManifest(const FString& ManifestPath, const FString& GraphGuid, const FString& GraphName,
+	const FString& JsonContent)
+{
+	FString Text;
+	TSharedPtr<FJsonObject> Manifest;
+	if (!FFileHelper::LoadFileToString(Text, *ManifestPath)
+		|| !FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(Text), Manifest) || !Manifest.IsValid())
+	{
+		return false;
+	}
+	const FString RunFolder = FPaths::GetPath(ManifestPath);
+	auto ReadFile = [&RunFolder](const TSharedPtr<FJsonObject>& Files, const TCHAR* Field)
+	{
+		FString Relative;
+		FString Content;
+		if (Files.IsValid() && Files->TryGetStringField(Field, Relative) && !Relative.IsEmpty())
+		{
+			const FString Path = FPaths::IsRelative(Relative) ? FPaths::Combine(RunFolder, Relative) : Relative;
+			FFileHelper::LoadFileToString(Content, *Path);
+		}
+		return Content;
+	};
+
+	// The item of this graph (a batch run has one per graph)
+	int32 Item = 0;
+	const TArray<TSharedPtr<FJsonValue>>* Items = nullptr;
+	if (Manifest->TryGetArrayField(TEXT("items"), Items) && Items->Num() > 1)
+	{
+		Item = INDEX_NONE;
+		FGuid Wanted;
+		FGuid::Parse(GraphGuid, Wanted);
+		for (int32 Index = 0; Index < Items->Num(); ++Index)
+		{
+			const TSharedPtr<FJsonObject> ItemObject = (*Items)[Index]->AsObject();
+			FString Guid;
+			FGuid Parsed;
+			if (ItemObject.IsValid() && ItemObject->TryGetStringField(TEXT("graphGuid"), Guid)
+				&& (Guid.Equals(GraphGuid, ESearchCase::IgnoreCase) || (FGuid::Parse(Guid, Parsed) && Parsed.IsValid() && Parsed == Wanted)))
+			{
+				Item = Index;
+				break;
+			}
+		}
+		if (Item == INDEX_NONE)
+		{
+			return false;
+		}
+	}
+
+	TArray<FN2CViewerEntry> Roots;
+	TArray<FN2CViewerEntry> Others;
+	const TArray<TSharedPtr<FJsonValue>>* EntryValues = nullptr;
+	if (Manifest->TryGetArrayField(TEXT("entries"), EntryValues))
+	{
+		for (const TSharedPtr<FJsonValue>& Value : *EntryValues)
+		{
+			const TSharedPtr<FJsonObject> EntryObject = Value.IsValid() ? Value->AsObject() : nullptr;
+			int32 EntryItem = 0;
+			if (!EntryObject.IsValid() || (EntryObject->TryGetNumberField(TEXT("item"), EntryItem) && EntryItem != Item))
+			{
+				continue;
+			}
+			FN2CViewerEntry Entry;
+			EntryObject->TryGetStringField(TEXT("graphName"), Entry.Translation.GraphName);
+			EntryObject->TryGetStringField(TEXT("graphType"), Entry.Translation.GraphType);
+			EntryObject->TryGetStringField(TEXT("role"), Entry.Role);
+			const TSharedPtr<FJsonObject>* Files = nullptr;
+			const TSharedPtr<FJsonObject> FilesObject = EntryObject->TryGetObjectField(TEXT("files"), Files) ? *Files : nullptr;
+			Entry.Translation.Code.GraphDeclaration = ReadFile(FilesObject, TEXT("declaration"));
+			Entry.Translation.Code.GraphImplementation = ReadFile(FilesObject, TEXT("implementation"));
+			Entry.Translation.Code.ImplementationNotes = ReadFile(FilesObject, TEXT("notes"));
+			(Entry.Role == TEXT("root") ? Roots : Others).Add(MoveTemp(Entry));
+		}
+	}
+	Roots.Append(MoveTemp(Others));
+	if (Roots.Num() == 0)
+	{
+		return false;
+	}
+
+	EN2CCodeLanguage Language = EN2CCodeLanguage::Cpp;
+	FString LanguageId;
+	if (Manifest->TryGetStringField(TEXT("language"), LanguageId))
+	{
+		FN2CPathUtils::ParseLanguageId(LanguageId, Language);
+	}
+	SetEntries(MoveTemp(Roots), GraphName, JsonContent, Language);
+	return true;
+}
+
+void SN2CTranslationViewer::SetEntries(TArray<FN2CViewerEntry>&& InEntries, const FString& GraphName, const FString& JsonContent,
+	EN2CCodeLanguage Language)
+{
+	Entries = MoveTemp(InEntries);
+	EntryItems.Reset();
+	for (int32 Index = 0; Index < Entries.Num(); ++Index)
+	{
+		EntryItems.Add(MakeShared<int32>(Index));
+	}
+	if (EntryList.IsValid())
+	{
+		EntryList->RequestListRefresh();
+	}
+	WorkingCopies.Reset();
+	bEditing = false;
+	if (CodeEditor.IsValid())
+	{
+		CodeEditor->SetReadOnly(true);
+	}
+	SelectedEntry = 0;
+	const FN2CGraphTranslation Translation = Entries.Num() > 0 ? Entries[0].Translation : FN2CGraphTranslation();
+	if (EntryList.IsValid() && EntryItems.Num() > 0)
+	{
+		EntryList->SetSelection(EntryItems[0], ESelectInfo::Direct);
+	}
+
 	CurrentTranslation = Translation;
 	CurrentLanguage = Language;
 	CurrentGraphName = GraphName;
@@ -297,6 +508,110 @@ void SN2CTranslationViewer::LoadTranslation(const FN2CGraphTranslation& Translat
 	ActiveFileType = TEXT("cpp");
 	UpdateTabStyles();
 	UpdateCodeDisplay();
+}
+
+void SN2CTranslationViewer::SelectEntry(int32 Index)
+{
+	if (!Entries.IsValidIndex(Index))
+	{
+		return;
+	}
+	StashWorkingCopy();
+	SelectedEntry = Index;
+	CurrentTranslation = Entries[Index].Translation;
+	if (EntryList.IsValid() && EntryItems.IsValidIndex(Index) && !EntryList->IsItemSelected(EntryItems[Index]))
+	{
+		EntryList->SetSelection(EntryItems[Index], ESelectInfo::Direct);
+	}
+	if (NotesText.IsValid())
+	{
+		const FString& Notes = CurrentTranslation.Code.ImplementationNotes;
+		NotesText->SetText(Notes.IsEmpty() ? LOCTEXT("NoNotes", "No implementation notes available.") : FText::FromString(Notes));
+	}
+	// An entry without the open tab's file (a struct has no implementation) opens on what it has
+	if (ActiveFileType == TEXT("h") && CurrentTranslation.Code.GraphDeclaration.IsEmpty())
+	{
+		ActiveFileType = TEXT("cpp");
+	}
+	else if (ActiveFileType == TEXT("cpp") && CurrentTranslation.Code.GraphImplementation.IsEmpty() && !CurrentTranslation.Code.GraphDeclaration.IsEmpty())
+	{
+		ActiveFileType = TEXT("h");
+	}
+	UpdateTabStyles();
+	UpdateCodeDisplay();
+}
+
+FString SN2CTranslationViewer::GetEntryLabel(const FN2CViewerEntry& Entry)
+{
+	const FString Name = Entry.Translation.GraphName.IsEmpty() ? FString(TEXT("(unnamed)")) : Entry.Translation.GraphName;
+	return Entry.Role.IsEmpty() || Entry.Role == TEXT("root") ? Name : FString::Printf(TEXT("%s (%s)"), *Name, *Entry.Role);
+}
+
+TSharedRef<ITableRow> SN2CTranslationViewer::GenerateEntryRow(TSharedPtr<int32> Item, const TSharedRef<STableViewBase>& OwnerTable)
+{
+	const int32 Index = Item.IsValid() ? *Item : INDEX_NONE;
+	return SNew(STableRow<TSharedPtr<int32>>, OwnerTable)
+		.Padding(FMargin(FN2CSpacing::MD, FN2CSpacing::XS))
+		.ToolTipText_Lambda([this, Index]() { return Entries.IsValidIndex(Index) ? FText::FromString(Entries[Index].Translation.GraphType) : FText::GetEmpty(); })
+		[
+			SNew(STextBlock)
+			.Text_Lambda([this, Index]() { return Entries.IsValidIndex(Index) ? FText::FromString(GetEntryLabel(Entries[Index])) : FText::GetEmpty(); })
+			.Font(FN2CFonts::MonoSmall())
+			.ColorAndOpacity_Lambda([this, Index]()
+			{
+				return Index == SelectedEntry ? N2C::UI::Linear(N2C::UI::Colors().TextPrimary) : N2C::UI::Linear(N2C::UI::Colors().TextSecondary);
+			})
+		];
+}
+
+void SN2CTranslationViewer::SetEditing(bool bInEditing)
+{
+	if (bInEditing == bEditing)
+	{
+		return;
+	}
+	if (!bInEditing)
+	{
+		// Keep what was typed: Copy and the tabs still show it
+		StashWorkingCopy();
+	}
+	bEditing = bInEditing;
+	if (CodeEditor.IsValid())
+	{
+		CodeEditor->SetReadOnly(!bEditing || ActiveFileType == TEXT("json"));
+	}
+}
+
+void SN2CTranslationViewer::StashWorkingCopy()
+{
+	if (!bEditing || !CodeEditor.IsValid() || ActiveFileType == TEXT("json") || !bHasTranslation)
+	{
+		return;
+	}
+	const FString Text = CodeEditor->GetText().ToString();
+	if (Text != GetContentForActiveTab())
+	{
+		WorkingCopies.Add(WorkingCopyKey(ActiveFileType), Text);
+	}
+}
+
+void SN2CTranslationViewer::SelectTab(const FString& FileType)
+{
+	HandleFileTabClicked(FileType);
+}
+
+FString SN2CTranslationViewer::GetCopyText() const
+{
+	if (bEditing && CodeEditor.IsValid() && ActiveFileType != TEXT("json"))
+	{
+		return CodeEditor->GetText().ToString();
+	}
+	// The tab's working copy once it was edited
+	if (const FString* Edited = ActiveFileType != TEXT("json") ? WorkingCopies.Find(WorkingCopyKey(ActiveFileType)) : nullptr)
+	{
+		return *Edited;
+	}
+	return GetContentForActiveTab();
 }
 
 void SN2CTranslationViewer::SetVerifyOutcome(const FN2CVerifyOutcome* Outcome)
@@ -348,6 +663,15 @@ void SN2CTranslationViewer::SetJsonContent(const FString& JsonContent, const FSt
 	CurrentGraphName = GraphName;
 
 	// Clear translation data
+	Entries.Reset();
+	EntryItems.Reset();
+	if (EntryList.IsValid())
+	{
+		EntryList->RequestListRefresh();
+	}
+	SelectedEntry = 0;
+	WorkingCopies.Reset();
+	SetEditing(false);
 	CurrentTranslation = FN2CGraphTranslation();
 	bHasTranslation = false;
 
@@ -376,6 +700,19 @@ FText SN2CTranslationViewer::GetEmptyText()
 
 void SN2CTranslationViewer::Clear()
 {
+	Entries.Reset();
+	EntryItems.Reset();
+	if (EntryList.IsValid())
+	{
+		EntryList->RequestListRefresh();
+	}
+	SelectedEntry = 0;
+	WorkingCopies.Reset();
+	bEditing = false;
+	if (CodeEditor.IsValid())
+	{
+		CodeEditor->SetReadOnly(true);
+	}
 	CurrentTranslation = FN2CGraphTranslation();
 	CurrentGraphName = FString();
 	CurrentJsonContent = FString();
@@ -404,7 +741,13 @@ FReply SN2CTranslationViewer::HandleFileTabClicked(FString FileType)
 {
 	if (ActiveFileType != FileType)
 	{
+		// The tab's edits stay as its working copy
+		StashWorkingCopy();
 		ActiveFileType = FileType;
+		if (CodeEditor.IsValid())
+		{
+			CodeEditor->SetReadOnly(!bEditing || ActiveFileType == TEXT("json"));
+		}
 		UpdateTabStyles();
 		UpdateCodeDisplay();
 	}
@@ -419,7 +762,8 @@ FReply SN2CTranslationViewer::HandleCloseClicked()
 
 FReply SN2CTranslationViewer::HandleCopyCodeClicked()
 {
-	FString Content = GetContentForActiveTab();
+	// While editing, what is in the editor (card 0257)
+	FString Content = GetCopyText();
 	if (!Content.IsEmpty())
 	{
 		FPlatformApplicationMisc::ClipboardCopy(*Content);
@@ -443,7 +787,9 @@ void SN2CTranslationViewer::UpdateCodeDisplay()
 		return;
 	}
 
-	FString Content = GetContentForActiveTab();
+	// The tab's working copy when it was edited (card 0257)
+	const FString* Edited = ActiveFileType != TEXT("json") ? WorkingCopies.Find(WorkingCopyKey(ActiveFileType)) : nullptr;
+	FString Content = Edited ? *Edited : GetContentForActiveTab();
 
 	// Set appropriate language for syntax highlighting
 	if (ActiveFileType == TEXT("json"))
