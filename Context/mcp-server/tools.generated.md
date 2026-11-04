@@ -1185,7 +1185,7 @@ Returns `structuredContent` matching its `outputSchema` (in tools.generated.json
 
 **List LLM providers**
 
-Returns the LLM providers available for Blueprint translation: cloud providers with an API key (saved in Project Settings or from an environment variable; keySource says which, never the key) and the local providers.
+Returns the LLM providers available for Blueprint translation: cloud providers with an API key (saved in Project Settings or from an environment variable; keySource says which, never the key) and the local providers. Names, locality and model rows come from NodeToCode's model catalog; each model has status active or deprecated (with shutdownDate, also from the provider's live model list when it was fetched), contextWindow, maxOutput and isSelected. Retired models are left out; every listed id is accepted as translate-focused-blueprint's model.
 
 | Read-only | Destructive | Idempotent | Open world | Long-running | Untrusted text | During PIE | Default |
 |---|---|---|---|---|---|---|---|
