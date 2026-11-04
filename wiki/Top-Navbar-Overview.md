@@ -44,7 +44,7 @@ Removing tags asks first and then offers **Undo** for ten seconds. More on tags:
 
 ## The translation viewer
 
-<img src="images/main-window/translation-viewer.png" alt="The translation viewer: graph name and close button, .cpp, .h and JSON tabs, the code, and the Translation Notes panel" width="880">
+<img src="images/main-window/translation-viewer.png" alt="The translation viewer: graph name and close button, .cpp, .h and JSON tabs with the verify status, the Edit and copy buttons, the graph list, the code, and the Translation Notes panel" width="880">
 
 1. **Title and close.** The name of the graph whose translation is open; the cross closes the viewer and returns to
    the Tag Manager.

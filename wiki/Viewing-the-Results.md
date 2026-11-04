@@ -4,7 +4,7 @@ in [Window Overview](Top-Navbar-Overview).
 
 ## The translation viewer
 
-<img src="images/main-window/translation-viewer.png" alt="The translation viewer showing the .cpp tab of BP_Door's EventGraph and its Translation Notes" width="880">
+<img src="images/main-window/translation-viewer.png" alt="The translation viewer showing the .cpp tab of BP_Door's EventGraph, Verified: passed beside the tabs, the Edit button, the graph list with CloseDoor (nested) and FDoorState (struct), and the Translation Notes" width="880">
 
 - **The graph list**, on the left when the translation has more than one graph: the graph you translated first, then
   the functions and macros it calls ([Translation Depth](Max-Translation-Depth)) marked **(nested)**, and the structs

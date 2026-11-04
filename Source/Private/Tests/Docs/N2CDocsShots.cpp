@@ -252,7 +252,31 @@ bool FN2CDocsShotsMainWindow::RunTest(const FString& Parameters)
 	N2CDocsShots::Shoot(*this, N2CDocsShots::OnPanel(Manager), FVector2D(880.0, 460.0), Folder, TEXT("main-window/tag-manager"));
 
 	const TSharedRef<SN2CTranslationViewer> Viewer = SNew(SN2CTranslationViewer);
-	Viewer->LoadTranslation(N2CDocsShots::SampleTranslation(), TEXT("EventGraph"), FString(), EN2CCodeLanguage::Cpp);
+	// A translation at depth 1 (card 0257): the graph list shows the root, a function it calls and a struct it uses;
+	// Verify and Refine passed (card 0313), so the status shows beside the tabs
+	{
+		FN2CTranslationResponse Response;
+		Response.Graphs.Add(N2CDocsShots::SampleTranslation());
+		FN2CGraphTranslation Close;
+		Close.GraphName = TEXT("CloseDoor");
+		Close.GraphType = TEXT("Function");
+		Close.GraphClass = TEXT("BP_Door");
+		Close.Code.GraphDeclaration = TEXT("void CloseDoor();\n");
+		Close.Code.GraphImplementation = TEXT("void ABP_Door::CloseDoor()\n{\n\tbIsOpen = false;\n\tSetActorRotation(FRotator::ZeroRotator);\n}\n");
+		Response.Graphs.Add(Close);
+		FN2CGraphTranslation State;
+		State.GraphName = TEXT("FDoorState");
+		State.GraphType = TEXT("Struct");
+		State.GraphClass = TEXT("BP_Door");
+		State.Code.GraphDeclaration = TEXT("USTRUCT(BlueprintType)\nstruct FDoorState\n{\n\tGENERATED_BODY()\n\n\tUPROPERTY(EditAnywhere)\n\tbool bLocked = false;\n};\n");
+		Response.Graphs.Add(State);
+		Viewer->LoadResponse(Response, TEXT("EventGraph"), FString(), EN2CCodeLanguage::Cpp, 0);
+		FN2CVerifyOutcome Outcome;
+		Outcome.Status = EN2CVerifyStatus::Passed;
+		Outcome.MaxRefineTurns = 2;
+		Outcome.Language = EN2CCodeLanguage::Cpp;
+		Viewer->SetVerifyOutcome(&Outcome);
+	}
 	N2CDocsShots::Shoot(*this, N2CDocsShots::OnPanel(Viewer), FVector2D(880.0, 560.0), Folder, TEXT("main-window/translation-viewer"));
 
 	// A first run (card 0269): no tags yet (the tree's guidance, the selection buttons disabled) ...
