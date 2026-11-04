@@ -1,0 +1,18 @@
+{
+  "_doc": "Proposed performance budget (card 0362; Context/translation-pipeline/chunking-design.md, 'The budget'). Benchmarks/perf/check_budget.py compares a run_perf.py result (summary.json, else each engine's timers_n2c.csv) with these limits and exits non-zero on any breach. Times are wall-clock ms on the reference machine of performance-baseline.md and were set from a run taken under load: tighten them after a quiet-window rerun. A limit whose metric a run did not record is reported as not measured, never as a pass or a breach. Owner decision: card 0363.",
+  "version": 1,
+  "limits": [
+    {"id": "read_ms_1k", "what": "Whole-Blueprint read (capture, validate, serialize, ID expansion) of BP_N2CPerf_1k, median of 5", "metric": "fixture_read_ms", "fixture": "BP_N2CPerf_1k", "max": 2000},
+    {"id": "read_ms_5k", "what": "Whole-Blueprint read of BP_N2CPerf_5k, median of 5", "metric": "fixture_read_ms", "fixture": "BP_N2CPerf_5k", "max": 8000},
+    {"id": "build_struct_max_ms", "what": "Longest single N2C_Capture_BuildStruct (the 5k fixture), game thread", "metric": "scope_max_ms", "scope": "N2C_Capture_BuildStruct", "max": 1500},
+    {"id": "serialize_max_ms", "what": "Longest single N2C_Serialize_ToJson (the 5k fixture), game thread", "metric": "scope_max_ms", "scope": "N2C_Serialize_ToJson", "max": 4000},
+    {"id": "validate_max_ms", "what": "Longest single N2C_Validate", "metric": "scope_max_ms", "scope": "N2C_Validate", "max": 500},
+    {"id": "token_estimate_tick_ms", "what": "Longest single N2C_TokenEstimate (one estimator tick); not recorded by the script read of 2026-11-03", "metric": "scope_max_ms", "scope": "N2C_TokenEstimate", "max": 4},
+    {"id": "tokens_per_node_anthropic", "what": "Claude tokens per node of the minified translation document, worst fixture", "metric": "tokens_per_node", "counter": "anthropic", "max": 250},
+    {"id": "tokens_per_node_chars4", "what": "chars/4 tokens per node of the minified translation document, worst fixture", "metric": "tokens_per_node", "counter": "chars_div4", "max": 135},
+    {"id": "bytes_per_node", "what": "Bytes per node of the minified translation document, worst fixture", "metric": "bytes_per_node", "max": 550},
+    {"id": "tools_list_tokens_anthropic", "what": "tools/list in the default tool mode, Claude tokens", "metric": "tools_list_tokens", "counter": "anthropic", "max": 50000},
+    {"id": "tools_list_bytes", "what": "tools/list in the default tool mode, bytes", "metric": "tools_list_bytes", "max": 135000},
+    {"id": "tag_search_ms", "what": "UN2CTagBlueprintLibrary::SearchTags with every fixture function graph tagged, median of 5", "metric": "tag_search_ms", "max": 5}
+  ]
+}
