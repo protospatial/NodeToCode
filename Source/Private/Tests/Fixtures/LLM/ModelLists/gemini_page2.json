@@ -1,0 +1,48 @@
+{
+ "models": [
+  {
+   "name": "models/gemini-4-argon",
+   "version": "3.0",
+   "displayName": "Gemini 4 Argon",
+   "inputTokenLimit": 1048576,
+   "outputTokenLimit": 32768,
+   "supportedGenerationMethods": [
+    "generateContent",
+    "countTokens",
+    "batchGenerateContent"
+   ],
+   "temperature": 1,
+   "topP": 0.95,
+   "topK": 64,
+   "maxTemperature": 2,
+   "thinking": true
+  },
+  {
+   "name": "models/gemini-embedding-2",
+   "version": "2",
+   "displayName": "Gemini Embedding 2",
+   "inputTokenLimit": 8192,
+   "outputTokenLimit": 1,
+   "supportedGenerationMethods": [
+    "embedContent",
+    "countTextTokens",
+    "countTokens",
+    "asyncBatchEmbedContent"
+   ]
+  },
+  {
+   "name": "models/gemini-3.8-live",
+   "version": "3.1-flash-live-03-2026",
+   "displayName": "Gemini 3.8 Live",
+   "inputTokenLimit": 131072,
+   "outputTokenLimit": 65536,
+   "supportedGenerationMethods": [
+    "bidiGenerateContent"
+   ],
+   "temperature": 1,
+   "topP": 0.95,
+   "topK": 64,
+   "maxTemperature": 2
+  }
+ ]
+}

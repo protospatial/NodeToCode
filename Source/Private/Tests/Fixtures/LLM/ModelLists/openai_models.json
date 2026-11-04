@@ -1,0 +1,40 @@
+{
+ "object": "list",
+ "data": [
+  {
+   "id": "gpt-6.1-sol",
+   "object": "model",
+   "created": 1790552874,
+   "owned_by": "system",
+   "shutdown_date": null
+  },
+  {
+   "id": "gpt-6-luna",
+   "object": "model",
+   "created": 1789406102,
+   "owned_by": "system",
+   "shutdown_date": null
+  },
+  {
+   "id": "gpt-6.1-terra",
+   "object": "model",
+   "created": 1791908780,
+   "owned_by": "system",
+   "shutdown_date": null
+  },
+  {
+   "id": "gpt-5-mini",
+   "object": "model",
+   "created": 1754425928,
+   "owned_by": "system",
+   "shutdown_date": "2026-12-11"
+  },
+  {
+   "id": "gpt-5.2",
+   "object": "model",
+   "created": 1765313051,
+   "owned_by": "system",
+   "shutdown_date": null
+  }
+ ]
+}

@@ -5,6 +5,7 @@
 #include "Core/N2CSettings.h"
 #include "Core/N2CSecretStore.h"
 #include "Core/N2CUserSettings.h"
+#include "LLM/N2CModelDiscovery.h"
 #include "DetailLayoutBuilder.h"
 #include "PropertyHandle.h"
 #include "DetailWidgetRow.h"
@@ -70,6 +71,8 @@ void FN2CSettingsCustomization::Register()
 		FOnGetPropertyTypeCustomizationInstance::CreateStatic(&FN2CSettingsCustomization::MakeInstance));
 	PropertyEditor.RegisterCustomPropertyTypeLayout(FN2CApiKeyRemover::StaticStruct()->GetFName(),
 		FOnGetPropertyTypeCustomizationInstance::CreateStatic(&FN2CApiKeyRemoverCustomization::MakeInstance));
+	PropertyEditor.RegisterCustomPropertyTypeLayout(FN2CModelListRefresher::StaticStruct()->GetFName(),
+		FOnGetPropertyTypeCustomizationInstance::CreateStatic(&FN2CModelListRefresherCustomization::MakeInstance));
 }
 
 void FN2CSettingsCustomization::Unregister()
@@ -78,6 +81,7 @@ void FN2CSettingsCustomization::Unregister()
 	{
 		PropertyEditor->UnregisterCustomPropertyTypeLayout(FN2CMcpClientConfigWriter::StaticStruct()->GetFName());
 		PropertyEditor->UnregisterCustomPropertyTypeLayout(FN2CApiKeyRemover::StaticStruct()->GetFName());
+		PropertyEditor->UnregisterCustomPropertyTypeLayout(FN2CModelListRefresher::StaticStruct()->GetFName());
 	}
 }
 
@@ -131,6 +135,58 @@ void FN2CApiKeyRemoverCustomization::CustomizeHeader(TSharedRef<IPropertyHandle>
 				bRemoved);
 			return FReply::Handled();
 		})
+	];
+}
+
+TSharedRef<IPropertyTypeCustomization> FN2CModelListRefresherCustomization::MakeInstance()
+{
+	return MakeShared<FN2CModelListRefresherCustomization>();
+}
+
+bool FN2CModelListRefresherCustomization::CanRefresh()
+{
+	const FName Active = FN2CModelDiscovery::GetActiveProviderId();
+	return FN2CModelDiscovery::GetEnvironmentSkip() == EN2CModelDiscoverySkip::None
+		&& FN2CModelDiscovery::IsOptedIn(Active)
+		&& !FN2CModelDiscovery::Get().IsFetching(Active);
+}
+
+void FN2CModelListRefresherCustomization::CustomizeHeader(TSharedRef<IPropertyHandle> PropertyHandle, FDetailWidgetRow& HeaderRow,
+	IPropertyTypeCustomizationUtils& CustomizationUtils)
+{
+	HeaderRow
+	.NameContent()
+	[
+		PropertyHandle->CreatePropertyNameWidget()
+	]
+	.ValueContent()
+	.MinDesiredWidth(320.0f)
+	[
+		SNew(SHorizontalBox)
+		+ SHorizontalBox::Slot()
+		.AutoWidth()
+		.VAlign(VAlign_Center)
+		[
+			SNew(SButton)
+			.Text(LOCTEXT("RefreshModelList", "Refresh Model List"))
+			.ToolTipText(PropertyHandle->GetToolTipText())
+			.IsEnabled_Lambda([]() { return CanRefresh(); })
+			.OnClicked_Lambda([]()
+			{
+				FN2CModelDiscovery::Get().RequestActiveRefresh(TEXT("Refresh Model List"), true);
+				return FReply::Handled();
+			})
+		]
+		+ SHorizontalBox::Slot()
+		.FillWidth(1.0f)
+		.VAlign(VAlign_Center)
+		.Padding(8.0f, 0.0f, 0.0f, 0.0f)
+		[
+			SNew(STextBlock)
+			.Font(IDetailLayoutBuilder::GetDetailFont())
+			.AutoWrapText(true)
+			.Text_Lambda([]() { return FText::FromString(FN2CModelDiscovery::Get().DescribeActiveStatus()); })
+		]
 	];
 }
 

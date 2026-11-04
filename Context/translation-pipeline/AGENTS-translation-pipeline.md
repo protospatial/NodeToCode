@@ -9,7 +9,7 @@ Source/
 ├── Public/
 │   ├── Core/
 │   │   ├── N2CNodeCollector.h        → Collects nodes from Blueprint graphs
-│   │   ├── N2CCapture.h              → Capture API: N2C::CaptureNodes/CaptureGraph/DescribeNode
+│   │   ├── N2CCapture.h              → Capture API: N2C::CaptureNodes/CaptureGraph(s)/CaptureMaterial*/DescribeNode
 │   │   └── N2CSerializer.h           → JSON serialization/deserialization
 │   │
 │   ├── Models/
@@ -37,6 +37,7 @@ Source/
     │   ├── N2CNodeCollector.cpp
     │   ├── N2CCapture.cpp            → The N2C:: capture functions
     │   ├── N2CCaptureContext.h/.cpp  → Per-call capture state and node conversion (private)
+    │   ├── N2CMaterialCaptureContext.h/.cpp → Material and material function capture (private)
     │   └── N2CSerializer.cpp
     │
     ├── Models/
@@ -76,9 +77,9 @@ transition and conduit rules included (their `AnimGraphNode_TransitionResult` ma
 keeps what feeds it). AnimGraphs and other pose graphs (`UAnimationGraphSchema` and subclasses, which derive from the
 K2 schema), states, state machines and Control Rig (RigVM) graphs are refused with `UNSUPPORTED_GRAPH_TYPE` by the
 capture tools, the batch tools, Copy JSON and translate, and `CanTranslateGraph` (the overlay shows n/a). Every engine `UK2Node` subclass and the N2C type it gets: [k2-node-inventory.md](k2-node-inventory.md)
-(`Scripts/k2_node_inventory.py`). Material capture (epic 0442) is not built yet; every material expression and
-material asset class on each engine, the handling proposed for it and the ENGINE_MINOR_VERSION guards it needs:
-[material-classes.md](material-classes.md) (`Context/translation-pipeline/gen_material_classes.py`, card 0446). Reading graphs without the editor plugin (devkits, CI), compared across clipboard T3D, CUE4Parse and the
+(`Scripts/k2_node_inventory.py`). Materials have their own capture (below, "Material capture"); every material
+expression and material asset class on each engine and how capture handles it: [material-classes.md](material-classes.md)
+(`Context/translation-pipeline/gen_material_classes.py`, card 0446). Reading graphs without the editor plugin (devkits, CI), compared across clipboard T3D, CUE4Parse and the
 Rust uasset parsers, with a T3D-to-N2C-JSON spike (card 0329): [offline-reader.md](../explorations/offline-reader.md).
 
 Liveness (card 0137, issue #13): the capture leaves out the editor's ghost nodes (`IsAutomaticallyPlacedGhostNode()`,
@@ -99,6 +100,8 @@ singleton). Game thread only.
 |----------|-------------|
 | `CaptureNodes(Nodes, Options)` | Nodes of one graph (and the nested graphs they use) -> `TValueOrError<FN2CCapture, FString>` |
 | `CaptureGraph(Graph, Options)` | Collects the graph's nodes with `FN2CNodeCollector`, then `CaptureNodes` |
+| `CaptureGraphs(Graphs, Options)` | Several graphs of one Blueprint into one result, each at depth 0 in the order given (get-blueprint-n2cjson without a graph, card 0157) |
+| `CaptureMaterial`, `CaptureMaterialFunction`, `CaptureMaterialInstance`, `CaptureMaterialAsset` | Material capture (below); `CaptureMaterialAsset` dispatches on the exact class |
 | `DescribeNode(Node, NodeID)` | One node alone (MCP add-node and search tools): fresh context, no nested graphs, no related types |
 
 `FN2CCapture` holds the `FN2CBlueprint` and that capture's ID-to-GUID maps: `NodeGuids` (node ID -> `NodeGuid`),
@@ -182,6 +185,41 @@ Key responsibilities:
 - Handles nested graphs with depth tracking (collapsed graphs at any depth; user functions and macros, project or plugin content, within the depth)
 - Processes related structs/enums used by nodes
 - Traces connections through knot nodes
+
+### Material capture
+
+**`Source/Private/Core/N2CMaterialCaptureContext.h` (`FN2CMaterialCaptureContext`, epic 0442, decision 0009)**
+
+`N2C::CaptureMaterial` and `CaptureMaterialFunction` read a saved `UMaterial` or `UMaterialFunction` (exact classes)
+into a document whose `asset_kind` is `Material` and whose graph is `graph_type` `Material` or `MaterialFunction`
+(`Content/Prompting/Shared/N2CJsonSpec.md` describes the shape for the LLM). The header comment is the reference; in
+short:
+
+- Read from the asset's expressions, never from a Material Editor's `UMaterialGraph`. The MCP tool reads a focused
+  editor's working copy by capturing that transient copy as the original (`CaptureWorkingCopy` in
+  `N2CMcpGetMaterialN2CJsonTool.cpp`, card 0463).
+- IDs: expressions N1, N2, ... in `GetExpressions` order, then the `MaterialOutput` node; `NodeGuids` maps them to
+  `MaterialExpressionGuid` (a duplicate or missing GUID gets a derived one and `DUPLICATE_EXPRESSION_GUID`).
+- Pins are named by their `FExpressionInput` property, a function call's by the function input's name, material
+  attributes by attribute name; the output node has one input per connected material property (FrontMaterial with
+  Substrate). Pins are `Wildcard`. Reroutes, named reroutes and composites are traced through, never nodes.
+- Function calls are followed within `Options.Depth` like Blueprint calls (engine `/Engine/Functions` named only at
+  depth 0); each function once. Liveness: what no output node, `FunctionOutput` or custom output reads is unused.
+- Fallbacks (card 0451): an input outside the class's properties is `Input<i>` with `UNMAPPED_PIN`; a deprecated or
+  material-layer expression stays a node without its settings (`UNSUPPORTED_EXPRESSION`); an unknown class never
+  fails. Custom HLSL, defines, include paths and comment text are captured as untrusted data.
+- `metadata.material`: domain, blend mode, shading models, `two_sided`, and `substrate` (the project's `r.Substrate`;
+  gate 0460 checked the goldens with Substrate on: only this field changes).
+- `CaptureMaterialInstance` (card 0470): a `UMaterialInstanceConstant` is its base material's capture under the
+  instance's name, plus `metadata.material.instance` (`parents`, and the `scalars`, `vectors`, `textures`,
+  `static_switches` the chain sets). Other instance, layer and blend classes are `UNSUPPORTED_ASSET_TYPE`.
+- No `ENGINE_MINOR_VERSION` guard is needed on 5.6-5.8 (nothing touches `GetMaterialResource` or the Material
+  Editor's graph). Specs: `NodeToCode.Material.Capture` (goldens in `Source/Private/Tests/Goldens/Material`, one per
+  case, `<case>.<major>.<minor>.json` where an engine differs) and `NodeToCode.Material.Budget` (2,000 expressions
+  under the capture budget; the read tool spills a large document to a file, card 0456).
+- Translation: a Material document is explained in Pseudocode with the `MaterialGen_Pseudocode.md` prompt
+  (`N2C::GetPromptFamilyForDocument`, card 0454); the MCP tools are `get-material-n2cjson` and `translate-material`
+  ([AGENTS-mcp-server.md](../mcp-server/AGENTS-mcp-server.md)).
 
 ### Serializer
 
@@ -412,7 +450,7 @@ Singleton orchestrator managing batch operations:
 
 The editor's Batch Translate does not call it directly: it starts a batch session of `UN2CTranslationSubsystem`
 (`StartBatch`, card 0255), which holds the busy state and ends the session on `OnBatchCompleteNative` whether or not
-the window still exists; `Cancel(session)` cancels the batch. `SenderOverride` sends items to a fake service in specs.
+the window still exists; `Cancel(session)` cancels the batch. `SenderOverride` sends items to a fake service in specs. Each item, like a single session, goes through Verify and Refine when it is on for the language ([C++ compile check](compile-gate.md#verify-and-refine)).
 
 Key features:
 - Loads blueprints via `FSoftObjectPath::TryLoad()` without editor focus

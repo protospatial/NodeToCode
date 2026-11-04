@@ -8,9 +8,8 @@ and in the wiki's [Latest Updates](wiki/Latest-Updates.md).
 <!--
 Owner, before tagging (card 0083): lines marked PROVISIONAL follow a review recommendation for an owner decision
 that is not confirmed yet. Edit them if the decision changes, then delete these comments.
-  0052 engines 5.6-5.8 | 0053 licence and DCO | 0073 Win64 only | 0085 5.6/5.7 MCP transport
-  0019 run-python off by default | 0038 subscription sign-in removed | 0061 key storage (Windows Credential Manager,
-  option (a)) | 0115 model catalog and string model IDs | 0117 N2C JSON v2 | 0140 CRUD tool families frozen
+  0019 run-python off by default
+The other markers were removed once the owner decided them (decision records 0001-0016, 2026-11-02).
 Set the release date in the heading below when the tag is made.
 -->
 
@@ -23,10 +22,10 @@ editor UI, tagging and batch translation. This is a beta. The stable release is 
 ### Requirements
 
 - Unreal Engine 5.6, 5.7 or 5.8. A project on 5.5 or older stays on 1.2.x
-  ([#38], [#39], 8f16836). <!-- PROVISIONAL 0052 -->
+  ([#38], [#39], 8f16836).
 - Windows (Win64), editor only. Mac is no longer on the platform allowlist, because it has never been compiled;
   Mac or Linux is added once a build on that platform is verified
-  ([#65], [decision 0001](.agents/decisions/0001-platforms-for-2-0-beta.md)). <!-- PROVISIONAL 0073 -->
+  ([#65], [decision 0001](.agents/decisions/0001-platforms-for-2-0-beta.md)).
 - The `.uplugin` reports `Version` 3 and `VersionName` "2.0.0-beta.1", marked beta ([#65]).
 
 ### Added
@@ -43,9 +42,9 @@ editor UI, tagging and batch translation. This is a beta. The stable release is 
   connect and delete nodes; create and delete functions, function pins and variables; tag graphs; compile and save;
   search and create Blueprint classes; add, list and remove components; search, move, copy and rename assets and
   folders in the Content Browser; read project files and folders; translate with Node to Code's own LLM settings
-  (commits from 241e31d to abb98cc, 2025-06-12 to 2025-07-06). NodeToCode registers 64 tools; with the default tool
-  profile and Python execution off, `tools/list` returns 63 of them ([#68], [#148], [#202], [#257], [#290], [#293],
-  [#294]).
+  (commits from 241e31d to abb98cc, 2025-06-12 to 2025-07-06). NodeToCode registers 66 tools; with the default tool
+  profile and Python execution off, `tools/list` returns 65 of them ([#68], [#148], [#202], [#257], [#290], [#293],
+  [#294], [#329], [#342]).
 - `get-blueprint-n2cjson` and `list-blueprint-graphs` read any Blueprint by asset path with no Blueprint editor
   open; a document over about 20,000 tokens is written to `Saved/NodeToCode/Exports` and the call returns its path
   ([#130]). `export-n2cjson-batch` exports many graphs (by asset path, whole Blueprints or tag) as N2C JSON files,
@@ -82,7 +81,7 @@ editor UI, tagging and batch translation. This is a beta. The stable release is 
   stale ([#154]).
 - `translate-focused-blueprint` answers on the same request when the translation finishes. On UE 5.8 it streams
   progress first when the client asks for `text/event-stream`; on 5.6 and 5.7 it returns one JSON result
-  ([#59]). <!-- PROVISIONAL 0085 -->
+  ([#59]).
 - `nodetocode/cancelTask` stops a running translation and its HTTP request ([#51], [#52]). It is deprecated: the
   standard `notifications/cancelled` with the tools/call's request id now stops the call the same way and no
   response is sent for it ([#79], [#82]).
@@ -129,6 +128,26 @@ editor UI, tagging and batch translation. This is a beta. The stable release is 
   `state`, `transition`, `conduit`, `rig`) and a `translatable` flag per graph ([#260]).
 - `translate-batch` reports cache read, cache write and reasoning token counts in its batch and per-item `usage`
   ([#277]).
+- Every `run-python` call is recorded in `Saved/NodeToCode/Logs/mcp-audit.jsonl`: time, MCP session and client, the
+  full code, the outcome and the start of the result. The MCP file tools cannot read it, since a script's output can
+  hold a secret ([#313]).
+- `translate-focused-blueprint` can run as an MCP 2025-11-25 task (`execution.taskSupport: optional`): a session's
+  call with `params.task` answers a `CreateTaskResult` at once, followed with `tasks/get`, `tasks/result`,
+  `tasks/list` and `tasks/cancel` ([#326]).
+- `get-material-n2cjson` (toolset MaterialTools) reads a Material or Material Function as N2C JSON by asset path, from
+  the saved asset (`target.workingCopy: false`); layers and blends are refused with `UNSUPPORTED_ASSET_TYPE`, and
+  `get-blueprint-n2cjson` given a material path points to it ([#329]). With no `materialPath` it reads the working
+  copy of the Material Editor you activated last, unapplied edits included (`target.resolvedBy: focus`,
+  `workingCopy: true`, `workingCopyPath`), or answers `NO_FOCUSED_MATERIAL` when none is open ([#337]). A Material
+  Instance is read as its base material's graph with a summary of the instance (see N2C JSON and capture) ([#343]).
+- `translate-material` (MaterialTools) explains a Material or Material Function in Pseudocode with your LLM
+  provider, by asset path or from the open Material Editor's working copy. It is long-running and cancellable, with
+  progress on UE 5.8 and one held response on 5.6/5.7; any other language is refused with
+  `TARGET_NOT_AVAILABLE_FOR_MATERIALS`, and nothing is saved to the translation output yet. The `generate-code` prompt
+  uses the MaterialGen instructions for a material document ([#342]).
+- MCP Apps for clients that render them (Claude Desktop, VS Code Copilot, Cursor, ChatGPT): `translate-focused-blueprint`
+  shows a syntax-highlighted translation viewer and `get-focused-blueprint` a graph preview; other clients get the same
+  text results as before ([#338]).
 
 **UE 5.8 integration**
 
@@ -179,6 +198,15 @@ editor UI, tagging and batch translation. This is a beta. The stable release is 
 - The Python bridge's graph-edit, function-pin, tag, compile and save calls, and their `nodetocode` wrappers, take
   optional `blueprint_path` and `graph` (GUID or name) ([#234]). `nodetocode.get_blueprint_dependencies(paths, ...)`
   returns the dependency index ([#290]), and `nodetocode.skill_script(skill)` loads an Agent Skill's script ([#298]).
+- `unreal.get_editor_subsystem(unreal.N2CEditorSubsystem)`: NodeToCode's Blueprint functions for Python and Editor
+  Utility Blueprints (compile, save, list graphs, parent class, read as N2C JSON, and tag, list and remove tags),
+  each by asset path, returning a struct and raising an error that names the path ([#325]).
+- `nodetocode.get_material_n2cjson(material_path, ...)` returns the same document as `get-material-n2cjson` ([#329]).
+- The tag and graph state store is an editor subsystem, `N2CGraphStateSubsystem`, reachable with
+  `unreal.get_editor_subsystem` ([#332]).
+- Blueprint and Python: `N2CTranslationSubsystem.start_batch_translation`, `cancel_session`,
+  `get_batch_session_result` and `FN2CBatchTranslationResult.bCancelled`; C++: `UN2CTranslationSubsystem::StartBatch`
+  and `Cancel` for batch sessions ([#340]).
 
 **N2C JSON and capture**
 
@@ -201,11 +229,20 @@ editor UI, tagging and batch translation. This is a beta. The stable release is 
   `UNMAPPED_PIN`, layer and deprecated expressions warn `UNSUPPORTED_EXPRESSION`, asset references are object paths
   and `metadata.material.substrate` records whether the project uses Substrate ([#297]). Material capture gives the
   same JSON in Japanese and German, on a second capture and for a copy, and its unused flags match the engine's own
-  reference walk ([#312]).
+  reference walk ([#312]). A Material Instance is read (get-material-n2cjson, capture) as its base material's graph
+  with a summary of the instance: its parent chain and the scalar, vector, texture and static switch parameters the
+  chain sets ([#343]).
+- A whole-Blueprint capture of an Actor Blueprint lists its components (`components`): each one's class, the
+  component it is attached to and only the properties it changed, plus inherited components whose defaults it
+  changes. `metadata` lists the interfaces a Blueprint implements (`interfaces`). Ported from PR #8 by flashpoint493
+  ([#320]).
 - All of these are additive; the format stays at version 2.0.0.
 - Internal: `FN2CDependencyIndex`, the computed dependency index behind `get-blueprint-dependencies` and
   `create-migration-plan` ([#268]); `IN2CCodeVerifier`, a code verifier seam with a Python syntax verifier and a
   capture-coverage verifier, groundwork for a compile-repair loop that nothing calls yet ([#252]).
+- An opt-in C++ compile check for generated code (`n2c.Verify.CppCompile`). It compiles a translation as a class in a
+  scratch project with UnrealBuildTool, or the project's modules with Live Coding, and reports each compiler error
+  with its file, line and code ([#334]).
 
 **Editor**
 
@@ -225,6 +262,12 @@ editor UI, tagging and batch translation. This is a beta. The stable release is 
 - A Get Started card in the Node to Code window walks a new user through provider, API key (saved in the system
   keychain), a connection test, target language and tagging a first graph; it hides after the first saved
   translation or when closed. The tag tree and the translation viewer say what to do when they are empty ([#271]).
+- Tag Dependencies and Reference Viewer buttons in the tag manager: tag every graph the checked Blueprints depend on
+  with the selected tag, or open Unreal's Reference Viewer on them ([#331]).
+- Translate on a graph's N2C bar works with the Node to Code window closed: a notification shows the progress with
+  Cancel, then Open Result. A new editor subsystem, `UN2CTranslationSubsystem`, runs translation sessions with ids,
+  states, cancel and session events for Blueprints and C++; its `IsBusy()` is the editor's one "a translation is
+  running" flag ([#321]).
 
 **Providers and models**
 
@@ -256,12 +299,18 @@ editor UI, tagging and batch translation. This is a beta. The stable release is 
 - **Max Request Retries** (**Project Settings > LLM Provider**, default 3): a request answered with 429, 529 or
   another server error is sent again, after the wait the provider asks for (`Retry-After`) or a short capped backoff,
   before it fails. The retry and transport design was informed by the ideas in PR #21 by akashskypatel ([#311]).
+- An **OpenAI-Compatible** provider: vLLM, llama.cpp, Ollama's /v1, OpenRouter, Groq, Together, Fireworks, xAI,
+  Mistral, Azure OpenAI, Amazon Bedrock, Gemini's OpenAI endpoint, MiniMax, Kimi and Z.ai are presets, and any other
+  Chat Completions server is a custom profile in your user settings. DeepSeek and LM Studio now go through the same
+  adapter, with requests unchanged on the wire. Design from PR #21 by akashskypatel ([#341]).
+- Translating a material uses a material prompt (Pseudocode) that explains the material from its outputs back; asking
+  for a material in another language fails at once with `TARGET_NOT_AVAILABLE_FOR_MATERIALS` ([#333]).
 
 **Project**
 
 - `NOTICE`, `CONTRIBUTING.md`, `SECURITY.md`, issue forms and a pull request template. Contributions are under
   Apache-2.0 with a DCO sign-off (`git commit -s`)
-  ([#66], [decision 0002](.agents/decisions/0002-licence-and-contribution-model.md)). <!-- PROVISIONAL 0053 -->
+  ([#66], [decision 0002](.agents/decisions/0002-licence-and-contribution-model.md)).
 - The user guide lives in `wiki/` in this repository ([#27], [#36]).
 - `Scripts/package-release.ps1` builds per-engine zips and a SHA256SUMS file from a clean `git archive`, then
   checks, rebuilds and loads each package ([#67]). Packages include `ThirdParty`, `LICENSE`, `NOTICE` and
@@ -282,7 +331,7 @@ editor UI, tagging and batch translation. This is a beta. The stable release is 
   [#113], [#115], [#117], [#194]). The user docs live in `wiki/`
   ([decision 0006](.agents/decisions/0006-user-docs-location-wiki-in-repo.md), [#156]); the Blueprint and Content Browser CRUD tool families are frozen, bug fixes only
   ([decision 0007](.agents/decisions/0007-crud-tool-families-fix-then-freeze.md), [#157]).
-  <!-- PROVISIONAL 0140 -->
+ 
 - A docs-lint CI job checks the agent docs against the generated tool reference, and the reference against the tool
   sources, on every pull request (`Scripts/docs_lint.py`) ([#159]).
 - Tests: golden-file specs for every provider's request payload and response parser and for the captured N2C JSON of
@@ -314,6 +363,14 @@ editor UI, tagging and batch translation. This is a beta. The stable release is 
 - Non-shipping builds accept `-N2CSecretPrefix=NodeToCodeTest/<guid>/`, which keeps API keys in test Credential
   Manager entries, so a hand check of Save Key or the API Key fields never touches your own `NodeToCode/*` entries
   ([#305]).
+- User guide: an Agent Workflows page gives the agent's translate, N2C JSON export, tagging and batch jobs as
+  requests and MCP calls, with a UE 5.8 Toolset Registry section; the agent pages say Claude Code is the only
+  verified agent and list Codex, Copilot and Cursor as unchecked ([#339]).
+- Tests: a benchmark corpus of 22 fixture Blueprints with expected-shape files and a schema-checked manifest, shared
+  by the token, format and model benchmarks ([#345]); a regression test captures BP_Sky_Sphere's functions and
+  StandardMacros' Create and Assign MID, which used to fail with "Duplicate pin ID", and the smoke check focuses
+  UpdateSunDirection ([#327]); a regression spec holds material capture to a budget, a 2,000-expression material with
+  a depth-2 function chain in under 2 s, and get-material-n2cjson writes it to a file on its own ([#336]).
 
 ### Changed
 
@@ -324,7 +381,7 @@ editor UI, tagging and batch translation. This is a beta. The stable release is 
   (`"N3.P5->N4.P1"`), instead of a node pair ([#103]). Names are identifiers that do not change with the editor
   language or settings: each node has a `class`, a pin's `name` is its internal name (`execute`, `then`,
   `ReturnValue`), and the display text is an English `title` (nodes, replacing `name`) or `label` (pins) hint, given
-  only when it says more than the identifier ([#105]). <!-- PROVISIONAL 0117 -->
+  only when it says more than the identifier ([#105]).
 - More N2C JSON 2.0.0: the editor's greyed-out default events (ghost nodes) are left out, and nodes are flagged
   `unused`, `unreachable` or `disabled` when they are ([#104]). Graphs carry their comment boxes (`comments`), and
   graph types come from the graph's schema ([#170]). Node types follow the nearest mapped base class; Break Struct,
@@ -332,7 +389,7 @@ editor UI, tagging and batch translation. This is a beta. The stable release is 
   unmapped node is `Unknown` with its `class` instead of `CallFunction` ([#167]). Map pins carry their value type,
   and enum, Target and bitmask pins are typed `Enum`, `Self` and `Bitmask` ([#179]). The reader keeps unknown
   blueprint, graph, node and pin kinds and unknown fields and writes them back, so a later 2.x document round-trips
-  ([#132]). <!-- PROVISIONAL 0117 -->
+  ([#132]).
 - The six CodeGen prompts and the batch spec are built from one shared N2C JSON spec,
   `Content/Prompting/Shared/N2CJsonSpec.md`, that matches what the serializer writes ([#106]).
 - Blueprint text in MCP output (comments, string literals, names) is marked as untrusted data, and the MCP prompts
@@ -343,7 +400,7 @@ editor UI, tagging and batch translation. This is a beta. The stable release is 
 - Project Settings selects each cloud provider's **Model** by model ID from the bundled model catalog, so a new
   model is a catalog edit, not a plugin update; **Custom Model ID** sends an ID the catalog does not list, and
   DeepSeek's **Thinking** sets its thinking mode. Price overrides are one **Model Price Overrides** map keyed by
-  model ID, and the cost getters fall back to the catalog price ([#108], [#109]). <!-- PROVISIONAL 0115 -->
+  model ID, and the cost getters fall back to the catalog price ([#108], [#109]).
 - Requests no longer send sampling parameters or schema fields that current models reject. The OpenAI JSON
   schema is sent as strict, and the Gemini key goes in the `x-goog-api-key` header instead of the URL
   ([#30], [#31]).
@@ -353,7 +410,7 @@ editor UI, tagging and batch translation. This is a beta. The stable release is 
   Linux keep the per-user file ([#42], [#145]). Every save and removal is read back and repeated until it holds
   ([#190]). The Project Settings key fields are masked and write-only, **API Key Source** is now **API Key Status**,
   and each provider has **Remove Saved Key**; `N2CSettings.SetApiKey` and `HasApiKey` are for Blueprints and Python,
-  and nothing returns a key ([#145]). <!-- PROVISIONAL 0061 -->
+  and nothing returns a key ([#145]).
 - Each request reads its API key when it is sent, so a key entered, changed or cleared applies to the next request,
   also within a running batch ([#141]). Each provider sends its key in one header and never in a URL; Anthropic
   requests no longer carry a second `Authorization` header ([#137]).
@@ -442,7 +499,30 @@ editor UI, tagging and batch translation. This is a beta. The stable release is 
   its graph (`FN2CTagEntry`, `FN2CGraphRef`), and `FN2CTagInfo` moved to `Core/N2CTagTypes.h` ([#242]).
 - Internal: capture runs through a per-call capture module instead of the `FN2CNodeTranslator` singleton ([#100]);
   MCP tools are described and called through one seam, `FN2CToolCatalog` ([#169]); UI colours live in
-  `Core/Style/N2CUIColors.h` ([#168]); overlay injection is `FN2CGraphOverlayInjector` ([#205]).
+  `Core/Style/N2CUIColors.h` ([#168]); overlay injection is `FN2CGraphOverlayInjector` ([#205]); the node collector's
+  unused pin pass, `FN2CContentTypeUtils::IsTextFile` and a struct-member fallback that could never find anything are
+  removed ([#323]).
+- One click on Translate sends one request however many Node to Code windows are open; before, each open window sent
+  its own ([#321]).
+- Batch Translate runs as a translation session: Cancel and Escape stop the request in flight and the progress dialog
+  shows Cancelling... until it has, then marks the graphs not translated as skipped. When a batch cannot start, the
+  notification says why (a translation is running, the provider cannot be used, or which graphs could not be found)
+  ([#340]).
+- The graph state file, `BlueprintGraphState.json`, is written at most once a second however many changes come in,
+  instead of once per change; pending changes are written when the editor closes ([#332]).
+- Deprecated: `unreal.N2CPythonBridge` `get_blueprint_n2c_json`, `list_blueprint_graphs`, `compile_focused_blueprint`,
+  `save_focused_blueprint` and `tag_focused_graph`. They still work, but Blueprint menus no longer offer them; use the
+  editor subsystem ([#325]). NodeToCode no longer links the EditorScriptingUtilities module; the plugin stays enabled
+  ([#325]).
+- Deprecated: `unreal.N2CPythonBridge` `open_blueprint`, `open_blueprint_function`, `search_blueprint_nodes`,
+  `add_node_to_graph`, `connect_pins`, `set_pin_value`, `delete_nodes`, `find_nodes_in_graph`, `create_comment_node`
+  and the four function-pin functions. They now run their MCP tool and return its result (`data` has the tool's keys);
+  use the `nodetocode` functions or `invoke_tool`. `delete_nodes` with an unknown GUID now fails as a whole, and
+  `connect_pins` needs each pin's `pinGuid`, as the tools do ([#330]).
+- `get_llm_providers` and `get_active_provider` take provider names and endpoints from the model catalog, so
+  DeepSeek's endpoint is the one requests use, and display names match the provider list ([#330]).
+- The packaged plugin no longer includes the in-editor NodeToCodeTools tests
+  (`Content/Python/nodetocode/toolsets/tests`); on UE 5.8 the toolset still registers ([#316]).
 - The code editor uses one theme for every language, **Theming > Code Editor Theme**, instead of 21 themes per
   language (a4f66d6).
 - The Blueprint editor's Node to Code toolbar menu is replaced by the graph overlay. The command names are
@@ -450,7 +530,7 @@ editor UI, tagging and batch translation. This is a beta. The stable release is 
 - Startup no longer writes HTTP timeouts to `Config/DefaultEngine.ini` or turns off **Use Less CPU when in
   Background**. Timeouts are set per request, and CPU throttling is off only while a translation runs (4fea3e5).
 - The vendored cpp-httplib is v0.63.0 ([#40]). Since the notification server was removed ([#84]) no source
-  file includes it; it stays for a possible UE 5.6/5.7 streaming transport. <!-- PROVISIONAL 0085 -->
+  file includes it; it stays for a possible UE 5.6/5.7 streaming transport.
 - MCP request bodies are parsed exactly once, so JSON-RPC batches work and trailing bytes are refused; responses
   are condensed JSON ([#56]).
 - `UN2CCodeEditorWidget::GetSelection` outputs are renamed `OutStartLine` and `OutEndLine`, and a line-and-column
@@ -474,7 +554,7 @@ editor UI, tagging and batch translation. This is a beta. The stable release is 
   Settings ([#32]).
 - Claude subscription and Google-account sign-in, which earlier 2.0 development builds had (5e42920, b73299f).
   Node to Code uses API keys only; to use a subscription, drive Node to Code from that vendor's agent over MCP
-  ([#35], [#36]). <!-- PROVISIONAL 0038 -->
+  ([#35], [#36]).
 - `assess-needed-tools` and the **Enable Dynamic Tool Discovery** and **Enable Python Script-Only Mode** settings,
   replaced by **Tool Profile** and **Tool Exposure** ([#148]).
 - `FN2CLLMConfig::ApiKey`, `UN2CSettings::GetActiveApiKey` / `GetActiveApiKeyForProvider` and the `OutAuthToken`
@@ -677,6 +757,23 @@ editor UI, tagging and batch translation. This is a beta. The stable release is 
 - **Security:** the stdio bridge uses a discovery entry only when its URL is plain http to 127.0.0.1, localhost or
   [::1], so a planted `Saved/NodeToCode/mcp-server.json` in a downloaded project cannot send the MCP client's traffic
   to another host; `--url` still names any editor ([#283]).
+- **MCP on UE 5.8 startup:** NodeToCode's MCP server now starts before Epic's MCP Client Toolset connects at editor
+  start, so the NodeToCode toolset is no longer missing for the session after a plugin install or update. The module
+  loads in the PostDefault phase ([#344]).
+- **MCP search tools:** search-blueprint-classes' `includeEngineClasses: false` now leaves out every engine module (it
+  kept `/Script/AIModule` and the like), and `includePluginClasses: false` leaves out plugins' content Blueprints and
+  keeps the project's own modules. list-overridable-functions names the class a `TSubclassOf` parameter must derive
+  from (it said `Class`), and gives soft classes, interfaces and delegates their own type instead of `object` or
+  `unknown` ([#317]).
+- **Capture:** For Each (Map) and For Each (Set) key and value pin labels are captured as "Map Key", "Map Value" and
+  "Set Value" in every editor language, not in the editor's language ([#318]).
+- **Billing errors:** a provider answer that says the account is out of credit or quota (OpenAI `insufficient_quota`
+  or "no credits remaining", Gemini depleted prepayment credits or a spent daily quota, DeepSeek "Insufficient
+  Balance") fails at once as a Billing error instead of being retried up to Max Request Retries times as a rate limit
+  ([#328]).
+- **Two editors on one project:** they no longer lose each other's tags. A graph-state save that finds the file
+  changed by the other editor merges the two per graph (both editors' tags, translation and export records) instead
+  of overwriting it ([#335]).
 - **Development:** a freshly created host passes `build.ps1 -Smoke` on its first run ([#258]);
   `Tests/mcp_probe/live_provider_matrix.py` records token usage again after [#181] changed the usage log line
   ([#224]).
@@ -689,8 +786,8 @@ editor UI, tagging and batch translation. This is a beta. The stable release is 
 Each item needs action from you. The [migration matrix](Context/release/migration-1.2-to-2.0.md) has every
 setting, file and API, row by row.
 
-- **Engine:** UE 5.6 or newer ([#38]). <!-- PROVISIONAL 0052 -->
-- **Platform:** Win64 only. Mac users stay on 1.2.x for now ([#65]). <!-- PROVISIONAL 0073 -->
+- **Engine:** UE 5.6 or newer ([#38]).
+- **Platform:** Win64 only. Mac users stay on 1.2.x for now ([#65]).
 - **Editor UI:** assets of yours that reference `/NodeToCode/UI/...` lose those references. An Editor Utility
   Widget that embeds `UN2CMainWindowWidget`, `UN2CTagManagerWidget` or `UN2CCodeEditorWidget` still loads; move off
   them before they are removed ([#61]).
@@ -702,7 +799,7 @@ setting, file and API, row by row.
 - **API keys:** keys are per user, not per project, and on Windows they are in Windows Credential Manager. A second
   project whose keys differ keeps the first project's keys; its own are saved under `MigrationConflicts` in the
   per-user file ([#42], [#145]). Blueprints and Python set keys with `N2CSettings.SetApiKey` and can no longer read
-  them ([#145]). <!-- PROVISIONAL 0061 -->
+  them ([#145]).
 - **Old translations:** folders that 1.2.x saved are left as they are but are not listed in the 2.0 window; open
   them from disk ([#62]).
 - **N2C JSON readers:** a tool that parses N2C JSON must accept an array as a `flows.data` value (fan-out) and
@@ -711,14 +808,14 @@ setting, file and API, row by row.
   `"N3.P5->N4.P1"` (exec output pin to exec input pin) as well as 1.x node pairs `"N1->N2"` ([#103]). A node's
   display title is `title` (optional) instead of `name`, nodes have a `class`, pin names are `PinName`s with an
   optional `label`, and a variable's `member_parent` is its owning class ([#105]). C++ code that read
-  `FN2CNodeDefinition::Name` reads `Title` (a hint) or `NodeClass`/`MemberName`. <!-- PROVISIONAL 0117 -->
+  `FN2CNodeDefinition::Name` reads `Title` (a hint) or `NodeClass`/`MemberName`.
 - **N2C JSON node and pin types:** ghost nodes are left out, an unmapped node is `Unknown` instead of
-  `CallFunction`, and enum pins are `Enum` instead of `Byte` ([#104], [#167], [#179]). <!-- PROVISIONAL 0117 -->
+  `CallFunction`, and enum pins are `Enum` instead of `Byte` ([#104], [#167], [#179]).
 - **Model settings in Blueprints, Python or C++:** `AnthropicModel`, `OpenAI_Model`, `Gemini_Model`,
   `DeepSeekModel` and the four `*ModelPricing` maps are gone from `UN2CSettings`. Read `AnthropicModelId` (and
   the others, plus `DeepSeekReasoningEffort`) and `ModelPricing`, or call `GetCurrentInputCost` /
   `GetCurrentOutputCost`. The model enums and per-provider pricing structs stay as deprecated types ([#108], [#109]).
-  <!-- PROVISIONAL 0115 -->
+ 
 - **C++ providers:** a provider that overrides `IN2CLLMService::SendRequest` must return
   `FN2CLLMRequestHandleRef` ([#51]). Code that used `UN2CUserSecrets` must use `FN2CSecretStore::Get()` ([#42]).
   Code that read `FN2CLLMConfig::ApiKey` or called `UN2CSettings::GetActiveApiKey` must drop it: keys are read
@@ -756,11 +853,11 @@ Only for people who ran a `dev-2.0` build before this beta.
 
 - Claude subscription and Google-account sign-in are removed. Saved sign-in settings are ignored with a warning
   and the provider's API key is used; sign-in tokens are deleted from the secrets file ([#35]).
-  <!-- PROVISIONAL 0038 -->
+ 
 - `run-python`, `save-python-script` and `delete-python-script` are listed only when **Allow MCP Python
   Execution** is on, and `bEnablePythonScriptOnlyMode` now defaults to false (01aa7d3). <!-- PROVISIONAL 0019 -->
 - `translate-focused-blueprint` no longer answers `{status: "accepted", ..., sseUrl}` and sends the result on
-  another port. Clients read the result from the call's own response ([#59]). <!-- PROVISIONAL 0085 -->
+  another port. Clients read the result from the call's own response ([#59]).
 - `LMStudioMaxTokens` becomes `LMStudioMaxOutputTokens`; the old default 32768 becomes Auto ([#41]).
 - Model selections and price overrides saved by enum name are converted to model IDs once, at the first start
   (settings version 4), and the old keys are removed; a saved model the catalog does not list is kept as the
@@ -774,6 +871,12 @@ Only for people who ran a `dev-2.0` build before this beta.
   tool's result as `data`; the 1.x keys still read for one release, with a deprecation warning ([#291]).
 - Translations are saved in one folder per run with a `manifest.json`; folders saved by earlier builds stay as they
   are and still load ([#226]).
+- The `unreal.N2CPythonBridge` graph-editing functions return their MCP tool's result: `connect_pins` needs each
+  pin's `pinGuid`, and `delete_nodes` with an unknown GUID fails as a whole ([#330]). C++: `IsAnyTranslationInProgress`,
+  `SetTranslationInProgress`, `OnTranslationStateChanged` and `RequestOverlayTranslation` on `FN2CEditorIntegration`
+  are removed; use `UN2CTranslationSubsystem::IsBusy` and `OnBusyChanged` ([#321]). The DeepSeek and LM Studio
+  services and parsers are replaced by `UN2COpenAICompatibleService`; saved DeepSeek and LM Studio settings and keys
+  are unchanged ([#341]).
 - The stdio bridge reads streamed responses and no longer follows `sseUrl` ([#60]).
 - The second server on the MCP port + 1 (`/mcp/events`, `/mcp/notifications`) is gone, and so are
   `initialize`'s `_meta.notificationUrl` and the `nodetocode/taskStarted` notification. Only the MCP port is
@@ -808,7 +911,7 @@ Only for people who ran a `dev-2.0` build before this beta.
 ### Known issues
 
 - On UE 5.6 and 5.7, `translate-focused-blueprint` sends no progress, so a client that gives up on silent calls
-  (Claude Code does after five minutes) can abort a long translation ([#59]). <!-- PROVISIONAL 0085 -->
+  (Claude Code does after five minutes) can abort a long translation ([#59]).
 - On Mac and Linux the keys file is plain JSON in your user folder, not the OS keychain ([#42], [#145]).
 - create-blueprint-class is not an undo step: undoing it would leave the `.uasset` on disk ([#140]).
 - Not verified live: Gemini 4 Argon ([#45]); refusals and safety blocks from a live provider (the tests use
@@ -829,9 +932,10 @@ Thanks to the people whose pull requests are in this release:
   handling from #20, in [#71].
 - [@YakovAU](https://github.com/YakovAU): the Copy Blueprint JSON command from #3 (c5177ab).
 - [@flashpoint493](https://github.com/flashpoint493): the missing-include fix in #9, which landed in deca5c3
-  without credit at the time, and the member and local variable capture from #8, ported in [#228].
+  without credit at the time, and the member and local variable capture from #8, ported in [#228], and its component
+  and interface capture, ported in [#320].
 - [@akashskypatel](https://github.com/akashskypatel): the ideas in #21 that informed the HTTP transport seam and the
-  429/529/5xx retries in [#311].
+  429/529/5xx retries in [#311], and the OpenAI-compatible adapter with presets in [#341].
 
 [2.0.0-beta.1]: https://github.com/protospatial/NodeToCode/tree/dev-2.0
 [#9]: https://github.com/protospatial/NodeToCode/pull/9
@@ -1095,3 +1199,31 @@ Thanks to the people whose pull requests are in this release:
 [#310]: https://github.com/protospatial/NodeToCode/pull/310
 [#311]: https://github.com/protospatial/NodeToCode/pull/311
 [#312]: https://github.com/protospatial/NodeToCode/pull/312
+[#313]: https://github.com/protospatial/NodeToCode/pull/313
+[#316]: https://github.com/protospatial/NodeToCode/pull/316
+[#317]: https://github.com/protospatial/NodeToCode/pull/317
+[#318]: https://github.com/protospatial/NodeToCode/pull/318
+[#320]: https://github.com/protospatial/NodeToCode/pull/320
+[#321]: https://github.com/protospatial/NodeToCode/pull/321
+[#323]: https://github.com/protospatial/NodeToCode/pull/323
+[#325]: https://github.com/protospatial/NodeToCode/pull/325
+[#326]: https://github.com/protospatial/NodeToCode/pull/326
+[#327]: https://github.com/protospatial/NodeToCode/pull/327
+[#328]: https://github.com/protospatial/NodeToCode/pull/328
+[#329]: https://github.com/protospatial/NodeToCode/pull/329
+[#330]: https://github.com/protospatial/NodeToCode/pull/330
+[#331]: https://github.com/protospatial/NodeToCode/pull/331
+[#332]: https://github.com/protospatial/NodeToCode/pull/332
+[#333]: https://github.com/protospatial/NodeToCode/pull/333
+[#334]: https://github.com/protospatial/NodeToCode/pull/334
+[#335]: https://github.com/protospatial/NodeToCode/pull/335
+[#336]: https://github.com/protospatial/NodeToCode/pull/336
+[#337]: https://github.com/protospatial/NodeToCode/pull/337
+[#338]: https://github.com/protospatial/NodeToCode/pull/338
+[#339]: https://github.com/protospatial/NodeToCode/pull/339
+[#340]: https://github.com/protospatial/NodeToCode/pull/340
+[#341]: https://github.com/protospatial/NodeToCode/pull/341
+[#342]: https://github.com/protospatial/NodeToCode/pull/342
+[#343]: https://github.com/protospatial/NodeToCode/pull/343
+[#344]: https://github.com/protospatial/NodeToCode/pull/344
+[#345]: https://github.com/protospatial/NodeToCode/pull/345

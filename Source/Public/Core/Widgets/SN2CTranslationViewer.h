@@ -5,17 +5,32 @@
 #include "CoreMinimal.h"
 #include "Widgets/SCompoundWidget.h"
 #include "Models/N2CTranslation.h"
+#include "LLM/Verify/N2CVerifyRefine.h"
 #include "TagManager/Models/N2CTagManagerTypes.h"
 #include "Code Editor/Models/N2CCodeLanguage.h"
 
 class SN2CCodeEditor;
 class SN2CHeaderBar;
 class SExpandableArea;
+class ITableRow;
+class STableViewBase;
+template <typename ItemType> class SListView;
+
+/** One graph of a translation the viewer lists (card 0257): the translated graph, a nested graph, a struct or an enum */
+struct NODETOCODE_API FN2CViewerEntry
+{
+	FN2CGraphTranslation Translation;
+	/** root, nested, struct or enum (FN2CTranslationArchive::GetEntryRole) */
+	FString Role;
+};
 
 /**
  * Translation viewer overlay widget
- * Displays translated code with file tabs (the implementation file, labelled with its language's extension; .h when
- * the translation has a declaration; JSON), syntax highlighting in the translation's language, and notes
+ * Displays every graph of a translation (card 0257): a list of its entries, root first, labelled nested, struct or enum
+ * (shown when there is more than one); for the selected entry, file tabs (the implementation, labelled with its
+ * language's extension; .h when it has a declaration; JSON), syntax highlighting in the translation's language, and its
+ * notes. The code is read-only until Edit is on; then Copy copies the edited text and each entry's tabs keep their own
+ * working copies until the next load.
  */
 class NODETOCODE_API SN2CTranslationViewer : public SCompoundWidget
 {
@@ -59,6 +74,58 @@ public:
 	 */
 	void SetJsonContent(const FString& JsonContent, const FString& GraphName);
 
+	/**
+	 * Shows how Verify and Refine ended for the loaded translation (card 0313) beside the file tabs: "Verified: passed",
+	 * "... errors left after N refine turns" or "skipped", with the last attempt's findings as its tooltip. Null or Off
+	 * hides it. LoadTranslation(GraphInfo) reads it from the Verify.json beside the recorded translation; the other
+	 * LoadTranslation overloads clear it (the caller sets it after).
+	 */
+	void SetVerifyOutcome(const FN2CVerifyOutcome* Outcome);
+
+	/** The verify status line ("" when hidden), for tests */
+	FText GetVerifyStatusText() const { return VerifyStatusText; }
+
+	/** Reads the Verify.json beside a recorded translation's entry folder (the record's OutputPath); false when there is none */
+	static bool LoadRecordedVerifyOutcome(const FString& RecordOutputPath, FN2CVerifyOutcome& OutOutcome);
+
+	/**
+	 * Loads a whole response written in Language: every graph becomes an entry, the one at RootIndex (or the first) first
+	 * and labelled root, the rest in response order with their role from their graph type (card 0257)
+	 */
+	void LoadResponse(const FN2CTranslationResponse& Response, const FString& GraphName, const FString& JsonContent,
+		EN2CCodeLanguage Language, int32 RootIndex = INDEX_NONE);
+
+	/**
+	 * Loads a run from its manifest.json (FN2CTranslationArchive): the entries of the item whose graph GUID is GraphGuid
+	 * (the only item when there is one), root first, each read from its files, in the manifest's language. False when the
+	 * manifest cannot be read or lists no entry for that item; the viewer is then unchanged.
+	 */
+	bool LoadRunManifest(const FString& ManifestPath, const FString& GraphGuid, const FString& GraphName, const FString& JsonContent);
+
+	/** The entries loaded, root first */
+	const TArray<FN2CViewerEntry>& GetEntries() const { return Entries; }
+
+	/** Shows entry Index (its tabs, notes and code) */
+	void SelectEntry(int32 Index);
+	int32 GetSelectedEntryIndex() const { return SelectedEntry; }
+
+	/** "Graph", or "Graph (nested)", "Name (struct)", "Name (enum)" */
+	static FString GetEntryLabel(const FN2CViewerEntry& Entry);
+
+	/** Edit toggle: off, the code is read-only; on, the code tabs can be edited and keep per-tab working copies */
+	void SetEditing(bool bInEditing);
+	bool IsEditing() const { return bEditing; }
+
+	/** Shows a tab: "cpp" (the implementation), "h" or "json" */
+	void SelectTab(const FString& FileType);
+	const FString& GetActiveTab() const { return ActiveFileType; }
+
+	/** What Copy copies now: the editor's text while editing, else the tab's working copy when it was edited, else its stored content */
+	FString GetCopyText() const;
+
+	/** The code editor (for tests) */
+	TSharedPtr<SN2CCodeEditor> GetCodeEditor() const { return CodeEditor; }
+
 	/** Clear the viewer */
 	void Clear();
 
@@ -100,6 +167,33 @@ private:
 	FString ActiveFileType; // "cpp" (the implementation, any language), "h", or "json"
 	EN2CCodeLanguage CurrentLanguage;
 	bool bHasTranslation;
+
+	/** Every graph of the loaded translation, root first, and the one shown */
+	TArray<FN2CViewerEntry> Entries;
+	int32 SelectedEntry = 0;
+
+	/** The entry list's items (indices into Entries) and widget */
+	TArray<TSharedPtr<int32>> EntryItems;
+	TSharedPtr<SListView<TSharedPtr<int32>>> EntryList;
+
+	/** Edit toggle and the working copies of edited tabs, keyed "<entry>:<tab>" */
+	bool bEditing = false;
+	TMap<FString, FString> WorkingCopies;
+
+	/** Replaces the entries and shows the first (resets working copies and editing) */
+	void SetEntries(TArray<FN2CViewerEntry>&& InEntries, const FString& GraphName, const FString& JsonContent, EN2CCodeLanguage Language);
+
+	/** Keeps the editor's text as the working copy of the shown tab while editing */
+	void StashWorkingCopy();
+
+	FString WorkingCopyKey(const FString& FileType) const { return FString::Printf(TEXT("%d:%s"), SelectedEntry, *FileType); }
+
+	TSharedRef<ITableRow> GenerateEntryRow(TSharedPtr<int32> Item, const TSharedRef<STableViewBase>& OwnerTable);
+
+	/** Verify and Refine's status line and its tooltip (the last attempt's findings); empty: hidden */
+	FText VerifyStatusText;
+	FText VerifyStatusTooltip;
+	EN2CVerifyStatus VerifyStatus = EN2CVerifyStatus::Off;
 
 	/** Create a file tab button */
 	TSharedRef<SWidget> CreateFileTab(const TAttribute<FText>& Label, const FString& FileType, TSharedPtr<SButton>& OutButton);

@@ -1,0 +1,54 @@
+{
+  "asset_class": "Blueprint",
+  "calls":
+  {
+    "Doubled": [
+      "KismetMathLibrary.Multiply_IntInt"
+    ],
+    "Report": [
+      "BP_N2CBench_PureFunction.Doubled",
+      "KismetStringLibrary.Conv_IntToString",
+      "KismetSystemLibrary.PrintString"
+    ]
+  },
+  "components": [],
+  "cpp_class": "ABP_N2CBench_PureFunction",
+  "cpp_parent": "AActor",
+  "dispatchers": [],
+  "events": [],
+  "functions": [
+    {
+      "inputs": [
+        {
+          "name": "Value",
+          "type": "Integer"
+        }
+      ],
+      "name": "Doubled",
+      "outputs": [
+        {
+          "name": "Result",
+          "type": "Integer"
+        }
+      ],
+      "pure": true
+    },
+    {
+      "inputs": [
+        {
+          "name": "Count",
+          "type": "Integer"
+        }
+      ],
+      "name": "Report",
+      "outputs": [],
+      "pure": false
+    }
+  ],
+  "interfaces": [],
+  "macros": [],
+  "name": "BP_N2CBench_PureFunction",
+  "parent": "Actor",
+  "properties": [],
+  "timelines": []
+}

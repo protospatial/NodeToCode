@@ -479,7 +479,8 @@ FN2CLLMRequestHandleRef UN2CLLMModule::ProcessN2CJsonWithOverrides(
     EN2CCodeLanguage RequestLanguage,
     const FOnLLMResponseReceived& OnComplete,
     const FOnN2CTranslationParsed& OnParsed,
-    bool bArchiveRun)
+    bool bArchiveRun,
+    const FString& RefineTurn)
 {
     // Creates a provider service and a prompt manager and writes CurrentStatus: game thread only. Objects created on
     // another thread get EInternalObjectFlags::Async and are never collected.
@@ -537,7 +538,10 @@ FN2CLLMRequestHandleRef UN2CLLMModule::ProcessN2CJsonWithOverrides(
 
     // The JSON goes in <n2c_json> tags, as in ProcessN2CJson.
     // The callback keeps TempServiceObject (and so the service) alive until the request completes or is cancelled
-    FN2CLLMRequestHandleRef Handle = TempService->SendRequest(UN2CSystemPromptManager::WrapN2CJson(JsonInput), SystemPrompt, FOnLLMResponseReceived::CreateLambda(
+    // A verify-and-refine turn follows the JSON in the same message (card 0313)
+    const FString UserMessage = RefineTurn.IsEmpty() ? UN2CSystemPromptManager::WrapN2CJson(JsonInput)
+        : UN2CSystemPromptManager::WrapN2CJson(JsonInput) + TEXT("\n\n") + RefineTurn;
+    FN2CLLMRequestHandleRef Handle = TempService->SendRequest(UserMessage, SystemPrompt, FOnLLMResponseReceived::CreateLambda(
         [this, TempService, TempServiceObject, OnComplete, OnParsed, RequestConfigCopy = RequestConfig, RequestLanguage, JsonInput, bArchiveRun](const FString& RawResponse)
         {
             FN2CTranslationResponse TranslationResponse;

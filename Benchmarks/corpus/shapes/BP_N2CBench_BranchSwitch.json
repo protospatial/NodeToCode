@@ -1,0 +1,38 @@
+{
+  "asset_class": "Blueprint",
+  "calls":
+  {
+    "Decide": [
+      "KismetSystemLibrary.PrintString"
+    ]
+  },
+  "components": [],
+  "cpp_class": "ABP_N2CBench_BranchSwitch",
+  "cpp_parent": "AActor",
+  "dispatchers": [],
+  "events": [],
+  "functions": [
+    {
+      "inputs": [],
+      "name": "Decide",
+      "outputs": [],
+      "pure": false
+    }
+  ],
+  "interfaces": [],
+  "macros": [],
+  "name": "BP_N2CBench_BranchSwitch",
+  "parent": "Actor",
+  "properties": [
+    {
+      "name": "bEnabled",
+      "type": "Boolean"
+    },
+    {
+      "name": "State",
+      "sub_type": "E_N2CBench_State",
+      "type": "Enum"
+    }
+  ],
+  "timelines": []
+}

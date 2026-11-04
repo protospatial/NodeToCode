@@ -1,0 +1,39 @@
+{
+  "asset_class": "Blueprint",
+  "calls":
+  {
+  },
+  "components": [],
+  "cpp_class": "ABP_N2CBench_FormatText",
+  "cpp_parent": "AActor",
+  "dispatchers": [],
+  "events": [],
+  "functions": [
+    {
+      "inputs": [],
+      "name": "Describe",
+      "outputs": [
+        {
+          "name": "Line",
+          "type": "Text"
+        }
+      ],
+      "pure": false
+    }
+  ],
+  "interfaces": [],
+  "macros": [],
+  "name": "BP_N2CBench_FormatText",
+  "parent": "Actor",
+  "properties": [
+    {
+      "name": "Coins",
+      "type": "Integer"
+    },
+    {
+      "name": "PlayerName",
+      "type": "Text"
+    }
+  ],
+  "timelines": []
+}

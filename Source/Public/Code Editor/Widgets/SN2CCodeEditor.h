@@ -120,12 +120,19 @@ public:
     void SetTabSize(int32 NewSize);
     int32 GetTabSize() const { return TabSize; }
 
+    /** Read-only: the text can be selected and copied but not changed (the translation viewer until Edit, card 0257) */
+    void SetReadOnly(bool bInReadOnly) { bReadOnly = bInReadOnly; }
+    bool IsReadOnly() const { return bReadOnly; }
+
 private:
     /** Horizontal scrollbar widget */
     TSharedPtr<SScrollBar> HorizontalScrollBar;
 
     /** Vertical scrollbar widget */
     TSharedPtr<SScrollBar> VerticalScrollBar;
+
+    /** SetReadOnly */
+    bool bReadOnly = false;
 
     /** The actual editable text widget */
     TSharedPtr<SMultiLineEditableText> EditableText;

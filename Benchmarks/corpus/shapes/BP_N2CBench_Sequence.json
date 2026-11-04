@@ -1,0 +1,27 @@
+{
+  "asset_class": "Blueprint",
+  "calls":
+  {
+    "EventGraph": [
+      "KismetSystemLibrary.PrintString",
+      "macro:DoOnce"
+    ]
+  },
+  "components": [],
+  "cpp_class": "ABP_N2CBench_Sequence",
+  "cpp_parent": "AActor",
+  "dispatchers": [],
+  "events": [
+    {
+      "kind": "custom",
+      "name": "Start"
+    }
+  ],
+  "functions": [],
+  "interfaces": [],
+  "macros": [],
+  "name": "BP_N2CBench_Sequence",
+  "parent": "Actor",
+  "properties": [],
+  "timelines": []
+}

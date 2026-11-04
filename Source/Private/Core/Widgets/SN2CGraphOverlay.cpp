@@ -1052,7 +1052,7 @@ FText SN2CGraphOverlay::GetContextTooltipText() const
 	FString TooltipStr = FString::Printf(
 		TEXT("Tokens: %s\nEstimated cost: %s"),
 		*FormatNumber(CachedTokenCount),
-		Service.IsLocalProvider() ? TEXT("Free (local)") : *FString::Printf(TEXT("$%.4f"), CachedEstimatedCost)
+		Service.IsLocalProvider() ? TEXT("Free (local)") : !Service.IsPriceKnown() ? TEXT("unknown (no price for this model)") : *FString::Printf(TEXT("$%.4f"), CachedEstimatedCost)
 	);
 
 	// Show nesting info if enabled

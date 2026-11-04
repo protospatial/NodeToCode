@@ -32,12 +32,15 @@ void FN2CHttpModuleTransport::Send(const FN2CHttpRequestSpec& Spec, const FN2CLL
 {
 	TSharedRef<IHttpRequest, ESPMode::ThreadSafe> Request = FHttpModule::Get().CreateRequest();
 	Request->SetURL(Spec.Url);
-	Request->SetVerb(TEXT("POST"));
+	Request->SetVerb(Spec.Verb.IsEmpty() ? FString(TEXT("POST")) : Spec.Verb);
 	for (const TPair<FString, FString>& Header : Spec.Headers)
 	{
 		Request->SetHeader(Header.Key, Header.Value);
 	}
-	Request->SetContentAsString(Spec.Body);
+	if (!Spec.Verb.Equals(TEXT("GET"), ESearchCase::IgnoreCase))
+	{
+		Request->SetContentAsString(Spec.Body);
+	}
 	Request->SetTimeout(Spec.TimeoutSeconds);
 	// A request that receives nothing for this long fails (UE 5.4+; 5.6 is the floor)
 	Request->SetActivityTimeout(Spec.ActivityTimeoutSeconds);

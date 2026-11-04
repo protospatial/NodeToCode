@@ -11,6 +11,7 @@
 class UBlueprint;
 class UEdGraph;
 class FJsonObject;
+class FJsonValue;
 
 /** What get-blueprint-n2cjson (and the Python bridge's GetBlueprintN2CJson) reads */
 struct FN2CBlueprintReadRequest
@@ -48,10 +49,15 @@ struct FN2CBlueprintReadResult
 	int64 FileBytes = 0;
 	/** "toFile" (asked for) or "size" (over MaxInlineTokens); empty when returned inline */
 	FString FileReason;
+	/** The capture's warnings, {code, path, message} as the document's "warnings" holds them (card 0538) */
+	TArray<TSharedPtr<FJsonValue>> Warnings;
 
 	bool IsValid() const { return Error.IsEmpty() && Blueprint != nullptr; }
 	bool WroteFile() const { return !FilePath.IsEmpty(); }
-	/** {path, bytes, estimatedTokens, maxInlineTokens, reason, graphCount, nodeCount} for a document written to a file */
+	/**
+	 * {path, bytes, estimatedTokens, maxInlineTokens, reason, graphCount, nodeCount, warnings (when there are any, card
+	 * 0538)} for a document written to a file
+	 */
 	TSharedRef<FJsonObject> FileResultJson() const;
 };
 

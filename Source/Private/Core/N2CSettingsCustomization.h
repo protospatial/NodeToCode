@@ -89,3 +89,24 @@ public:
 	/** Whether there is a saved key to remove (the store holds one; an environment key is not removable here) */
 	static bool CanRemove(EN2CLLMProvider Provider);
 };
+
+/**
+ * Project Settings > Plugins > Node to Code > LLM Provider (card 0216): draws the Model List row, the property
+ * UN2CSettings::ModelListRefresher, as the active provider's list status (FN2CModelDiscovery::DescribeActiveStatus)
+ * and a Refresh Model List button. The button is enabled when the active provider is in Live Model Lists, no fetch for
+ * it is running and the session is not -unattended; it calls FN2CModelDiscovery::RequestActiveRefresh, which says
+ * what it got (or why it fetched nothing) in a notification. Registered beside FN2CSettingsCustomization.
+ */
+class FN2CModelListRefresherCustomization : public IPropertyTypeCustomization
+{
+public:
+	static TSharedRef<IPropertyTypeCustomization> MakeInstance();
+
+	virtual void CustomizeHeader(TSharedRef<IPropertyHandle> PropertyHandle, FDetailWidgetRow& HeaderRow,
+		IPropertyTypeCustomizationUtils& CustomizationUtils) override;
+	virtual void CustomizeChildren(TSharedRef<IPropertyHandle> PropertyHandle, IDetailChildrenBuilder& ChildBuilder,
+		IPropertyTypeCustomizationUtils& CustomizationUtils) override {}
+
+	/** Whether Refresh Model List can run now */
+	static bool CanRefresh();
+};

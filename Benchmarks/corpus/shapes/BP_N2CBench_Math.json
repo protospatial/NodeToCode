@@ -1,0 +1,62 @@
+{
+  "asset_class": "Blueprint",
+  "calls":
+  {
+    "AddNumbers": [
+      "KismetMathLibrary.Add_IntInt"
+    ],
+    "ScaleSum": [
+      "BP_N2CBench_Math.AddNumbers",
+      "KismetMathLibrary.Multiply_IntInt"
+    ]
+  },
+  "components": [],
+  "cpp_class": "ABP_N2CBench_Math",
+  "cpp_parent": "AActor",
+  "dispatchers": [],
+  "events": [],
+  "functions": [
+    {
+      "inputs": [
+        {
+          "name": "A",
+          "type": "Integer"
+        },
+        {
+          "name": "B",
+          "type": "Integer"
+        }
+      ],
+      "name": "AddNumbers",
+      "outputs": [
+        {
+          "name": "Sum",
+          "type": "Integer"
+        }
+      ],
+      "pure": false
+    },
+    {
+      "inputs": [
+        {
+          "name": "Value",
+          "type": "Integer"
+        }
+      ],
+      "name": "ScaleSum",
+      "outputs": [
+        {
+          "name": "Scaled",
+          "type": "Integer"
+        }
+      ],
+      "pure": false
+    }
+  ],
+  "interfaces": [],
+  "macros": [],
+  "name": "BP_N2CBench_Math",
+  "parent": "Actor",
+  "properties": [],
+  "timelines": []
+}

@@ -1,0 +1,28 @@
+{
+  "asset_class": "Blueprint",
+  "calls":
+  {
+    "EventGraph": [
+      "KismetSystemLibrary.PrintString"
+    ]
+  },
+  "components": [],
+  "cpp_class": "ABP_N2CBench_Timeline",
+  "cpp_parent": "AActor",
+  "dispatchers": [],
+  "events": [
+    {
+      "kind": "override",
+      "name": "ReceiveBeginPlay"
+    }
+  ],
+  "functions": [],
+  "interfaces": [],
+  "macros": [],
+  "name": "BP_N2CBench_Timeline",
+  "parent": "Actor",
+  "properties": [],
+  "timelines": [
+    "Fade"
+  ]
+}

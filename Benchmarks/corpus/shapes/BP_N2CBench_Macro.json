@@ -1,0 +1,31 @@
+{
+  "asset_class": "Blueprint",
+  "calls":
+  {
+    "EventGraph": [
+      "macro:PrintTwice"
+    ],
+    "PrintTwice": [
+      "KismetSystemLibrary.PrintString"
+    ]
+  },
+  "components": [],
+  "cpp_class": "ABP_N2CBench_Macro",
+  "cpp_parent": "AActor",
+  "dispatchers": [],
+  "events": [
+    {
+      "kind": "custom",
+      "name": "Shout"
+    }
+  ],
+  "functions": [],
+  "interfaces": [],
+  "macros": [
+    "PrintTwice"
+  ],
+  "name": "BP_N2CBench_Macro",
+  "parent": "Actor",
+  "properties": [],
+  "timelines": []
+}

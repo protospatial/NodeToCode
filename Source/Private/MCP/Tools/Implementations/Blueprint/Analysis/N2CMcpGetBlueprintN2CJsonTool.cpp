@@ -38,7 +38,9 @@ FMcpToolDefinition FN2CMcpGetBlueprintN2CJsonTool::GetDefinition() const
 		TEXT("every graph of the Blueprint in one document. The document is the one get-focused-blueprint returns (nodes ")
 		TEXT("and pins with ids {short, guid}, flows, the guids table). When it would exceed about 20000 tokens, or with ")
 		TEXT("toFile, it is written to a file under Saved/NodeToCode/Exports and the result is {path, bytes, ")
-		TEXT("estimatedTokens, reason, graphCount, nodeCount}: read that file in parts. AnimGraphs, animation states, state ")
+		TEXT("estimatedTokens, reason, graphCount, nodeCount, warnings}: read that file in parts. The document's warnings ")
+		TEXT("array (and the file result's) lists what the capture left out or approximated, each {code, path, message}, ")
+		TEXT("e.g. DEPTH_LIMIT for a called function beyond depth; absent when there is nothing. AnimGraphs, animation states, state ")
 		TEXT("machines and Control Rig graphs are refused with UNSUPPORTED_GRAPH_TYPE (left out of a whole-Blueprint read; ")
 		TEXT("list-blueprint-graphs marks them translatable: false)."),
 		N2CMcpToolsets::BlueprintDiscovery

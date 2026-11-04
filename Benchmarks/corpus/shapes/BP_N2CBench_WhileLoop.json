@@ -1,0 +1,34 @@
+{
+  "asset_class": "Blueprint",
+  "calls":
+  {
+    "RunWhile": [
+      "KismetSystemLibrary.PrintString",
+      "macro:WhileLoop"
+    ]
+  },
+  "components": [],
+  "cpp_class": "ABP_N2CBench_WhileLoop",
+  "cpp_parent": "AActor",
+  "dispatchers": [],
+  "events": [],
+  "functions": [
+    {
+      "inputs": [],
+      "name": "RunWhile",
+      "outputs": [],
+      "pure": false
+    }
+  ],
+  "interfaces": [],
+  "macros": [],
+  "name": "BP_N2CBench_WhileLoop",
+  "parent": "Actor",
+  "properties": [
+    {
+      "name": "bRunning",
+      "type": "Boolean"
+    }
+  ],
+  "timelines": []
+}

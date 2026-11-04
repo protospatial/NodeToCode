@@ -6,12 +6,21 @@ in [Window Overview](Top-Navbar-Overview).
 
 <img src="images/main-window/translation-viewer.png" alt="The translation viewer showing the .cpp tab of BP_Door's EventGraph and its Translation Notes" width="880">
 
+- **The graph list**, on the left when the translation has more than one graph: the graph you translated first, then
+  the functions and macros it calls ([Translation Depth](Max-Translation-Depth)) marked **(nested)**, and the structs
+  and enums it uses marked **(struct)** and **(enum)**. Click one to see its tabs and notes. A translation opened from
+  the graph list shows every graph of that run too.
 - **The file tabs**: the implementation, labelled with the translation's extension (**.cpp**, **.py**, **.js**,
   **.cs**, **.swift**, or **.md** for pseudocode); **.h**, only when the translation has a declaration, which in
   practice means C++; and **JSON**, the Blueprint graph the translation was made from. The viewer opens on the
   implementation and highlights it in the translation's language. A translation opened from the graph list is that
   row's Blueprint's own (a copy of a Blueprint keeps separate translations) and uses the language it was saved in.
-- **The code** ([Code Editor](Code-Editor)). The clipboard button at the top right copies the open tab.
+- **The code** ([Code Editor](Code-Editor)), read-only until you click **Edit** (it then reads **Editing**). Your edits
+  stay in the viewer, per graph and per tab, until another translation is loaded; the saved files do not change. The
+  clipboard button at the top right copies the open tab, with your edits.
+- **The verify status**, beside the tabs, when [Verify and Refine](Target-Language-Settings#verify-and-refine) checked
+  the translation: **Verified: passed**, **passed after N refine turns**, **N errors left after N refine turns**, or
+  **skipped**. Hover it for the findings.
 - **Translation Notes**: the model's notes on what the code needs and assumes ([Implementation Notes](Implementation-Notes)),
   with their own copy button.
 - The cross at the top right closes the viewer and shows the Tag Manager again.

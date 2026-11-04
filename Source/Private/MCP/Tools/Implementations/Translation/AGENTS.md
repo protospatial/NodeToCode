@@ -18,11 +18,17 @@ This directory contains MCP tools for managing Blueprint-to-code translation fun
   one in the editor's environment
 - **Arguments**: none ([reference](../../../../../../Context/mcp-server/tools.generated.md#get-available-llm-providers))
 - **Returns**: `providers`, `currentProvider` (the settings' provider ID), `configuredProviderCount`. Each provider has
-  `id`, `displayName`, `configured` (always true), `isLocal`, `keySource` (`saved`, `environment` with
-  `keyVariable` naming the variable, or `none`; never the key), `currentModel` (the model ID the settings select),
-  `supportsStructuredOutput`, `supportsSystemPrompts`; cloud providers add `availableModels` (the provider's live
-  rows of the model catalog, `FN2CModelCatalog`: `id`, `name`, plus `deprecated`/`shutdownDate`,
-  `supportsSystemPrompts` for OpenAI and `reasoningEffort` where they apply), local ones `endpoint`
+  `id`, `displayName` and `isLocal` (from the provider's catalog row, card 0217; for OpenAI-Compatible the selected
+  preset's), `configured` (always true), `keyConfigured` (a key is saved or in the environment), `keySource`
+  (`saved`, `environment` with `keyVariable` naming the variable, or `none`; never the key), `currentModel` (the
+  model ID the settings select), `supportsStructuredOutput`, `supportsSystemPrompts`; cloud providers add
+  `availableModels` (the provider's live rows of the model catalog, `FN2CModelCatalog`; retired rows are left out):
+  `id`, `name`, `status` (`active` or `deprecated`), `shutdownDate` when deprecated, `contextWindow`, `maxOutput`,
+  `isSelected`, plus `deprecated`, `supportsSystemPrompts` for OpenAI and `reasoningEffort` where they apply. When
+  the provider is opted in to live model lists (card 0216), its cached list (`FN2CModelDiscovery::GetListIfOptedIn`,
+  never fetched by the tool) can mark a model deprecated with the provider's shutdown date and gives the limits;
+  models only the live list names are not offered, so every `id` is one translate accepts without a warning
+  (`NodeToCode.MCP.AvailableProviders`). Local providers add `endpoint`
 - **Use Case**: Choosing a provider and a model ID for `translate-focused-blueprint`
 
 ### get-translation-output-directory

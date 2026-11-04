@@ -1,0 +1,29 @@
+{
+  "asset_class": "Blueprint",
+  "calls":
+  {
+    "FindPawn": [
+      "GameplayStatics.GetPlayerPawn",
+      "KismetSystemLibrary.PrintString"
+    ]
+  },
+  "components": [],
+  "cpp_class": "ABP_N2CBench_Cast",
+  "cpp_parent": "AActor",
+  "dispatchers": [],
+  "events": [],
+  "functions": [
+    {
+      "inputs": [],
+      "name": "FindPawn",
+      "outputs": [],
+      "pure": false
+    }
+  ],
+  "interfaces": [],
+  "macros": [],
+  "name": "BP_N2CBench_Cast",
+  "parent": "Actor",
+  "properties": [],
+  "timelines": []
+}

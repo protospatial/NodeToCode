@@ -212,16 +212,17 @@ void FN2CBatchSessionSpec::Define()
 		BatchStates.Reset();
 		BusyChanges.Reset();
 		Blueprints.Reset();
-		auto Record = [this](const FString& Json, const FOnN2CTranslationParsed& OnParsed)
+		auto Record = [this](const FString& Json, const FString&, const FOnN2CTranslationParsed& OnParsed)
 		{
 			FN2CLLMRequestHandleRef Handle = FN2CLLMRequestHandle::Create();
 			Sent.Add({Json, Handle, OnParsed});
 			return Handle;
 		};
 		UN2CBatchTranslationOrchestrator::Get().SenderOverride = Record;
-		Subsystem->SenderOverride = [Record](const FString& Json, const FN2CLLMConfig&, EN2CCodeLanguage, const FOnN2CTranslationParsed& OnParsed)
+		Subsystem->SenderOverride = [Record](const FString& Json, const FN2CLLMConfig&, EN2CCodeLanguage, const FString& RefineTurn,
+			const FOnN2CTranslationParsed& OnParsed)
 		{
-			return Record(Json, OnParsed);
+			return Record(Json, RefineTurn, OnParsed);
 		};
 		StatesHandle = Subsystem->OnSessionChangedNative.AddLambda([this](const FN2CTranslationSession& Session)
 		{

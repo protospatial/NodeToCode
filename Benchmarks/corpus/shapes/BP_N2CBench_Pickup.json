@@ -1,0 +1,52 @@
+{
+  "asset_class": "Blueprint",
+  "calls":
+  {
+    "EventGraph": [
+      "Actor.K2_AddActorLocalRotation",
+      "KismetSystemLibrary.PrintString"
+    ]
+  },
+  "components": [
+    {
+      "class": "StaticMeshComponent",
+      "name": "Mesh",
+      "parent": "Root"
+    },
+    {
+      "class": "SceneComponent",
+      "name": "Root"
+    },
+    {
+      "class": "SphereComponent",
+      "name": "Trigger",
+      "parent": "Root"
+    }
+  ],
+  "cpp_class": "ABP_N2CBench_Pickup",
+  "cpp_parent": "AActor",
+  "dispatchers": [],
+  "events": [
+    {
+      "kind": "override",
+      "name": "ReceiveBeginPlay"
+    },
+    {
+      "kind": "override",
+      "name": "ReceiveTick"
+    }
+  ],
+  "functions": [],
+  "interfaces": [],
+  "macros": [],
+  "name": "BP_N2CBench_Pickup",
+  "parent": "Actor",
+  "properties": [
+    {
+      "name": "SpinSpeed",
+      "sub_type": "float",
+      "type": "Real"
+    }
+  ],
+  "timelines": []
+}

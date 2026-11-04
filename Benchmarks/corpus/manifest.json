@@ -1,0 +1,483 @@
+{
+  "description": "The NodeToCode benchmark corpus (card 0364): every graph the token, format and compile-gated benchmarks run on. Written by N2CTest::BenchmarkCorpus::GenerateAll; checked by NodeToCode.Benchmark.Corpus and Tests/python/test_benchmark_corpus.py against manifest.schema.json.",
+  "entries": [
+    {
+      "asset_path": "/NodeToCodeTestContent/Benchmark/BP_N2CBench_Pickup.BP_N2CBench_Pickup",
+      "covers": "an Actor with a root, a mesh and a trigger sphere; BeginPlay and Tick",
+      "engines": [
+        "5.6",
+        "5.7",
+        "5.8"
+      ],
+      "graphs": [
+        "EventGraph",
+        "UserConstructionScript"
+      ],
+      "id": "BP_N2CBench_Pickup",
+      "shape": "shapes/BP_N2CBench_Pickup.json",
+      "source": "corpus"
+    },
+    {
+      "asset_path": "/NodeToCodeTestContent/Benchmark/BP_N2CBench_Math.BP_N2CBench_Math",
+      "covers": "functions with parameters and return values that call each other",
+      "engines": [
+        "5.6",
+        "5.7",
+        "5.8"
+      ],
+      "graphs": [
+        "AddNumbers",
+        "EventGraph",
+        "ScaleSum",
+        "UserConstructionScript"
+      ],
+      "id": "BP_N2CBench_Math",
+      "shape": "shapes/BP_N2CBench_Math.json",
+      "source": "corpus"
+    },
+    {
+      "asset_path": "/NodeToCodeTestContent/Benchmark/BP_N2CBench_PureFunction.BP_N2CBench_PureFunction",
+      "covers": "a pure function used by an impure one",
+      "engines": [
+        "5.6",
+        "5.7",
+        "5.8"
+      ],
+      "graphs": [
+        "Doubled",
+        "EventGraph",
+        "Report",
+        "UserConstructionScript"
+      ],
+      "id": "BP_N2CBench_PureFunction",
+      "shape": "shapes/BP_N2CBench_PureFunction.json",
+      "source": "corpus"
+    },
+    {
+      "asset_path": "/NodeToCodeTestContent/Benchmark/BP_N2CBench_LocalVariables.BP_N2CBench_LocalVariables",
+      "covers": "a function with a local variable it reads and writes",
+      "engines": [
+        "5.6",
+        "5.7",
+        "5.8"
+      ],
+      "graphs": [
+        "CountUp",
+        "EventGraph",
+        "UserConstructionScript"
+      ],
+      "id": "BP_N2CBench_LocalVariables",
+      "shape": "shapes/BP_N2CBench_LocalVariables.json",
+      "source": "corpus"
+    },
+    {
+      "asset_path": "/NodeToCodeTestContent/Benchmark/BP_N2CBench_ForEach.BP_N2CBench_ForEach",
+      "covers": "ForEachLoop over an array parameter",
+      "engines": [
+        "5.6",
+        "5.7",
+        "5.8"
+      ],
+      "graphs": [
+        "EventGraph",
+        "PrintAll",
+        "UserConstructionScript"
+      ],
+      "id": "BP_N2CBench_ForEach",
+      "shape": "shapes/BP_N2CBench_ForEach.json",
+      "source": "corpus"
+    },
+    {
+      "asset_path": "/NodeToCodeTestContent/Benchmark/BP_N2CBench_WhileLoop.BP_N2CBench_WhileLoop",
+      "covers": "WhileLoop on a boolean member",
+      "engines": [
+        "5.6",
+        "5.7",
+        "5.8"
+      ],
+      "graphs": [
+        "EventGraph",
+        "RunWhile",
+        "UserConstructionScript"
+      ],
+      "id": "BP_N2CBench_WhileLoop",
+      "shape": "shapes/BP_N2CBench_WhileLoop.json",
+      "source": "corpus"
+    },
+    {
+      "asset_path": "/NodeToCodeTestContent/Benchmark/BP_N2CBench_BranchSwitch.BP_N2CBench_BranchSwitch",
+      "covers": "Branch on a boolean and Switch on a user enum",
+      "engines": [
+        "5.6",
+        "5.7",
+        "5.8"
+      ],
+      "graphs": [
+        "Decide",
+        "EventGraph",
+        "UserConstructionScript"
+      ],
+      "id": "BP_N2CBench_BranchSwitch",
+      "shape": "shapes/BP_N2CBench_BranchSwitch.json",
+      "source": "corpus"
+    },
+    {
+      "asset_path": "/NodeToCodeTestContent/Benchmark/BP_N2CBench_Delay.BP_N2CBench_Delay",
+      "covers": "BeginPlay into a latent Delay, then a print",
+      "engines": [
+        "5.6",
+        "5.7",
+        "5.8"
+      ],
+      "graphs": [
+        "EventGraph",
+        "UserConstructionScript"
+      ],
+      "id": "BP_N2CBench_Delay",
+      "shape": "shapes/BP_N2CBench_Delay.json",
+      "source": "corpus"
+    },
+    {
+      "asset_path": "/NodeToCodeTestContent/Benchmark/BP_N2CBench_Timeline.BP_N2CBench_Timeline",
+      "covers": "a timeline played from BeginPlay",
+      "engines": [
+        "5.6",
+        "5.7",
+        "5.8"
+      ],
+      "graphs": [
+        "EventGraph",
+        "UserConstructionScript"
+      ],
+      "id": "BP_N2CBench_Timeline",
+      "shape": "shapes/BP_N2CBench_Timeline.json",
+      "source": "corpus"
+    },
+    {
+      "asset_path": "/NodeToCodeTestContent/Benchmark/BP_N2CBench_Dispatcher.BP_N2CBench_Dispatcher",
+      "covers": "an event dispatcher and a custom event",
+      "engines": [
+        "5.6",
+        "5.7",
+        "5.8"
+      ],
+      "graphs": [
+        "EventGraph",
+        "UserConstructionScript"
+      ],
+      "id": "BP_N2CBench_Dispatcher",
+      "shape": "shapes/BP_N2CBench_Dispatcher.json",
+      "source": "corpus"
+    },
+    {
+      "asset_path": "/NodeToCodeTestContent/Benchmark/BP_N2CBench_Interactable.BP_N2CBench_Interactable",
+      "covers": "implements an interface function with a return value",
+      "engines": [
+        "5.6",
+        "5.7",
+        "5.8"
+      ],
+      "graphs": [
+        "EventGraph",
+        "Interact",
+        "UserConstructionScript"
+      ],
+      "id": "BP_N2CBench_Interactable",
+      "shape": "shapes/BP_N2CBench_Interactable.json",
+      "source": "corpus"
+    },
+    {
+      "asset_path": "/NodeToCodeTestContent/Benchmark/BP_N2CBench_Cast.BP_N2CBench_Cast",
+      "covers": "a cast of the player pawn to Pawn",
+      "engines": [
+        "5.6",
+        "5.7",
+        "5.8"
+      ],
+      "graphs": [
+        "EventGraph",
+        "FindPawn",
+        "UserConstructionScript"
+      ],
+      "id": "BP_N2CBench_Cast",
+      "shape": "shapes/BP_N2CBench_Cast.json",
+      "source": "corpus"
+    },
+    {
+      "asset_path": "/NodeToCodeTestContent/Benchmark/BP_N2CBench_Struct.BP_N2CBench_Struct",
+      "covers": "Make and Break of a user struct across two functions",
+      "engines": [
+        "5.6",
+        "5.7",
+        "5.8"
+      ],
+      "graphs": [
+        "EventGraph",
+        "MakeStats",
+        "ReadStats",
+        "UserConstructionScript"
+      ],
+      "id": "BP_N2CBench_Struct",
+      "shape": "shapes/BP_N2CBench_Struct.json",
+      "source": "corpus"
+    },
+    {
+      "asset_path": "/NodeToCodeTestContent/Benchmark/BP_N2CBench_Macro.BP_N2CBench_Macro",
+      "covers": "a macro of its own and an instance of it",
+      "engines": [
+        "5.6",
+        "5.7",
+        "5.8"
+      ],
+      "graphs": [
+        "EventGraph",
+        "PrintTwice",
+        "UserConstructionScript"
+      ],
+      "id": "BP_N2CBench_Macro",
+      "shape": "shapes/BP_N2CBench_Macro.json",
+      "source": "corpus"
+    },
+    {
+      "asset_path": "/NodeToCodeTestContent/Benchmark/BP_N2CBench_Collapsed.BP_N2CBench_Collapsed",
+      "covers": "a collapsed graph in the event graph",
+      "engines": [
+        "5.6",
+        "5.7",
+        "5.8"
+      ],
+      "graphs": [
+        "EventGraph",
+        "Greeting",
+        "UserConstructionScript"
+      ],
+      "id": "BP_N2CBench_Collapsed",
+      "shape": "shapes/BP_N2CBench_Collapsed.json",
+      "source": "corpus"
+    },
+    {
+      "asset_path": "/NodeToCodeTestContent/Benchmark/BP_N2CBench_EnhancedInput.BP_N2CBench_EnhancedInput",
+      "covers": "an Enhanced Input action event",
+      "engines": [
+        "5.6",
+        "5.7",
+        "5.8"
+      ],
+      "graphs": [
+        "EventGraph",
+        "UserConstructionScript"
+      ],
+      "id": "BP_N2CBench_EnhancedInput",
+      "shape": "shapes/BP_N2CBench_EnhancedInput.json",
+      "source": "corpus"
+    },
+    {
+      "asset_path": "/NodeToCodeTestContent/Benchmark/BP_N2CBench_FormatText.BP_N2CBench_FormatText",
+      "covers": "Format Text with two arguments",
+      "engines": [
+        "5.6",
+        "5.7",
+        "5.8"
+      ],
+      "graphs": [
+        "Describe",
+        "EventGraph",
+        "UserConstructionScript"
+      ],
+      "id": "BP_N2CBench_FormatText",
+      "shape": "shapes/BP_N2CBench_FormatText.json",
+      "source": "corpus"
+    },
+    {
+      "asset_path": "/NodeToCodeTestContent/Benchmark/BP_N2CBench_Sequence.BP_N2CBench_Sequence",
+      "covers": "a Sequence into two prints and a DoOnce",
+      "engines": [
+        "5.6",
+        "5.7",
+        "5.8"
+      ],
+      "graphs": [
+        "EventGraph",
+        "UserConstructionScript"
+      ],
+      "id": "BP_N2CBench_Sequence",
+      "shape": "shapes/BP_N2CBench_Sequence.json",
+      "source": "corpus"
+    },
+    {
+      "asset_path": "/NodeToCodeTestContent/Benchmark/BP_N2CBench_Variables.BP_N2CBench_Variables",
+      "covers": "member variables of many types, read by a function",
+      "engines": [
+        "5.6",
+        "5.7",
+        "5.8"
+      ],
+      "graphs": [
+        "EventGraph",
+        "IsAlive",
+        "UserConstructionScript"
+      ],
+      "id": "BP_N2CBench_Variables",
+      "shape": "shapes/BP_N2CBench_Variables.json",
+      "source": "corpus"
+    },
+    {
+      "asset_path": "/NodeToCodeTestContent/Benchmark/BP_N2CBench_HealthComponent.BP_N2CBench_HealthComponent",
+      "covers": "an Actor Component Blueprint with a Health member and ApplyDamage",
+      "engines": [
+        "5.6",
+        "5.7",
+        "5.8"
+      ],
+      "graphs": [
+        "ApplyDamage",
+        "EventGraph"
+      ],
+      "id": "BP_N2CBench_HealthComponent",
+      "shape": "shapes/BP_N2CBench_HealthComponent.json",
+      "source": "corpus"
+    },
+    {
+      "asset_path": "/NodeToCodeTestContent/Benchmark/WBP_N2CBench_Widget.WBP_N2CBench_Widget",
+      "covers": "a Widget Blueprint with a custom event",
+      "engines": [
+        "5.6",
+        "5.7",
+        "5.8"
+      ],
+      "graphs": [
+        "EventGraph"
+      ],
+      "id": "WBP_N2CBench_Widget",
+      "shape": "shapes/WBP_N2CBench_Widget.json",
+      "source": "corpus"
+    },
+    {
+      "asset_path": "/NodeToCodeTestContent/Benchmark/BP_N2CBench_PickupChild.BP_N2CBench_PickupChild",
+      "covers": "a child of BP_N2CBench_Pickup that wires its own BeginPlay",
+      "engines": [
+        "5.6",
+        "5.7",
+        "5.8"
+      ],
+      "graphs": [
+        "EventGraph",
+        "UserConstructionScript"
+      ],
+      "id": "BP_N2CBench_PickupChild",
+      "shape": "shapes/BP_N2CBench_PickupChild.json",
+      "source": "corpus"
+    },
+    {
+      "asset_path": "/NodeToCodeTestContent/Perf/BP_N2CPerf_100.BP_N2CPerf_100",
+      "covers": "card 0359's generated performance fixture",
+      "engines": [
+        "5.6",
+        "5.7",
+        "5.8"
+      ],
+      "graphs": [
+        "EventGraph",
+        "UserConstructionScript"
+      ],
+      "id": "BP_N2CPerf_100",
+      "shape": null,
+      "source": "perf"
+    },
+    {
+      "asset_path": "/NodeToCodeTestContent/Perf/BP_N2CPerf_1k.BP_N2CPerf_1k",
+      "covers": "card 0359's generated performance fixture",
+      "engines": [
+        "5.6",
+        "5.7",
+        "5.8"
+      ],
+      "graphs": [
+        "EventGraph",
+        "F_Work_00",
+        "F_Work_01",
+        "F_Work_02",
+        "F_Work_03",
+        "F_Work_04",
+        "F_Work_05",
+        "F_Work_06",
+        "F_Work_07",
+        "F_Work_08",
+        "F_Work_09",
+        "M_Perf_00",
+        "M_Perf_01",
+        "UserConstructionScript"
+      ],
+      "id": "BP_N2CPerf_1k",
+      "shape": null,
+      "source": "perf"
+    },
+    {
+      "asset_path": "/NodeToCodeTestContent/Perf/BP_N2CPerf_5k.BP_N2CPerf_5k",
+      "covers": "card 0359's generated performance fixture",
+      "engines": [
+        "5.6",
+        "5.7",
+        "5.8"
+      ],
+      "graphs": [
+        "EventGraph",
+        "F_Chain_0",
+        "F_Chain_1",
+        "F_Chain_2",
+        "F_Chain_3",
+        "F_Chain_4",
+        "F_Chain_5",
+        "F_Work_00",
+        "F_Work_01",
+        "F_Work_02",
+        "F_Work_03",
+        "F_Work_04",
+        "F_Work_05",
+        "F_Work_06",
+        "F_Work_07",
+        "F_Work_08",
+        "F_Work_09",
+        "F_Work_10",
+        "F_Work_11",
+        "F_Work_12",
+        "F_Work_13",
+        "F_Work_14",
+        "F_Work_15",
+        "F_Work_16",
+        "F_Work_17",
+        "F_Work_18",
+        "F_Work_19",
+        "F_Work_20",
+        "F_Work_21",
+        "F_Work_22",
+        "F_Work_23",
+        "M_Perf_00",
+        "M_Perf_01",
+        "M_Perf_02",
+        "M_Perf_03",
+        "M_Perf_04",
+        "Perf_Collapsed_0",
+        "UserConstructionScript"
+      ],
+      "id": "BP_N2CPerf_5k",
+      "shape": null,
+      "source": "perf"
+    }
+  ],
+  "external": [
+    {
+      "entries": [],
+      "name": "Lyra",
+      "note": "Epic sample project under the Unreal Engine EULA: install it from the Epic launcher, list its Blueprints here by asset path and capture them locally; never commit its assets.",
+      "status": "not_installed"
+    },
+    {
+      "entries": [],
+      "name": "Cropout",
+      "note": "Epic sample project under the Unreal Engine EULA: install it from the Epic launcher, list its Blueprints here by asset path and capture them locally; never commit its assets.",
+      "status": "not_installed"
+    }
+  ],
+  "version": 1
+}

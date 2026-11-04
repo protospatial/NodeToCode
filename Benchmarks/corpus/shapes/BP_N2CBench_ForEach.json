@@ -1,0 +1,35 @@
+{
+  "asset_class": "Blueprint",
+  "calls":
+  {
+    "PrintAll": [
+      "KismetSystemLibrary.PrintString",
+      "macro:ForEachLoop"
+    ]
+  },
+  "components": [],
+  "cpp_class": "ABP_N2CBench_ForEach",
+  "cpp_parent": "AActor",
+  "dispatchers": [],
+  "events": [],
+  "functions": [
+    {
+      "inputs": [
+        {
+          "container": "array",
+          "name": "Values",
+          "type": "Integer"
+        }
+      ],
+      "name": "PrintAll",
+      "outputs": [],
+      "pure": false
+    }
+  ],
+  "interfaces": [],
+  "macros": [],
+  "name": "BP_N2CBench_ForEach",
+  "parent": "Actor",
+  "properties": [],
+  "timelines": []
+}
