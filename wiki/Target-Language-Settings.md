@@ -19,7 +19,7 @@ that reads the material from its outputs back. Asking for a material in any othe
 **Target Language** is in **Project Settings → Plugins → Node to Code → Code Generation**, beside
 [Max Translation Depth](Max-Translation-Depth) and [Reference Source Files](Reference-Source-Files):
 
-<img src="images/settings/code-generation.png" alt="Project Settings, Code Generation: Target Language (C++), Max Translation Depth, Estimated Reference File Tokens and Reference Source Files" width="760">
+<img src="images/settings/code-generation.png" alt="Project Settings, Code Generation: Target Language (C++), Max Translation Depth, Verify and Refine, Max Refine Turns, Estimated Reference File Tokens and Reference Source Files" width="760">
 
     <p align="left">
         <img src="https://github.com/protospatial/NodeToCode/blob/main/assets/Image_NodeToCode_TargetLanguages.png" alt="Node to Code header" width="400">

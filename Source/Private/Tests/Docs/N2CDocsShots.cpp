@@ -252,7 +252,31 @@ bool FN2CDocsShotsMainWindow::RunTest(const FString& Parameters)
 	N2CDocsShots::Shoot(*this, N2CDocsShots::OnPanel(Manager), FVector2D(880.0, 460.0), Folder, TEXT("main-window/tag-manager"));
 
 	const TSharedRef<SN2CTranslationViewer> Viewer = SNew(SN2CTranslationViewer);
-	Viewer->LoadTranslation(N2CDocsShots::SampleTranslation(), TEXT("EventGraph"), FString(), EN2CCodeLanguage::Cpp);
+	// A translation at depth 1 (card 0257): the graph list shows the root, a function it calls and a struct it uses;
+	// Verify and Refine passed (card 0313), so the status shows beside the tabs
+	{
+		FN2CTranslationResponse Response;
+		Response.Graphs.Add(N2CDocsShots::SampleTranslation());
+		FN2CGraphTranslation Close;
+		Close.GraphName = TEXT("CloseDoor");
+		Close.GraphType = TEXT("Function");
+		Close.GraphClass = TEXT("BP_Door");
+		Close.Code.GraphDeclaration = TEXT("void CloseDoor();\n");
+		Close.Code.GraphImplementation = TEXT("void ABP_Door::CloseDoor()\n{\n\tbIsOpen = false;\n\tSetActorRotation(FRotator::ZeroRotator);\n}\n");
+		Response.Graphs.Add(Close);
+		FN2CGraphTranslation State;
+		State.GraphName = TEXT("FDoorState");
+		State.GraphType = TEXT("Struct");
+		State.GraphClass = TEXT("BP_Door");
+		State.Code.GraphDeclaration = TEXT("USTRUCT(BlueprintType)\nstruct FDoorState\n{\n\tGENERATED_BODY()\n\n\tUPROPERTY(EditAnywhere)\n\tbool bLocked = false;\n};\n");
+		Response.Graphs.Add(State);
+		Viewer->LoadResponse(Response, TEXT("EventGraph"), FString(), EN2CCodeLanguage::Cpp, 0);
+		FN2CVerifyOutcome Outcome;
+		Outcome.Status = EN2CVerifyStatus::Passed;
+		Outcome.MaxRefineTurns = 2;
+		Outcome.Language = EN2CCodeLanguage::Cpp;
+		Viewer->SetVerifyOutcome(&Outcome);
+	}
 	N2CDocsShots::Shoot(*this, N2CDocsShots::OnPanel(Viewer), FVector2D(880.0, 560.0), Folder, TEXT("main-window/translation-viewer"));
 
 	// A first run (card 0269): no tags yet (the tree's guidance, the selection buttons disabled) ...
@@ -366,15 +390,17 @@ bool FN2CDocsShotsSettings::RunTest(const FString& Parameters)
 	UserSettings->ReferenceSourceFilePaths.Add(Personal);
 	UserSettings->CustomTranslationOutputDirectory.Path = TEXT("C:/Projects/SampleGame/Saved/NodeToCode/Translations");
 
-	// One shot per settings area the pages describe, each the details panel filtered to that area's categories
+	// One shot per settings area the pages describe, each the details panel filtered to that area's categories. A new
+	// row in an area pushes the rows below it out of a fixed height: raise the height with it (card 0542)
 	struct FArea { const TCHAR* Name; UObject* Object; TArray<FString> Categories; double Height; };
 	const TArray<FArea> Areas = {
-		{ TEXT("settings/llm-provider"), Settings, { TEXT("Node to Code | LLM Provider"), TEXT("Node to Code | LLM Services | Anthropic") }, 300.0 },
-		{ TEXT("settings/code-generation"), Settings, { TEXT("Node to Code | Code Generation") }, 165.0 },
+		{ TEXT("settings/llm-provider"), Settings, { TEXT("Node to Code | LLM Provider"), TEXT("Node to Code | LLM Services | Anthropic") }, 354.0 },
+		{ TEXT("settings/code-generation"), Settings, { TEXT("Node to Code | Code Generation") }, 219.0 },
 		// The MCP Server category with the Write MCP Client Config row (card 0507)
 		{ TEXT("settings/mcp-server"), Settings, { TEXT("Node to Code | MCP Server") }, 218.0 },
 		// Each developer's own settings (card 0188), without the colours
-		{ TEXT("settings/user"), UserSettings, { TEXT("LLM Provider"), TEXT("LLM Provider|LM Studio"), TEXT("Code Generation"), TEXT("MCP Server") }, 440.0 },
+		{ TEXT("settings/user"), UserSettings, { TEXT("LLM Provider"), TEXT("LLM Provider|LM Studio"), TEXT("LLM Provider|OpenAI-Compatible"), TEXT("Code Generation"),
+			TEXT("MCP Server") }, 518.0 },
 	};
 	FPropertyEditorModule& PropertyEditor = FModuleManager::LoadModuleChecked<FPropertyEditorModule>(TEXT("PropertyEditor"));
 	for (const FArea& Area : Areas)

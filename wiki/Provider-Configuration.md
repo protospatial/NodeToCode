@@ -14,7 +14,7 @@ context size or price for it, so its cost shows as unknown; add one under
 [Model Price Overrides](#model-price-overrides) to see costs. To pick from the models your key can actually use, turn
 on [Live Model Lists](#live-model-lists).
 
-<img src="images/settings/llm-provider.png" alt="Project Settings, LLM Provider: HTTP Activity Timeout and Max Request Retries, then the Anthropic section with Model, Custom Model ID, API Key, API Key Status and the Remove Saved Anthropic Key button" width="760">
+<img src="images/settings/llm-provider.png" alt="Project Settings, LLM Provider: HTTP Activity Timeout, Max Request Retries, Live Model Lists and the Model List row with Refresh Model List, then the Anthropic section with Model, Custom Model ID, API Key, API Key Status and the Remove Saved Anthropic Key button" width="760">
 
 ### [Anthropic](LLM-Provider-Documentation-&-Resources#anthropic-claude)
 - **API Key**: Enter your Claude API key and press Enter; it is saved to Windows Credential Manager and the field empties. **API Key Status** shows where the key in use comes from
