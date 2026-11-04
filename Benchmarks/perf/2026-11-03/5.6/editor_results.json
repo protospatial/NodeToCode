@@ -1,0 +1,120 @@
+{
+  "engine": "5.6.1-44394996+++UE5+Release-5.6",
+  "runs": 5,
+  "fixtures": [
+    {
+      "name": "BP_N2CPerf_100",
+      "nodes": 100,
+      "graphs": 2,
+      "read_ms": [
+        61.571,
+        57.169,
+        57.291,
+        57.161,
+        59.22
+      ],
+      "read_ms_median": 57.291,
+      "bytes": {
+        "agent_min": 112863,
+        "agent_pretty": 205637,
+        "translation_min": 49450,
+        "translation_pretty": 99198
+      },
+      "working_set_delta": 741376,
+      "peak_working_set_delta": 741376
+    },
+    {
+      "name": "BP_N2CPerf_1k",
+      "nodes": 1000,
+      "graphs": 14,
+      "read_ms": [
+        597.912,
+        591.327,
+        627.884,
+        615.649,
+        627.684
+      ],
+      "read_ms_median": 615.649,
+      "bytes": {
+        "agent_min": 1148351,
+        "agent_pretty": 2094251,
+        "translation_min": 490833,
+        "translation_pretty": 992211
+      },
+      "working_set_delta": 9646080,
+      "peak_working_set_delta": 7307264
+    },
+    {
+      "name": "BP_N2CPerf_5k",
+      "nodes": 5000,
+      "graphs": 38,
+      "read_ms": [
+        3066.199,
+        3161.732,
+        3144.069,
+        3283.739,
+        3492.365
+      ],
+      "read_ms_median": 3161.732,
+      "bytes": {
+        "agent_min": 5652146,
+        "agent_pretty": 10246635,
+        "translation_min": 2430054,
+        "translation_pretty": 4873973
+      },
+      "working_set_delta": 26525696,
+      "peak_working_set_delta": 35639296
+    }
+  ],
+  "depth": [
+    {
+      "depth": 0,
+      "graphs": 1,
+      "nodes": 20,
+      "read_ms_median": 17.598,
+      "translation_min_bytes": 10308
+    },
+    {
+      "depth": 1,
+      "graphs": 2,
+      "nodes": 43,
+      "read_ms_median": 39.423,
+      "translation_min_bytes": 22279
+    },
+    {
+      "depth": 2,
+      "graphs": 3,
+      "nodes": 64,
+      "read_ms_median": 46.355,
+      "translation_min_bytes": 33759
+    },
+    {
+      "depth": 3,
+      "graphs": 4,
+      "nodes": 86,
+      "read_ms_median": 88.205,
+      "translation_min_bytes": 46495
+    },
+    {
+      "depth": 4,
+      "graphs": 5,
+      "nodes": 108,
+      "read_ms_median": 83.567,
+      "translation_min_bytes": 58235
+    },
+    {
+      "depth": 5,
+      "graphs": 6,
+      "nodes": 129,
+      "read_ms_median": 101.107,
+      "translation_min_bytes": 69170
+    }
+  ],
+  "tags": {
+    "tagged_graphs": 43,
+    "found": 43,
+    "search_ms_median": 0.33,
+    "get_all_tags_ms_median": 0.293
+  },
+  "errors": []
+}
