@@ -14,9 +14,11 @@ comments, preprocessor directives and brackets; the colors and the rules are on
 ## Reading and copying
 
 - Scroll for longer files; the text uses a monospaced font at a fixed size.
-- You can select and edit the text, for example to try a change. Edits stay in the window: the saved translation
-  files are not changed ([Utilizing Saved Translations](Utilizing-Saved-Translations)).
-- The clipboard button above the code copies the whole open tab ([Copy & Integrate](Copy-&-Integrate)).
+- The text is read-only: you can select and copy it. To try a change, click **Edit** above the code (it reads
+  **Editing** while on); the JSON tab stays read-only. Edits stay in the viewer, per graph and per tab, until another
+  translation is loaded: the saved translation files are not changed
+  ([Utilizing Saved Translations](Utilizing-Saved-Translations)).
+- The clipboard button above the code copies the whole open tab, with your edits ([Copy & Integrate](Copy-&-Integrate)).
 
 ## The Code Editor widget in Editor Utility Widgets
 
