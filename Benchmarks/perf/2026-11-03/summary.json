@@ -1,0 +1,480 @@
+{
+  "date": "2026-11-03",
+  "commit": "6618c03ec972",
+  "machine": {
+    "cpu": "Intel64 Family 6 Model 151 Stepping 2, GenuineIntel",
+    "cores": 24,
+    "os": "Windows-11-10.0.26300-SP0",
+    "ram_gb": 31.8
+  },
+  "engines": {
+    "5.8": {
+      "engine": "5.8.4-58902052+++UE5+Release-5.8",
+      "fixtures": [
+        {
+          "name": "BP_N2CPerf_100",
+          "nodes": 100,
+          "graphs": 2,
+          "read_ms": [
+            169.879,
+            163.128,
+            133.1,
+            139.067,
+            158.476
+          ],
+          "read_ms_median": 158.476,
+          "bytes": {
+            "agent_min": 112863,
+            "agent_pretty": 205637,
+            "translation_min": 49450,
+            "translation_pretty": 99198
+          },
+          "working_set_delta": -25567232,
+          "peak_working_set_delta": 147542016
+        },
+        {
+          "name": "BP_N2CPerf_1k",
+          "nodes": 1000,
+          "graphs": 14,
+          "read_ms": [
+            1617.467,
+            1736.403,
+            1705.153,
+            1579.274,
+            1797.122
+          ],
+          "read_ms_median": 1705.153,
+          "bytes": {
+            "agent_min": 1148351,
+            "agent_pretty": 2094251,
+            "translation_min": 490833,
+            "translation_pretty": 992211
+          },
+          "working_set_delta": 8630272,
+          "peak_working_set_delta": 0
+        },
+        {
+          "name": "BP_N2CPerf_5k",
+          "nodes": 5000,
+          "graphs": 38,
+          "read_ms": [
+            8269.999,
+            7933.34,
+            4467.365,
+            4345.636,
+            4086.925
+          ],
+          "read_ms_median": 4467.365,
+          "bytes": {
+            "agent_min": 5652146,
+            "agent_pretty": 10246635,
+            "translation_min": 2430054,
+            "translation_pretty": 4873973
+          },
+          "working_set_delta": 35311616,
+          "peak_working_set_delta": 0
+        }
+      ],
+      "tokens": {
+        "BP_N2CPerf_100": {
+          "agent_min": {
+            "chars_div4": 28216,
+            "o200k_base": null,
+            "qwen": null,
+            "anthropic": 64621
+          },
+          "translation_min": {
+            "chars_div4": 12363,
+            "o200k_base": null,
+            "qwen": null,
+            "anthropic": 23185
+          }
+        },
+        "BP_N2CPerf_1k": {
+          "agent_min": {
+            "chars_div4": 287088,
+            "o200k_base": null,
+            "qwen": null,
+            "anthropic": 654924
+          },
+          "translation_min": {
+            "chars_div4": 122709,
+            "o200k_base": null,
+            "qwen": null,
+            "anthropic": 228478
+          }
+        },
+        "BP_N2CPerf_5k": {
+          "agent_min": {
+            "chars_div4": 1413037,
+            "o200k_base": null,
+            "qwen": null,
+            "anthropic": 3228289
+          },
+          "translation_min": {
+            "chars_div4": 607514,
+            "o200k_base": null,
+            "qwen": null,
+            "anthropic": 1135095
+          }
+        }
+      },
+      "depth": [
+        {
+          "depth": 0,
+          "graphs": 1,
+          "nodes": 20,
+          "read_ms_median": 18.322,
+          "translation_min_bytes": 10308,
+          "tokens": {
+            "chars_div4": 2577,
+            "o200k_base": null,
+            "qwen": null,
+            "anthropic": 4810
+          }
+        },
+        {
+          "depth": 1,
+          "graphs": 2,
+          "nodes": 43,
+          "read_ms_median": 44.135,
+          "translation_min_bytes": 22279,
+          "tokens": {
+            "chars_div4": 5570,
+            "o200k_base": null,
+            "qwen": null,
+            "anthropic": 10369
+          }
+        },
+        {
+          "depth": 2,
+          "graphs": 3,
+          "nodes": 64,
+          "read_ms_median": 62.667,
+          "translation_min_bytes": 33759,
+          "tokens": {
+            "chars_div4": 8440,
+            "o200k_base": null,
+            "qwen": null,
+            "anthropic": 15657
+          }
+        },
+        {
+          "depth": 3,
+          "graphs": 4,
+          "nodes": 86,
+          "read_ms_median": 85.465,
+          "translation_min_bytes": 46495,
+          "tokens": {
+            "chars_div4": 11624,
+            "o200k_base": null,
+            "qwen": null,
+            "anthropic": 21491
+          }
+        },
+        {
+          "depth": 4,
+          "graphs": 5,
+          "nodes": 108,
+          "read_ms_median": 104.989,
+          "translation_min_bytes": 58235,
+          "tokens": {
+            "chars_div4": 14559,
+            "o200k_base": null,
+            "qwen": null,
+            "anthropic": 26805
+          }
+        },
+        {
+          "depth": 5,
+          "graphs": 6,
+          "nodes": 129,
+          "read_ms_median": 132.77,
+          "translation_min_bytes": 69170,
+          "tokens": {
+            "chars_div4": 17293,
+            "o200k_base": null,
+            "qwen": null,
+            "anthropic": 31734
+          }
+        }
+      ],
+      "tags": {
+        "tagged_graphs": 43,
+        "found": 43,
+        "search_ms_median": 0.765,
+        "get_all_tags_ms_median": 0.748
+      },
+      "errors": [],
+      "scopes": {
+        "N2C_Capture_BuildStruct": {
+          "count": 54,
+          "total_s": 5.606,
+          "median_ms": 12.256,
+          "max_ms": 1038.022
+        },
+        "N2C_Capture_CollectNodes": {
+          "count": 36,
+          "total_s": 0.002,
+          "median_ms": 0.045,
+          "max_ms": 0.087
+        },
+        "N2C_Serialize_ToJson": {
+          "count": 54,
+          "total_s": 16.738,
+          "median_ms": 33.461,
+          "max_ms": 2785.37
+        },
+        "N2C_Validate": {
+          "count": 108,
+          "total_s": 3.523,
+          "median_ms": 3.657,
+          "max_ms": 303.118
+        }
+      },
+      "tools_list": {
+        "bytes": 121667,
+        "tokens": {
+          "chars_div4": 30417,
+          "o200k_base": null,
+          "qwen": null,
+          "anthropic": 46203
+        }
+      }
+    },
+    "5.6": {
+      "engine": "5.6.1-44394996+++UE5+Release-5.6",
+      "fixtures": [
+        {
+          "name": "BP_N2CPerf_100",
+          "nodes": 100,
+          "graphs": 2,
+          "read_ms": [
+            61.571,
+            57.169,
+            57.291,
+            57.161,
+            59.22
+          ],
+          "read_ms_median": 57.291,
+          "bytes": {
+            "agent_min": 112863,
+            "agent_pretty": 205637,
+            "translation_min": 49450,
+            "translation_pretty": 99198
+          },
+          "working_set_delta": 741376,
+          "peak_working_set_delta": 741376
+        },
+        {
+          "name": "BP_N2CPerf_1k",
+          "nodes": 1000,
+          "graphs": 14,
+          "read_ms": [
+            597.912,
+            591.327,
+            627.884,
+            615.649,
+            627.684
+          ],
+          "read_ms_median": 615.649,
+          "bytes": {
+            "agent_min": 1148351,
+            "agent_pretty": 2094251,
+            "translation_min": 490833,
+            "translation_pretty": 992211
+          },
+          "working_set_delta": 9646080,
+          "peak_working_set_delta": 7307264
+        },
+        {
+          "name": "BP_N2CPerf_5k",
+          "nodes": 5000,
+          "graphs": 38,
+          "read_ms": [
+            3066.199,
+            3161.732,
+            3144.069,
+            3283.739,
+            3492.365
+          ],
+          "read_ms_median": 3161.732,
+          "bytes": {
+            "agent_min": 5652146,
+            "agent_pretty": 10246635,
+            "translation_min": 2430054,
+            "translation_pretty": 4873973
+          },
+          "working_set_delta": 26525696,
+          "peak_working_set_delta": 35639296
+        }
+      ],
+      "tokens": {
+        "BP_N2CPerf_100": {
+          "agent_min": {
+            "chars_div4": 28216,
+            "o200k_base": null,
+            "qwen": null,
+            "anthropic": 64621
+          },
+          "translation_min": {
+            "chars_div4": 12363,
+            "o200k_base": null,
+            "qwen": null,
+            "anthropic": 23185
+          }
+        },
+        "BP_N2CPerf_1k": {
+          "agent_min": {
+            "chars_div4": 287088,
+            "o200k_base": null,
+            "qwen": null,
+            "anthropic": 654924
+          },
+          "translation_min": {
+            "chars_div4": 122709,
+            "o200k_base": null,
+            "qwen": null,
+            "anthropic": 228478
+          }
+        },
+        "BP_N2CPerf_5k": {
+          "agent_min": {
+            "chars_div4": 1413037,
+            "o200k_base": null,
+            "qwen": null,
+            "anthropic": 3228289
+          },
+          "translation_min": {
+            "chars_div4": 607514,
+            "o200k_base": null,
+            "qwen": null,
+            "anthropic": 1135095
+          }
+        }
+      },
+      "depth": [
+        {
+          "depth": 0,
+          "graphs": 1,
+          "nodes": 20,
+          "read_ms_median": 17.598,
+          "translation_min_bytes": 10308,
+          "tokens": {
+            "chars_div4": 2577,
+            "o200k_base": null,
+            "qwen": null,
+            "anthropic": 4810
+          }
+        },
+        {
+          "depth": 1,
+          "graphs": 2,
+          "nodes": 43,
+          "read_ms_median": 39.423,
+          "translation_min_bytes": 22279,
+          "tokens": {
+            "chars_div4": 5570,
+            "o200k_base": null,
+            "qwen": null,
+            "anthropic": 10369
+          }
+        },
+        {
+          "depth": 2,
+          "graphs": 3,
+          "nodes": 64,
+          "read_ms_median": 46.355,
+          "translation_min_bytes": 33759,
+          "tokens": {
+            "chars_div4": 8440,
+            "o200k_base": null,
+            "qwen": null,
+            "anthropic": 15657
+          }
+        },
+        {
+          "depth": 3,
+          "graphs": 4,
+          "nodes": 86,
+          "read_ms_median": 88.205,
+          "translation_min_bytes": 46495,
+          "tokens": {
+            "chars_div4": 11624,
+            "o200k_base": null,
+            "qwen": null,
+            "anthropic": 21491
+          }
+        },
+        {
+          "depth": 4,
+          "graphs": 5,
+          "nodes": 108,
+          "read_ms_median": 83.567,
+          "translation_min_bytes": 58235,
+          "tokens": {
+            "chars_div4": 14559,
+            "o200k_base": null,
+            "qwen": null,
+            "anthropic": 26805
+          }
+        },
+        {
+          "depth": 5,
+          "graphs": 6,
+          "nodes": 129,
+          "read_ms_median": 101.107,
+          "translation_min_bytes": 69170,
+          "tokens": {
+            "chars_div4": 17293,
+            "o200k_base": null,
+            "qwen": null,
+            "anthropic": 31734
+          }
+        }
+      ],
+      "tags": {
+        "tagged_graphs": 43,
+        "found": 43,
+        "search_ms_median": 0.33,
+        "get_all_tags_ms_median": 0.293
+      },
+      "errors": [],
+      "scopes": {
+        "N2C_Capture_BuildStruct": {
+          "count": 54,
+          "total_s": 2.859,
+          "median_ms": 10.46,
+          "max_ms": 419.309
+        },
+        "N2C_Capture_CollectNodes": {
+          "count": 36,
+          "total_s": 0.002,
+          "median_ms": 0.038,
+          "max_ms": 0.159
+        },
+        "N2C_Serialize_ToJson": {
+          "count": 54,
+          "total_s": 7.608,
+          "median_ms": 20.122,
+          "max_ms": 1044.215
+        },
+        "N2C_Validate": {
+          "count": 108,
+          "total_s": 1.722,
+          "median_ms": 3.032,
+          "max_ms": 114.479
+        }
+      },
+      "tools_list": {
+        "bytes": 121667,
+        "tokens": {
+          "chars_div4": 30417,
+          "o200k_base": null,
+          "qwen": null,
+          "anthropic": 46203
+        }
+      }
+    }
+  }
+}
