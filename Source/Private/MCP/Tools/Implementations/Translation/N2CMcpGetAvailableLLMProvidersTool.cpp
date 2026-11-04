@@ -8,6 +8,7 @@
 #include "Core/N2CSecretStore.h"
 #include "LLM/N2CLLMModels.h"
 #include "LLM/N2CModelCatalog.h"
+#include "LLM/N2CModelDiscovery.h"
 #include "LLM/N2COllamaConfig.h"
 #include "Utils/N2CLogger.h"
 #include "Dom/JsonObject.h"
@@ -18,11 +19,23 @@
 // Auto-register this tool
 REGISTER_MCP_TOOL(FN2CMcpGetAvailableLLMProvidersTool)
 
+namespace N2CMcpGetAvailableLLMProvidersToolPrivate
+{
+    /** The catalog row a provider's requests use: its own row, or for OpenAI-Compatible the selected preset (null for a profile of your own) */
+    const FN2CProviderProfile* CatalogRow(EN2CLLMProvider Provider)
+    {
+        return FN2CModelCatalog::Get().FindProvider(FN2CModelDiscovery::ProviderIdFor(Provider));
+    }
+}
+
 FMcpToolDefinition FN2CMcpGetAvailableLLMProvidersTool::GetDefinition() const
 {
     FMcpToolDefinition Definition(
         TEXT("get-available-llm-providers"),
-        TEXT("Returns the LLM providers available for Blueprint translation: cloud providers with an API key (saved in Project Settings or from an environment variable; keySource says which, never the key) and the local providers."),
+        TEXT("Returns the LLM providers available for Blueprint translation: cloud providers with an API key (saved in Project Settings or from an environment variable; keySource says which, never the key) and the local providers. ")
+        TEXT("Names, locality and model rows come from NodeToCode's model catalog; each model has status active or deprecated ")
+        TEXT("(with shutdownDate, also from the provider's live model list when it was fetched), contextWindow, maxOutput and ")
+        TEXT("isSelected. Retired models are left out; every listed id is accepted as translate-focused-blueprint's model."),
         N2CMcpToolsets::Translation
     );
     
@@ -34,16 +47,21 @@ FMcpToolDefinition FN2CMcpGetAvailableLLMProvidersTool::GetDefinition() const
         const TSharedRef<FJsonObject> Model = Object({
             { TEXT("id"), String(TEXT("Pass as translate-focused-blueprint's model")) },
             { TEXT("name"), String() },
+            { TEXT("status"), Enum({ TEXT("active"), TEXT("deprecated") }, TEXT("deprecated: still served until shutdownDate")) },
             { TEXT("deprecated"), Boolean() },
-            { TEXT("shutdownDate"), String() },
+            { TEXT("shutdownDate"), String(TEXT("YYYY-MM-DD, from the catalog or the provider's live model list")) },
+            { TEXT("contextWindow"), Integer(TEXT("Input context in tokens")) },
+            { TEXT("maxOutput"), Integer(TEXT("Output limit in tokens")) },
+            { TEXT("isSelected"), Boolean(TEXT("The model Project Settings selects for this provider")) },
             { TEXT("supportsSystemPrompts"), Boolean() },
             { TEXT("reasoningEffort"), String() },
-        }, { TEXT("id") });
+        }, { TEXT("id"), TEXT("status") });
         Definition.OutputSchema = Object({
             { TEXT("providers"), Array(Object({
                 { TEXT("id"), String(TEXT("Pass as translate-focused-blueprint's provider")) },
                 { TEXT("displayName"), String() },
                 { TEXT("configured"), Boolean() },
+                { TEXT("keyConfigured"), Boolean(TEXT("An API key is saved or in the environment (never the key)")) },
                 { TEXT("isLocal"), Boolean() },
                 { TEXT("keySource"), Enum({ TEXT("saved"), TEXT("environment"), TEXT("none") }, TEXT("Where the API key comes from (never the key)")) },
                 { TEXT("keyVariable"), String(TEXT("The environment variable, when keySource is environment")) },
@@ -143,6 +161,14 @@ bool FN2CMcpGetAvailableLLMProvidersTool::IsProviderConfigured(EN2CLLMProvider P
 
 FString FN2CMcpGetAvailableLLMProvidersTool::GetProviderDisplayName(EN2CLLMProvider Provider) const
 {
+    // The catalog's name for the provider (for OpenAI-Compatible, the selected preset's) when it has a row
+    if (const FN2CProviderProfile* Row = N2CMcpGetAvailableLLMProvidersToolPrivate::CatalogRow(Provider))
+    {
+        if (!Row->DisplayName.IsEmpty())
+        {
+            return Row->DisplayName;
+        }
+    }
     switch (Provider)
     {
         case EN2CLLMProvider::OpenAI:
@@ -183,9 +209,12 @@ TSharedPtr<FJsonObject> FN2CMcpGetAvailableLLMProvidersTool::BuildProviderInfo(E
     // Set configured status (always true since we filtered unconfigured providers)
     ProviderObject->SetBoolField(TEXT("configured"), true);
     
-    // Set local vs cloud
-    bool bIsLocal = (Provider == EN2CLLMProvider::Ollama || Provider == EN2CLLMProvider::LMStudio);
+    // Local or cloud, from the catalog row (a profile of your own, with no row, counts as local)
+    const FN2CProviderProfile* Row = N2CMcpGetAvailableLLMProvidersToolPrivate::CatalogRow(Provider);
+    const bool bIsLocal = Row ? Row->bIsLocal : (Provider == EN2CLLMProvider::Ollama || Provider == EN2CLLMProvider::LMStudio
+        || Provider == EN2CLLMProvider::OpenAICompatible);
     ProviderObject->SetBoolField(TEXT("isLocal"), bIsLocal);
+    ProviderObject->SetBoolField(TEXT("keyConfigured"), GetCredentialSource()->Has(Provider));
 
     // Where the key requests use comes from, never the key: "saved" (Project Settings), "environment" (with the
     // variable's name) or "none" (a local provider without one)
@@ -255,6 +284,10 @@ TArray<TSharedPtr<FJsonValue>> FN2CMcpGetAvailableLLMProvidersTool::GetAvailable
 {
     TArray<TSharedPtr<FJsonValue>> Models;
     TSet<FString> OfferedIds;
+    // The provider's live list (card 0216), read from the cache only, never fetched here: its lifecycle wins over the
+    // bundled row's when the provider marks a model deprecated or gives a shutdown date
+    const FN2CModelList* Live = FN2CModelDiscovery::Get().GetListIfOptedIn(FN2CModelDiscovery::ProviderIdFor(Provider));
+    const FString Selected = GetCurrentModel(Provider);
 
     // The provider's live catalog rows in catalog order; retired rows are kept only for saved settings and are not
     // offered. Ollama and LM Studio have none.
@@ -274,14 +307,21 @@ TArray<TSharedPtr<FJsonValue>> FN2CMcpGetAvailableLLMProvidersTool::GetAvailable
         ModelObj->SetStringField(TEXT("name"), Meta->DisplayName);
 
         // Deprecated but still served: say when it stops working
-        if (Meta->bIsDeprecated)
+        const FN2CDiscoveredModel* LiveModel = Live ? Live->Find(Meta->ModelId) : nullptr;
+        const bool bDeprecated = Meta->bIsDeprecated || (LiveModel && (LiveModel->bDeprecated || !LiveModel->ShutdownDate.IsEmpty()));
+        const FString ShutdownDate = LiveModel && !LiveModel->ShutdownDate.IsEmpty() ? LiveModel->ShutdownDate : Meta->ShutdownDate;
+        ModelObj->SetStringField(TEXT("status"), bDeprecated ? TEXT("deprecated") : TEXT("active"));
+        if (bDeprecated)
         {
             ModelObj->SetBoolField(TEXT("deprecated"), true);
-            if (!Meta->ShutdownDate.IsEmpty())
+            if (!ShutdownDate.IsEmpty())
             {
-                ModelObj->SetStringField(TEXT("shutdownDate"), Meta->ShutdownDate);
+                ModelObj->SetStringField(TEXT("shutdownDate"), ShutdownDate);
             }
         }
+        ModelObj->SetNumberField(TEXT("contextWindow"), LiveModel && LiveModel->ContextWindow > 0 ? LiveModel->ContextWindow : Meta->ContextWindowSize);
+        ModelObj->SetNumberField(TEXT("maxOutput"), LiveModel && LiveModel->MaxOutput > 0 ? LiveModel->MaxOutput : Meta->MaxOutputTokens);
+        ModelObj->SetBoolField(TEXT("isSelected"), Meta->ModelId == Selected);
 
         // Add system prompt support for OpenAI models
         if (Provider == EN2CLLMProvider::OpenAI)
